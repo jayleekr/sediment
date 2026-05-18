@@ -1,0 +1,26 @@
+{
+  "name": "sediment-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sediment UI — standalone Next.js app (split out of jayleekr/hypeprooflab community web 2026-05-18). Talks to the Fly API; no next-auth (localStorage bearer token).",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

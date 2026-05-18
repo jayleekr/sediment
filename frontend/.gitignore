@@ -1,0 +1,13 @@
+# Node / Next.js (Sediment frontend)
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local env (never commit real API URLs/secrets)
+.env*.local
+
+# Vercel
+.vercel

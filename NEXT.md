@@ -17,23 +17,28 @@
 (2026-05-18). The backend came over cleanly. The **frontend did not** — it
 still lives in and deploys from the community Next.js app.
 
-**Current state.** `frontend/app-sediment/` holds the 11 UI files verbatim,
-but they're not runnable here: they import shared
-components/libs (`CookieConsent`, `web/src/app/sediment/lib/*`, Tailwind
-config) that stayed in the community repo. The **live dogfood UI is still
+**Current state (updated 2026-05-18).** Standalone Next.js 16 app scaffolded
+under `frontend/` and **building clean locally** — the 11 UI files moved
+verbatim to `frontend/app/sediment/`, zero code changes. The earlier
+"imports shared `CookieConsent`/libs" fear was wrong: real deps are only
+`next`/`react`/`react-dom`/`react-markdown`/`remark-gfm`; `next-auth` was just
+a Phase-5 code-fence in `auth/README.md`. The **live dogfood UI is still
 served by hypeprooflab's `web/`** (Vercel `web-nu-seven-39.vercel.app/sediment`),
 deliberately left there so an auto-deploy cron doesn't break the team's
 dogfood mid-cutover.
 
 **Work:**
-1. Scaffold a standalone Next.js app here (own `package.json`, `next.config`,
-   Tailwind, the shared components it needs copied/vendored).
-2. New Vercel project from this repo → custom domain (P3:
-   `sediment.hypeproof-ai.xyz`), `NEXT_PUBLIC_*` → Fly API.
-3. Verify E2E (Playwright) against the new deploy.
-4. Repoint the dogfood team to the new URL.
+1. ~~Scaffold a standalone Next.js app here.~~ **✅ DONE** — `frontend/`
+   (package.json, next.config.ts, tsconfig, Tailwind v4, root layout +
+   globals.css, `/`→`/sediment` redirect). `npm run build` green, 9 routes.
+2. New Vercel project from this repo (**root dir `frontend/`**) → custom
+   domain (P3: `sediment.hypeproof-ai.xyz`), `NEXT_PUBLIC_CURATOR_PLATFORM_URL`
+   + `NEXT_PUBLIC_CURATOR_LANGGRAPH_URL` → Fly API. *(gated on Jay)*
+3. Verify E2E (Playwright) against the new deploy. *(gated on Jay)*
+4. Repoint the dogfood team to the new URL. *(gated on Jay)*
 5. **Only then** delete `web/src/app/sediment/` from `hypeprooflab` (it is
    intentionally still there until this step — do not remove it earlier).
+   *(gated on Jay)*
 
 **Acceptance:** Sediment UI deploys from this repo, no Sediment code remains
 in `hypeprooflab`'s working tree, dogfood uninterrupted.

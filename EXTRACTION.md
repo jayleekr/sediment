@@ -34,19 +34,37 @@ private"). This repo starts clean; for archaeology of the MVP build, the
 Ralph/validator iteration commits, and the AI-Curator→Sediment rename, see
 hypeprooflab history up to commit `ea5899f`.
 
-## Frontend cutover — NOT done yet
+## Frontend cutover — IN PROGRESS (scaffold + build done 2026-05-18)
 
-`frontend/app-sediment/` is the 11 Sediment UI files lifted verbatim from the
-community Next.js app. They are **not a deployable standalone app**: they
-import shared components/libs (`web/src/components/CookieConsent`, etc.) that
-did not come over. Until a standalone Next.js app + its own Vercel project is
-stood up here:
+The 11 Sediment UI files turned out to be **far more self-contained than
+originally feared**: the only real npm deps are `next`, `react`, `react-dom`,
+`react-markdown`, `remark-gfm`. The `CookieConsent` / `next-auth` / shared-lib
+concern was overstated — `next-auth` appears *only* in
+`app/sediment/auth/README.md` (a Phase-5 design code-fence, not real code); the
+app authenticates via a localStorage bearer token minted against the Fly API
+(`/api/v1/auth/dev-token`). No `@/` alias, no shared community components.
 
-- The **live dogfood UI keeps serving from the community web app**
-  (`hypeprooflab` → `web/src/app/sediment/`, Vercel
-  `web-nu-seven-39.vercel.app/sediment`). It was deliberately **left in
-  hypeprooflab** so the team's dogfood does not break.
-- Do **not** delete `web/src/app/sediment/` from hypeprooflab until the
-  standalone here is live and the dogfood URL is repointed.
+**Done:**
+- Standalone Next.js 16 app scaffolded under `frontend/` (own `package.json`,
+  `next.config.ts`, `tsconfig.json`, Tailwind v4, root layout + `globals.css`,
+  `/` → `/sediment` redirect, `.env.local.example` → Fly API).
+- The 11 files moved verbatim (zero code changes) to `frontend/app/sediment/`;
+  all relative imports verified resolving.
+- `npm install && npm run build` passes clean — 9 routes
+  (`/`, `/sediment`, `/sediment/{admin,library,members,onboard,pricing}`,
+  `/sediment/c/[id]`).
+
+**Still NOT done (gated on Jay):**
+- New Vercel project from this repo (root dir `frontend/`), `NEXT_PUBLIC_*`
+  → Fly API, custom domain `sediment.hypeproof-ai.xyz`.
+- E2E verify against the new deploy; repoint the dogfood team.
+- **Only then** delete `web/src/app/sediment/` (and the now-duplicated
+  `products/sediment/`, `.claude/curator-*`, `.github/curator-ingest`) from
+  `hypeprooflab`.
+
+Until the deploy + repoint lands, the **live dogfood UI still serves from the
+community web app** (`hypeprooflab` → `web/src/app/sediment/`, Vercel
+`web-nu-seven-39.vercel.app/sediment`) — deliberately left there so the team's
+dogfood does not break. **Do not delete it from hypeprooflab early.**
 
 This cutover is the top item in `NEXT.md`.
