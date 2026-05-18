@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypeproof-ai.xyz/schemas/recipes.schema.json",
+  "title": "Auto-fix recipes",
+  "type": "object",
+  "required": ["recipes"],
+  "properties": {
+    "recipes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/recipe" }
+    },
+    "no_auto_fix": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "object" }
+      ]
+    }
+  },
+  "$defs": {
+    "recipe": {
+      "type": "object",
+      "required": ["matches", "fix"],
+      "properties": {
+        "description": { "type": "string" },
+        "matches": {
+          "type": "object",
+          "properties": {
+            "check_id":         { "type": "string" },
+            "check_id_prefix":  { "type": "string" },
+            "check_id_in":      { "type": "array", "items": { "type": "string" } },
+            "message_contains": { "type": "string" }
+          }
+        },
+        "fix": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "cmd":               { "type": "string" },
+              "background_cmd":    { "type": "string" },
+              "wait_for_url":      { "type": "string" },
+              "wait_until_healthy":{ "type": "string" },
+              "timeout":           { "type": "integer", "minimum": 1, "maximum": 1800 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

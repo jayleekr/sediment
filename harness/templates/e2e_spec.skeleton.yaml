@@ -1,0 +1,32 @@
+# E2E spec skeleton — minimal sign-in flow as starting point.
+
+base_url: "http://localhost:3000"
+default_timeout_ms: 8000
+viewport:
+  width: 1280
+  height: 900
+seed_member:
+  email: "admin@{project}.test"
+
+flows:
+
+  - id: E2E-01
+    name: "Sign-in flow"
+    severity: blocker
+    repeat: 5
+    pass_threshold: 4
+    steps:
+      - action: navigate
+        url: "/"
+        wait_for: "input[type='email']"
+        screenshot: "01-sign-in"
+      - action: fill
+        selector: "input[type='email']"
+        value: "{{seed_member.email}}"
+      - action: click
+        selector: "button[type='submit']"
+        wait_for: "text=Welcome"
+        screenshot: "02-after-signin"
+      - action: assert
+        type: localStorage_has
+        key: "auth.token"

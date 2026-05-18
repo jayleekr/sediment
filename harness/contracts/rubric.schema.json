@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypeproof-ai.xyz/schemas/rubric.schema.json",
+  "title": "Validation Rubric",
+  "description": "Phase-organized declarative checks for the validator harness.",
+  "type": "object",
+  "required": ["phases"],
+  "properties": {
+    "phases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/phase" }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "required": ["id", "name", "checks"],
+      "properties": {
+        "id":          { "type": "string", "pattern": "^P[0-9]+(\\.[0-9]+)?$" },
+        "name":        { "type": "string" },
+        "description": { "type": "string" },
+        "pass_criteria": {
+          "type": "object",
+          "properties": {
+            "blockers_passed_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "total_score_pct":     { "type": "number", "minimum": 0, "maximum": 100 },
+            "layer_min_pct":       { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/check" }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["id", "title", "layer", "severity", "type"],
+      "properties": {
+        "id":       { "type": "string", "pattern": "^P[0-9]+(\\.[0-9]+)?-[A-Z0-9_]+-[0-9]+$" },
+        "title":    { "type": "string", "maxLength": 120 },
+        "layer":    { "type": "string", "pattern": "^L(1|2|3|4|5|6|7|8|9|10|11)$" },
+        "severity": { "enum": ["blocker", "major", "minor"] },
+        "type":     { "enum": ["bash", "sql", "http", "python", "e2e"] },
+
+        "cmd":     { "type": "string" },
+        "expected_exit": { "type": "integer" },
+        "expected_stdout_contains": { "type": "string" },
+        "expected_stdout_regex":    { "type": "string" },
+
+        "sql": { "type": "string" },
+        "role": { "enum": ["app", "service"] },
+        "tenant_id": { "type": "string" },
+        "expected_rows": { "type": "integer", "minimum": 0 },
+        "expected_min_rows": { "type": "integer", "minimum": 0 },
+        "expected_value": {},
+        "expected_min_value": { "type": ["number", "integer"] },
+
+        "method":   { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "url":      { "type": "string", "format": "uri" },
+        "headers":  { "type": "object" },
+        "json":     {},
+        "expected_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+
+        "module":   { "type": "string" },
+        "function": { "type": "string" },
+        "params":   { "type": "object" },
+
+        "flow_id":  { "type": "string", "pattern": "^E2E-[0-9]+$" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "bash" } } },
+          "then": { "required": ["cmd"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "sql" } } },
+          "then": { "required": ["sql"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "http" } } },
+          "then": { "required": ["url"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "python" } } },
+          "then": { "required": ["module", "function"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "e2e" } } },
+          "then": { "required": ["flow_id"] }
+        }
+      ]
+    }
+  }
+}

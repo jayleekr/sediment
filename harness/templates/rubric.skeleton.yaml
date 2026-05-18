@@ -1,0 +1,54 @@
+# Rubric skeleton — bootstrap.py copies this to a new project's validator/rubric.yaml.
+# Replace {PROJECT_NAME}, {TENANT_TABLES}, {SERVICE_PORTS} placeholders.
+# Add project-specific check ids per phase.
+
+phases:
+
+  - id: P0
+    name: "Scaffolding (infra + DDL + RLS)"
+    description: "{PROJECT_NAME} infra ready; DB schema + RLS active"
+    pass_criteria:
+      blockers_passed_pct: 100
+      total_score_pct: 90
+      layer_min_pct: 80
+    checks:
+
+      - id: P0-INFRA-01
+        title: "Postgres reachable"
+        layer: L1
+        severity: blocker
+        type: bash
+        cmd: "docker exec {project}-pg pg_isready -U {project} -d {project}"
+        expected_exit: 0
+
+      - id: P0-DDL-01
+        title: "All tenant-scoped tables exist"
+        layer: L1
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_all_tables_exist
+
+      - id: P0-RLS-01
+        title: "RLS enabled on all tenant-scoped tables"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_rls_enabled_all
+
+  - id: P1
+    name: "{PROJECT_NAME} core feature 1"
+    pass_criteria:
+      blockers_passed_pct: 100
+      total_score_pct: 90
+    checks:
+      # Add your project's checks here.
+      - id: P1-PLACEHOLDER-01
+        title: "TODO — first happy-path check"
+        layer: L2
+        severity: blocker
+        type: http
+        method: GET
+        url: "http://localhost:{port}/healthz"
+        expected_status: 200

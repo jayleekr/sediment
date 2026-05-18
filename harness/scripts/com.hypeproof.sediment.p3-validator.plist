@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hypeproof.sediment.p3-validator</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jaylee/CodeWorkspace/hypeproof/.claude/worktrees/mvp/products/sediment/harness/scripts/run-p3-validator.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/jaylee/CodeWorkspace/hypeproof/cron-reports/curator-p3-out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jaylee/CodeWorkspace/hypeproof/cron-reports/curator-p3-err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jaylee/CodeWorkspace/hypeproof/.claude/worktrees/mvp</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jaylee</string>
+    <key>PATH</key>
+    <string>/Users/jaylee/.local/bin:/Users/jaylee/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

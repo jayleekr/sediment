@@ -1,0 +1,48 @@
+# Meta-spec: contract that e2e_spec.yaml must satisfy.
+# validator/e2e_lint.py validates e2e_spec.yaml against this.
+
+required_root_keys:
+  - base_url
+  - default_timeout_ms
+  - flows
+
+required_flow_keys:
+  - id
+  - name
+  - severity
+  - steps
+
+allowed_severities: [blocker, major, minor]
+
+required_step_keys:
+  - action
+
+allowed_actions:
+  - navigate
+  - fill
+  - click
+  - press_key
+  - wait_for_text
+  - wait_for_selector
+  - wait_for_idle
+  - wait_for_url_regex
+  - screenshot
+  - assert
+  - assert_no
+  - ensure_signed_in
+  - signin_as
+  - signout
+
+allowed_assertion_types:
+  - text_contains
+  - url_contains
+  - selector_visible
+  - localStorage_has
+  - console_errors_max
+  - count_min
+  - count_exact
+
+flow_invariants:
+  - "every flow must have at least one screenshot step OR at least one assert step"
+  - "repeat >= 1; pass_threshold <= repeat"
+  - "selectors must be valid CSS or 'text=' Playwright syntax"

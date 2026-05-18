@@ -1,0 +1,306 @@
+# Golden Query Dataset — Phase 1 RAG eval (seed v0.1, 40 queries)
+#
+# Format:
+#   id: stable identifier
+#   q: natural language query (KO or EN)
+#   expected_intent: library | member | meta | decision
+#   ideal_refs: list of artifact refs that SHOULD appear in top-3
+#               (use prefixes for partial matches — checker treats as exact)
+#   ideal_authors: optional, member display_names that should be cited
+#   difficulty: easy | medium | hard
+#   lang: ko | en
+#
+# Annotator: Jay (initial seed). Phase 1.5: 8명 each refines own 5.
+# Source: 실제 repo의 research/, products/, web/src/content/ 구조 기반.
+
+queries:
+
+  # ─── Lab philosophy / lens (4) ──────────────────────────────
+  - id: GQ-001
+    q: "What is the mirror-loop lens about?"
+    expected_intent: library
+    ideal_refs: ["PHILOSOPHY.md", "research/lens"]
+    difficulty: easy
+    lang: en
+
+  - id: GQ-002
+    q: "doing-is-learning이 무슨 뜻이야?"
+    expected_intent: library
+    ideal_refs: ["PHILOSOPHY.md"]
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-003
+    q: "vanilla-wins lens 적용 사례 있나?"
+    expected_intent: library
+    ideal_refs: ["PHILOSOPHY.md", "research"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-004
+    q: "humanities-hypothesis 핵심 주장"
+    expected_intent: library
+    ideal_refs: ["PHILOSOPHY.md"]
+    difficulty: medium
+    lang: ko
+
+  # ─── Members (5) ────────────────────────────────────────────
+  - id: GQ-005
+    q: "Who is JY?"
+    expected_intent: member
+    ideal_authors: ["JY"]
+    difficulty: easy
+    lang: en
+
+  - id: GQ-006
+    q: "Ryan은 무슨 전공이야?"
+    expected_intent: member
+    ideal_authors: ["Ryan"]
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-007
+    q: "BH 가 어디 박사과정이야?"
+    expected_intent: member
+    ideal_authors: ["BH"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-008
+    q: "Kiwon's expertise"
+    expected_intent: member
+    ideal_authors: ["Kiwon"]
+    difficulty: easy
+    lang: en
+
+  - id: GQ-009
+    q: "Jay 직함이 뭐야?"
+    expected_intent: member
+    ideal_authors: ["Jay"]
+    difficulty: easy
+    lang: ko
+
+  # ─── Daily research (8) ─────────────────────────────────────
+  - id: GQ-010
+    q: "Daily research 중 Claude Code 관련 글"
+    expected_intent: library
+    ideal_refs: ["research/daily"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-011
+    q: "agent autonomy 관련 리서치"
+    expected_intent: library
+    ideal_refs: ["research/daily", "research/columns"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-012
+    q: "최근 LLM agent 관련 트렌드"
+    expected_intent: library
+    ideal_refs: ["research/daily"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-013
+    q: "self-healing systems daily research"
+    expected_intent: library
+    ideal_refs: ["research/daily"]
+    difficulty: medium
+    lang: en
+
+  - id: GQ-014
+    q: "knowledge management 리서치 요약"
+    expected_intent: library
+    ideal_refs: ["research/daily"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-015
+    q: "AI 검색 enterprise 관련 결론"
+    expected_intent: library
+    ideal_refs: ["research/daily"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-016
+    q: "MCP 관련 데일리 리서치"
+    expected_intent: library
+    ideal_refs: ["research/daily"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-017
+    q: "evaluation harness AI agents"
+    expected_intent: library
+    ideal_refs: ["research/daily", "research"]
+    difficulty: hard
+    lang: en
+
+  # ─── Columns (8) ────────────────────────────────────────────
+  - id: GQ-018
+    q: "AI 보안 칼럼"
+    expected_intent: library
+    ideal_refs: ["web/src/content/columns/ko"]
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-019
+    q: "agent 자율성 칼럼"
+    expected_intent: library
+    ideal_refs: ["web/src/content/columns"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-020
+    q: "JY가 작성한 칼럼"
+    expected_intent: library
+    ideal_authors: ["JY"]
+    ideal_refs: ["web/src/content/columns"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-021
+    q: "Korean column on Claude Code"
+    expected_intent: library
+    ideal_refs: ["web/src/content/columns/ko"]
+    difficulty: medium
+    lang: en
+
+  - id: GQ-022
+    q: "English column about AI agents"
+    expected_intent: library
+    ideal_refs: ["web/src/content/columns/en"]
+    difficulty: medium
+    lang: en
+
+  - id: GQ-023
+    q: "최근 발행된 칼럼 1개만 알려줘"
+    expected_intent: library
+    ideal_refs: ["web/src/content/columns"]
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-024
+    q: "동아일보 관련 칼럼이나 제안"
+    expected_intent: library
+    ideal_refs: ["products/donga-roi"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-025
+    q: "Glean enterprise search 비교"
+    expected_intent: library
+    ideal_refs: ["research", "products/sediment"]
+    difficulty: hard
+    lang: ko
+
+  # ─── Novels SIMULACRA (3) ───────────────────────────────────
+  - id: GQ-026
+    q: "SIMULACRA 시리즈 1권 챕터들"
+    expected_intent: library
+    ideal_refs: ["novels/simulacra", "web/src/content/novels"]
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-027
+    q: "CIPHER persona 설명"
+    expected_intent: library
+    ideal_refs: ["novels", "novels/authors"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-028
+    q: "최근 소설 챕터 요약"
+    expected_intent: library
+    ideal_refs: ["novels/simulacra"]
+    difficulty: medium
+    lang: ko
+
+  # ─── Roadmap / Decisions (4) ────────────────────────────────
+  - id: GQ-029
+    q: "2026 Q2 로드맵 핵심 항목"
+    expected_intent: library
+    ideal_refs: ["products/hypeproof-roadmap-2026Q2.md"]
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-030
+    q: "5/5 파일럿 관련 결정사항"
+    expected_intent: decision
+    ideal_refs: ["docs/5-5-pilot-structure", "products"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-031
+    q: "AI Curator 어떤 도메인 모델 쓰는지"
+    expected_intent: library
+    ideal_refs: ["products/sediment/SPEC.md"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-032
+    q: "Mother bot 역할"
+    expected_intent: library
+    ideal_refs: ["AGENTS.md", "products"]
+    difficulty: medium
+    lang: ko
+
+  # ─── AI Curator self-references (3) ─────────────────────────
+  - id: GQ-033
+    q: "Postgres RLS 설계 어떻게 했어?"
+    expected_intent: library
+    ideal_refs: ["products/sediment/SPEC.md", "products/sediment/infra/init.sql"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-034
+    q: "Workspace MCP에 어떤 툴이 있어?"
+    expected_intent: library
+    ideal_refs: ["products/sediment"]
+    difficulty: medium
+    lang: ko
+
+  - id: GQ-035
+    q: "validator 어떻게 채점하는지"
+    expected_intent: library
+    ideal_refs: ["products/sediment/VALIDATION_PLAN.md"]
+    difficulty: medium
+    lang: ko
+
+  # ─── Meta / aggregate (3) ───────────────────────────────────
+  - id: GQ-036
+    q: "How many columns total?"
+    expected_intent: meta
+    ideal_refs: []
+    difficulty: easy
+    lang: en
+
+  - id: GQ-037
+    q: "이번 달에 추가된 daily research 수"
+    expected_intent: meta
+    ideal_refs: []
+    difficulty: easy
+    lang: ko
+
+  - id: GQ-038
+    q: "lens별 칼럼 분포"
+    expected_intent: meta
+    ideal_refs: []
+    difficulty: hard
+    lang: ko
+
+  # ─── Adversarial / edge (2) ─────────────────────────────────
+  - id: GQ-039
+    q: "이거 아무거나"
+    expected_intent: library
+    ideal_refs: []
+    difficulty: hard
+    lang: ko
+
+  - id: GQ-040
+    q: "What's the meaning of life?"
+    expected_intent: library
+    ideal_refs: []
+    difficulty: hard
+    lang: en

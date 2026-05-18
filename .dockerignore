@@ -1,0 +1,33 @@
+# Build context exclusions — without this the context was 516MB (mostly the
+# 553MB local .venv + validation screenshots). The image builds its own venv
+# via `pip install -e`, so the host one is pure dead weight on every deploy.
+
+# Local virtualenvs (image installs deps fresh)
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Validation / loop artifacts (megabytes of PNG screenshots, run logs)
+output/
+**/output/validation/
+**/output/feature-loop/
+**/screenshots/
+
+# Node (web/ is deployed separately to Vercel, not in this image)
+**/node_modules/
+**/.next/
+
+# Git + editor + OS
+.git/
+.gitignore
+**/.DS_Store
+*.log
+
+# Docs / harness not needed at runtime (image only runs services/sediment)
+harness/
+*.md
+!services/sediment/**/*.md

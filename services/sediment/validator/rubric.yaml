@@ -1,0 +1,1082 @@
+# AI Curator — Validation Rubric (v0.1)
+# Declarative checks executed by validator/runner.py
+#
+# Check types:
+#   bash    — shell command, expected_exit + (optional) stdout_contains/regex
+#   sql     — SQL query, expected_rows / expected_value / expected_min_rows
+#   http    — HTTP request, expected_status + (optional) json_path checks
+#   python  — Python function, module + function name (returns CheckResult)
+#   e2e     — Playwright flow id from e2e_spec.yaml
+#
+# Severity:
+#   blocker — any single failure → exit 1 (release block)
+#   major   — failure → score -3
+#   minor   — failure → score -1
+
+phases:
+
+  # ════════════════════════════════════════════════════════════════
+  # PHASE 0 — Scaffolding
+  # ════════════════════════════════════════════════════════════════
+  - id: P0
+    name: "Scaffolding (infra + DDL + RLS)"
+    description: "docker-compose up, init.sql applies cleanly, RLS policies active, decisions documented"
+    pass_criteria:
+      blockers_passed_pct: 100
+      total_score_pct: 90
+      layer_min_pct: 80
+
+    checks:
+
+      # ── INFRA (L1) ──────────────────────────────────────────
+      - id: P0-INFRA-01
+        title: "Postgres reachable on :5433"
+        layer: L1
+        severity: blocker
+        type: bash
+        cmd: "docker exec curator-pg pg_isready -U curator -d curator"
+        expected_exit: 0
+
+      - id: P0-INFRA-02
+        title: "Redis reachable on :6380"
+        layer: L1
+        severity: blocker
+        type: bash
+        cmd: "docker exec curator-redis redis-cli ping"
+        expected_stdout_contains: "PONG"
+
+      - id: P0-INFRA-03
+        title: "pgvector extension installed"
+        layer: L1
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM pg_extension WHERE extname='vector'"
+        expected_rows: 1
+        role: service
+
+      - id: P0-INFRA-04
+        title: "uuid-ossp extension installed"
+        layer: L1
+        severity: minor
+        type: sql
+        sql: "SELECT 1 FROM pg_extension WHERE extname='uuid-ossp'"
+        expected_rows: 1
+        role: service
+
+      - id: P0-INFRA-05
+        title: "pg_trgm extension installed"
+        layer: L1
+        severity: minor
+        type: sql
+        sql: "SELECT 1 FROM pg_extension WHERE extname='pg_trgm'"
+        expected_rows: 1
+        role: service
+
+      # ── DDL (L1) ────────────────────────────────────────────
+      - id: P0-DDL-01
+        title: "All 14 tenant-scoped tables exist"
+        layer: L1
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_all_tables_exist
+
+      - id: P0-DDL-02
+        title: "chunks.embedding column is vector(1536)"
+        layer: L1
+        severity: blocker
+        type: sql
+        sql: |
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='chunks' AND column_name='embedding'
+            AND udt_name='vector'
+        expected_rows: 1
+        role: service
+
+      - id: P0-DDL-03
+        title: "chunks.tsv tsvector column exists"
+        layer: L1
+        severity: blocker
+        type: sql
+        sql: |
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='chunks' AND column_name='tsv' AND udt_name='tsvector'
+        expected_rows: 1
+        role: service
+
+      - id: P0-DDL-04
+        title: "HNSW index on chunks.embedding"
+        layer: L1
+        severity: major
+        type: sql
+        sql: |
+          SELECT 1 FROM pg_indexes
+          WHERE tablename='chunks' AND indexdef ILIKE '%hnsw%'
+        expected_min_rows: 1
+        role: service
+
+      # ── RLS (L3) ────────────────────────────────────────────
+      - id: P0-RLS-01
+        title: "RLS enabled on all tenant-scoped tables"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_rls_enabled_all
+
+      - id: P0-RLS-02
+        title: "FORCE ROW LEVEL SECURITY on all tenant-scoped tables"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_force_rls_all
+
+      - id: P0-RLS-03
+        title: "tenant_isolation policy exists per table (13 policies)"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: |
+          SELECT count(*) FROM pg_policies
+          WHERE policyname='tenant_isolation' AND schemaname='public'
+        expected_value: 13
+        role: service
+
+      - id: P0-RLS-04
+        title: "tenant_self policy on tenants table"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='tenants' AND policyname='tenant_self'"
+        expected_rows: 1
+        role: service
+
+      - id: P0-RLS-05
+        title: "curator_app role exists"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM pg_roles WHERE rolname='curator_app'"
+        expected_rows: 1
+        role: service
+
+      - id: P0-RLS-06
+        title: "curator_service role exists"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM pg_roles WHERE rolname='curator_service'"
+        expected_rows: 1
+        role: service
+
+      - id: P0-RLS-07
+        title: "curator_service has BYPASSRLS"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM pg_roles WHERE rolname='curator_service' AND rolbypassrls=true"
+        expected_rows: 1
+        role: service
+
+      - id: P0-RLS-08
+        title: "current_tenant_id() function exists"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM pg_proc WHERE proname='current_tenant_id'"
+        expected_rows: 1
+        role: service
+
+      # ── Decisions / META ────────────────────────────────────
+      - id: P0-META-01
+        title: "DECISIONS.md exists with 20 numbered answers"
+        layer: L1
+        severity: major
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_decisions_md_complete
+
+      - id: P0-META-02
+        title: ".env.example contains all required env vars"
+        layer: L1
+        severity: major
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_env_example_complete
+
+      - id: P0-META-03
+        title: "Makefile defines all 9 essential targets"
+        layer: L1
+        severity: major
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_makefile_targets
+
+      - id: P0-META-04
+        title: "SPEC.md + README.md exist + non-empty"
+        layer: L1
+        severity: minor
+        type: bash
+        cmd: "test -s products/sediment/SPEC.md && test -s products/sediment/README.md"
+        expected_exit: 0
+
+
+  # ════════════════════════════════════════════════════════════════
+  # PHASE 1 — Read-only Index
+  # ════════════════════════════════════════════════════════════════
+  - id: P1
+    name: "Read-only index (ingest + search + golden RAG)"
+    description: "vault-ingester ingests repo, hybrid search returns relevant top-k, RLS leak = 0, golden 40 queries recall@3 ≥ 80%"
+    pass_criteria:
+      blockers_passed_pct: 100
+      total_score_pct: 90
+      layer_min_pct: 80
+
+    checks:
+
+      # ── SEED ────────────────────────────────────────────────
+      - id: P1-SEED-01
+        title: "hypeproof-lab tenant exists"
+        layer: L1
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM tenants WHERE slug='hypeproof-lab'"
+        expected_rows: 1
+        role: service
+
+      - id: P1-SEED-02
+        title: "acme-test tenant exists (RLS regression target)"
+        layer: L3
+        severity: blocker
+        type: sql
+        sql: "SELECT 1 FROM tenants WHERE slug='acme-test'"
+        expected_rows: 1
+        role: service
+
+      - id: P1-SEED-03
+        title: "8 members seeded for hypeproof-lab"
+        layer: L1
+        severity: blocker
+        type: sql
+        sql: |
+          SELECT count(*) FROM members m JOIN tenants t ON t.id = m.tenant_id
+          WHERE t.slug='hypeproof-lab'
+        expected_min_value: 7
+        role: service
+
+      - id: P1-SEED-04
+        title: "Subscription row exists for hypeproof-lab"
+        layer: L1
+        severity: blocker
+        type: sql
+        sql: |
+          SELECT 1 FROM subscriptions s JOIN tenants t ON t.id = s.tenant_id
+          WHERE t.slug='hypeproof-lab'
+        expected_rows: 1
+        role: service
+
+      - id: P1-SEED-05
+        title: "Jay member is admin"
+        layer: L1
+        severity: minor
+        type: sql
+        sql: |
+          SELECT 1 FROM members m JOIN tenants t ON t.id = m.tenant_id
+          WHERE t.slug='hypeproof-lab' AND m.email='jay.lee@sonatus.com' AND m.role='admin'
+        expected_rows: 1
+        role: service
+
+      # ── INGEST ──────────────────────────────────────────────
+      - id: P1-INGEST-01
+        title: "vault-ingester /healthz returns 200"
+        layer: L2
+        severity: blocker
+        type: http
+        method: GET
+        url: "http://localhost:11000/healthz"
+        expected_status: 200
+
+      - id: P1-INGEST-02
+        title: "metadata-svc /healthz returns 200"
+        layer: L2
+        severity: major
+        type: http
+        method: GET
+        url: "http://localhost:12000/healthz"
+        expected_status: 200
+
+      - id: P1-INGEST-03
+        title: "Ingest single document → artifact persists"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p1_index
+        function: check_ingest_single_doc
+
+      - id: P1-INGEST-04
+        title: "Re-ingest same ref is idempotent (no duplicate chunks)"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_ingest_idempotent
+
+      - id: P1-INGEST-05
+        title: "Embeddings have correct dim (1536)"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_embedding_dim
+
+      - id: P1-INGEST-06
+        title: "Repo corpus ingested ≥ 30 artifacts"
+        layer: L2
+        severity: major
+        type: sql
+        sql: "SELECT count(*) FROM artifacts WHERE tenant_id IN (SELECT id FROM tenants WHERE slug='hypeproof-lab')"
+        expected_min_value: 30
+        role: service
+
+      - id: P1-INGEST-07
+        title: "Repo corpus chunks ≥ 100"
+        layer: L2
+        severity: major
+        type: sql
+        sql: "SELECT count(*) FROM chunks WHERE tenant_id IN (SELECT id FROM tenants WHERE slug='hypeproof-lab')"
+        expected_min_value: 100
+        role: service
+
+      # ── CHUNKER ─────────────────────────────────────────────
+      - id: P1-CHUNK-01
+        title: "Heading-aware split produces multiple chunks for multi-heading doc"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p1_index
+        function: check_chunker_heading_split
+
+      - id: P1-CHUNK-02
+        title: "Overlap applied between consecutive chunks"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p1_index
+        function: check_chunker_overlap
+
+      - id: P1-CHUNK-03
+        title: "Avg chunk size in 500-1500 token range"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p1_index
+        function: check_chunker_avg_size
+
+      # ── SEARCH ──────────────────────────────────────────────
+      - id: P1-SEARCH-01
+        title: "BM25 search returns relevant chunk (literal token match)"
+        layer: L4
+        severity: blocker
+        type: python
+        module: validator.checks.p1_index
+        function: check_bm25_works
+
+      - id: P1-SEARCH-02
+        title: "Vector search returns chunk for semantic query"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_vector_search_works
+
+      - id: P1-SEARCH-03
+        title: "Hybrid (RRF) returns valid result"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_hybrid_search_works
+
+      - id: P1-SEARCH-04
+        title: "Library /search HTTP endpoint responds"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_library_search_http
+
+      # ── RLS regression (★) ──────────────────────────────────
+      - id: P1-RLS-01
+        title: "Cross-tenant artifact leak = 0 (lab cannot see acme)"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_cross_tenant_artifacts
+
+      - id: P1-RLS-02
+        title: "Cross-tenant chunk leak = 0"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_cross_tenant_chunks
+
+      - id: P1-RLS-03
+        title: "Missing tenant_id → app role sees 0 rows (fail-safe)"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_no_tenant_yields_empty
+
+      - id: P1-RLS-04
+        title: "service role can see both tenants (BYPASSRLS works)"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_service_bypass_rls
+
+      - id: P1-RLS-05
+        title: "RLS active on all 13 tables (regression check)"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_rls_enabled_all
+
+      # ── GOLDEN RAG (eval, expensive) ────────────────────────
+      - id: P1-GOLDEN-RAG-01
+        title: "Golden 40 queries: recall@3 ≥ 80%"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.lib_rag
+        function: check_recall_at_k
+        params: {k: 3, min_pct: 80}
+
+      - id: P1-GOLDEN-RAG-02
+        title: "Golden 40 queries: MRR ≥ 0.50"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.lib_rag
+        function: check_mrr
+        params: {min_mrr: 0.50}
+
+      - id: P1-GOLDEN-RAG-03
+        title: "Golden queries: median latency ≤ 1.0s"
+        layer: L8
+        severity: minor
+        type: python
+        module: validator.checks.lib_rag
+        function: check_search_latency
+        params: {max_p50_ms: 1000}
+
+
+  # ════════════════════════════════════════════════════════════════
+  # PHASE 2 — Chat MVP
+  # ════════════════════════════════════════════════════════════════
+  - id: P2
+    name: "Chat MVP (SSE + intent + RLS + E2E)"
+    description: "platform + langgraph reachable, JWT round-trip, SSE protocol, intent routing, web routes 200, E2E browser flows pass"
+    pass_criteria:
+      blockers_passed_pct: 100
+      total_score_pct: 90
+      layer_min_pct: 80
+
+    checks:
+
+      # ── Service health ──────────────────────────────────────
+      - id: P2-HEALTH-01
+        title: "curator-platform :10100 healthy"
+        layer: L2
+        severity: blocker
+        type: http
+        method: GET
+        url: "http://localhost:10100/healthz"
+        expected_status: 200
+
+      - id: P2-HEALTH-02
+        title: "curator-langgraph :10020 healthy"
+        layer: L2
+        severity: blocker
+        type: http
+        method: GET
+        url: "http://localhost:10020/healthz"
+        expected_status: 200
+
+      - id: P2-HEALTH-03
+        title: "vault-ingester :11000 healthy (Phase 1 still up)"
+        layer: L2
+        severity: blocker
+        type: http
+        method: GET
+        url: "http://localhost:11000/healthz"
+        expected_status: 200
+
+      - id: P2-HEALTH-04
+        title: "metadata-svc :12000 healthy"
+        layer: L2
+        severity: blocker
+        type: http
+        method: GET
+        url: "http://localhost:12000/healthz"
+        expected_status: 200
+
+      - id: P2-HEALTH-05
+        title: "Next.js dev server :3000 reachable"
+        layer: L2
+        severity: major
+        type: http
+        method: GET
+        url: "http://localhost:3000/sediment"
+        expected_status: 200
+
+      # ── Auth ────────────────────────────────────────────────
+      - id: P2-AUTH-01
+        title: "POST /api/v1/auth/dev-token mints JWT for seeded member"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_dev_token_mints
+
+      - id: P2-AUTH-02
+        title: "JWT decode roundtrip preserves member_id + tenant_id"
+        layer: L1
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_jwt_roundtrip
+
+      - id: P2-AUTH-03
+        title: "Bad email returns 404"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p2_chat
+        function: check_dev_token_unknown_email
+
+      - id: P2-AUTH-04
+        title: "Tampered JWT rejected with 401"
+        layer: L6
+        severity: major
+        type: python
+        module: validator.checks.p2_chat
+        function: check_tampered_jwt_rejected
+
+      # ── Conversations CRUD ──────────────────────────────────
+      - id: P2-CONV-01
+        title: "POST /conversations creates row"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_create_conversation
+
+      - id: P2-CONV-02
+        title: "GET /conversations lists own"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_list_conversations
+
+      - id: P2-CONV-03
+        title: "POST message persists to DB"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_post_message
+
+      - id: P2-CONV-04
+        title: "GET /conversations/{id} returns messages"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p2_chat
+        function: check_get_conversation_with_messages
+
+      - id: P2-CONV-05
+        title: "DELETE /conversations/{id} works"
+        layer: L2
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_delete_conversation
+
+      # ── SSE protocol ────────────────────────────────────────
+      - id: P2-SSE-01
+        title: "POST /v1/sediment/stream returns SSE response"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_sse_starts
+
+      - id: P2-SSE-02
+        title: "SSE emits event: message with status tag"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_sse_status_event
+
+      - id: P2-SSE-03
+        title: "SSE emits at least one event: delta"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_sse_delta_event
+
+      - id: P2-SSE-04
+        title: "SSE emits final [DONE]"
+        layer: L2
+        severity: blocker
+        type: python
+        module: validator.checks.p2_chat
+        function: check_sse_done_terminator
+
+      - id: P2-SSE-05
+        title: "SSE emits event: citation when citations exist"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p2_chat
+        function: check_sse_citation_event
+
+      - id: P2-SSE-06
+        title: "Assistant message persisted post-stream"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p2_chat
+        function: check_assistant_msg_persisted
+
+      - id: P2-SSE-07
+        title: "TTFT (time to first token) ≤ 4.0s"
+        layer: L8
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_ttft
+
+      - id: P2-SSE-08
+        title: "Full stream completes ≤ 30s for short query"
+        layer: L8
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_stream_complete_time
+
+      # ── Intent routing ──────────────────────────────────────
+      - id: P2-INTENT-01
+        title: "Member-related question routed to 'member'"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_intent_member
+
+      - id: P2-INTENT-02
+        title: "Library question routed to 'library'"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_intent_library
+
+      - id: P2-INTENT-03
+        title: "Meta count question routed to 'meta'"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_intent_meta
+
+      - id: P2-INTENT-04
+        title: "Decision question routed to 'decision' (or library fallback)"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_intent_decision
+
+      # ── MCP server ──────────────────────────────────────────
+      - id: P2-MCP-01
+        title: "Workspace MCP module imports without error"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_mcp_imports
+
+      - id: P2-MCP-02
+        title: "Workspace MCP defines 12 tools"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_mcp_tool_count
+
+      - id: P2-MCP-03
+        title: "MCP vault_search() returns rows for known query"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_mcp_vault_search
+
+      - id: P2-MCP-04
+        title: "MCP members_lookup() finds Jay"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p2_chat
+        function: check_mcp_members_lookup
+
+      # ── Web routes ──────────────────────────────────────────
+      - id: P2-WEB-01
+        title: "/sediment/library returns 200"
+        layer: L2
+        severity: major
+        type: http
+        method: GET
+        url: "http://localhost:3000/sediment/library"
+        expected_status: 200
+
+      - id: P2-WEB-02
+        title: "/sediment/members returns 200"
+        layer: L2
+        severity: major
+        type: http
+        method: GET
+        url: "http://localhost:3000/sediment/members"
+        expected_status: 200
+
+      - id: P2-WEB-03
+        title: "/sediment/admin returns 200"
+        layer: L2
+        severity: minor
+        type: http
+        method: GET
+        url: "http://localhost:3000/sediment/admin"
+        expected_status: 200
+
+      - id: P2-WEB-04
+        title: "/sediment/onboard returns 200 (stub)"
+        layer: L2
+        severity: minor
+        type: http
+        method: GET
+        url: "http://localhost:3000/sediment/onboard"
+        expected_status: 200
+
+      - id: P2-WEB-05
+        title: "/sediment/pricing returns 200 (stub)"
+        layer: L2
+        severity: minor
+        type: http
+        method: GET
+        url: "http://localhost:3000/sediment/pricing"
+        expected_status: 200
+
+      # ── RLS during chat (★) ─────────────────────────────────
+      - id: P2-RLS-01
+        title: "Conversation belongs to creator's tenant"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_conversation_tenant_match
+
+      - id: P2-RLS-02
+        title: "Cross-tenant conversation read returns 404 / empty"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_cross_tenant_conversation_blocked
+
+      - id: P2-RLS-03
+        title: "Cross-tenant message read returns empty"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.lib_rls
+        function: check_cross_tenant_messages_blocked
+
+      - id: P2-RLS-04
+        title: "RLS active on all 13 tables (re-check after schema migrations)"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.p0_scaffolding
+        function: check_rls_enabled_all
+
+      # ── Security (OWASP LLM-01 prompt injection) ────────────
+      - id: P2-SEC-01
+        title: "Direct prompt injection 'ignore previous instructions' blocked"
+        layer: L6
+        severity: minor
+        type: python
+        module: validator.checks.lib_security
+        function: check_direct_injection_ignore_prev
+
+      - id: P2-SEC-02
+        title: "Direct injection 'list all member emails' refused"
+        layer: L6
+        severity: minor
+        type: python
+        module: validator.checks.lib_security
+        function: check_direct_injection_pii_dump
+
+      - id: P2-SEC-03
+        title: "DAN-style jailbreak refused"
+        layer: L6
+        severity: minor
+        type: python
+        module: validator.checks.lib_security
+        function: check_jailbreak_dan
+
+      - id: P2-SEC-04
+        title: "Indirect injection via poisoned ingest doc blocked"
+        layer: L6
+        severity: minor
+        type: python
+        module: validator.checks.lib_security
+        function: check_indirect_injection
+
+      - id: P2-SEC-05
+        title: "System prompt leak attempt refused"
+        layer: L6
+        severity: minor
+        type: python
+        module: validator.checks.lib_security
+        function: check_system_prompt_leak
+
+      # ── E2E (Playwright) ────────────────────────────────────
+      - id: P2-E2E-01
+        title: "E2E flow: sign-in"
+        layer: L11
+        severity: blocker
+        type: e2e
+        flow_id: E2E-01
+
+      - id: P2-E2E-02
+        title: "E2E flow: empty state visible"
+        layer: L11
+        severity: minor
+        type: e2e
+        flow_id: E2E-02
+
+      - id: P2-E2E-03
+        title: "E2E flow: new conversation + first query"
+        layer: L11
+        severity: blocker
+        type: e2e
+        flow_id: E2E-03
+
+      - id: P2-E2E-04
+        title: "E2E flow: streaming UI"
+        layer: L11
+        severity: blocker
+        type: e2e
+        flow_id: E2E-04
+
+      - id: P2-E2E-05
+        title: "E2E flow: citation cards visible"
+        layer: L11
+        severity: major
+        type: e2e
+        flow_id: E2E-05
+
+      - id: P2-E2E-06
+        title: "E2E flow: library browse + filter"
+        layer: L11
+        severity: major
+        type: e2e
+        flow_id: E2E-06
+
+      - id: P2-E2E-07
+        title: "E2E flow: members page"
+        layer: L11
+        severity: minor
+        type: e2e
+        flow_id: E2E-07
+
+      - id: P2-E2E-08
+        title: "E2E flow: cross-tenant negative test"
+        layer: L11
+        severity: blocker
+        type: e2e
+        flow_id: E2E-08
+
+      - id: P2-E2E-09
+        title: "E2E flow: multi-turn conversation"
+        layer: L11
+        severity: major
+        type: e2e
+        flow_id: E2E-09
+
+      - id: P2-E2E-10
+        title: "E2E flow: mobile viewport"
+        layer: L11
+        severity: major
+        type: e2e
+        flow_id: E2E-10
+
+      - id: P2-E2E-11
+        title: "E2E flow: sign-out clears token"
+        layer: L11
+        severity: minor
+        type: e2e
+        flow_id: E2E-11
+
+      - id: P2-CONCUR-01
+        title: "Concurrent SSE streams: 5 simultaneous"
+        layer: L11
+        severity: major
+        type: python
+        module: validator.checks.p2_concurrent
+        function: check_concurrent_sse
+
+      - id: P2-GROUND-01
+        title: "Answer grounding: LLM uses retrieved citations"
+        layer: L11
+        severity: major
+        type: python
+        module: validator.checks.p2_grounding
+        function: check_answer_grounding
+
+
+  # ════════════════════════════════════════════════════════════════
+  # PHASE 3 — Ingest Automation
+  # ════════════════════════════════════════════════════════════════
+  - id: P3
+    name: "Ingest automation (cron + GHA + Discord)"
+    description: "shell scripts run cleanly, plists valid, GitHub Action lints OK, dream/retro idempotent"
+    pass_criteria:
+      blockers_passed_pct: 100
+      total_score_pct: 80
+      layer_min_pct: 70
+
+    checks:
+
+      - id: P3-CRON-01
+        title: "daily_ingest.sh is executable"
+        layer: L1
+        severity: blocker
+        type: bash
+        cmd: "test -x products/sediment/services/sediment/scripts/cron/daily_ingest.sh"
+        expected_exit: 0
+
+      - id: P3-CRON-02
+        title: "daily_ingest.sh dry-run reaches ingester check"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p3_automation
+        function: check_daily_ingest_dryrun
+
+      - id: P3-CRON-03
+        title: "dream.py runs end-to-end (idempotent)"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p3_automation
+        function: check_dream_idempotent
+
+      - id: P3-CRON-04
+        title: "retro.py runs without error"
+        layer: L2
+        severity: minor
+        type: bash
+        cmd: "cd products/sediment/services/sediment && .venv/bin/python -m scripts.cron.retro"
+        expected_exit: 0
+
+      - id: P3-LAUNCHD-01
+        title: "daily-ingest plist syntax valid"
+        layer: L1
+        severity: minor
+        type: bash
+        cmd: "plutil -lint products/sediment/infra/launchd/com.hypeproof.sediment.daily-ingest.plist"
+        expected_exit: 0
+
+      - id: P3-LAUNCHD-02
+        title: "dream plist syntax valid"
+        layer: L1
+        severity: minor
+        type: bash
+        cmd: "plutil -lint products/sediment/infra/launchd/com.hypeproof.sediment.dream.plist"
+        expected_exit: 0
+
+      - id: P3-GHA-01
+        title: "curator-ingest.yml workflow valid"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p3_automation
+        function: check_gha_workflow_valid
+
+      - id: P3-DISCORD-01
+        title: "discord_ingest.py creates fixture if missing"
+        layer: L1
+        severity: minor
+        type: python
+        module: validator.checks.p3_automation
+        function: check_discord_fixture_creation
+
+      - id: P3-DISCORD-02
+        title: "discord_ingest.py inserts events when fixture present"
+        layer: L2
+        severity: minor
+        type: python
+        module: validator.checks.p3_automation
+        function: check_discord_ingest_works
+
+      - id: P3-RLS-01
+        title: "dream cron respects tenant boundaries (no cross-tenant promotion)"
+        layer: L3
+        severity: blocker
+        type: python
+        module: validator.checks.p3_automation
+        function: check_dream_respects_rls
+
+  # ════════════════════════════════════════════════════════════════
+  - id: P4
+    name: "Memory consolidation (decisions + actions extraction)"
+    description: "consolidate_memory worker extracts decisions/actions from chat; idempotent dedup; retention metric"
+    pass_criteria:
+      - "blockers: 100% pass"
+      - "score ≥ 80% of weight"
+
+    checks:
+      - id: P4-CONSOLIDATE-01
+        title: "consolidate_memory extracts decisions with conv_id provenance"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.p4_consolidation
+        function: check_decisions_have_conv_provenance
+
+      - id: P4-CONSOLIDATE-02
+        title: "consolidate_memory is idempotent (re-run produces same decisions, not duplicates)"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.p4_consolidation
+        function: check_consolidation_idempotent
+
+      - id: P4-RETENTION-01
+        title: "Retention metric: count distinct members active in last 7 days"
+        layer: L4
+        severity: minor
+        type: python
+        module: validator.checks.p4_consolidation
+        function: check_weekly_active_members

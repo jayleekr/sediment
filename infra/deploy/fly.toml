@@ -1,0 +1,86 @@
+# Fly.io app config for AI Curator (HypeProof Lab).
+#
+# Single-VM Phase 1 deployment: one container packs all 4 FastAPI services
+# behind nginx on port 8080. Postgres is a separate Fly Postgres cluster.
+#
+# Cost target: $0/mo on free tier (1 shared-cpu-1x VM, 256MB RAM)
+#              or ~$5/mo if Postgres goes paid tier.
+#
+# Deploy:
+#   cd products/sediment
+#   fly deploy --config infra/deploy/fly.toml --dockerfile Dockerfile
+
+app = "hypeproof-sediment"
+primary_region = "nrt"   # Tokyo — closest Fly region to Korea
+
+[build]
+  dockerfile = "../../Dockerfile"
+
+[env]
+  # Public port that nginx binds to (matches Dockerfile EXPOSE).
+  PUBLIC_PORT = "8080"
+  # Internal uvicorn ports.
+  SEDIMENT_PLATFORM_PORT = "10100"
+  SEDIMENT_LANGGRAPH_PORT = "10020"
+  VAULT_INGESTER_PORT = "11000"
+  METADATA_SVC_PORT = "12000"
+  # Logging
+  LOG_LEVEL = "INFO"
+  # Two-provider split (cost decision 2026-05-15):
+  #   CHAT path (stream_chat, high volume) → Gemini. tier=heavy resolves to
+  #     gemini_model_heavy = gemini-2.5-pro (Sonnet-class refusal discipline,
+  #     ~$40/mo vs ~$67 Sonnet). Multi-turn history supported (_gemini_contents).
+  #   PHASE 4 worker (consolidate_memory.py) → hardwired Anthropic SDK, runs
+  #     ~10x/day, uses claude-haiku-4-5 (~$1/mo). Not affected by LLM_PROVIDER.
+  # → BOTH keys required: GEMINI_API_KEY (chat) + ANTHROPIC_API_KEY (worker).
+  LLM_PROVIDER = "gemini"
+  GEMINI_MODEL_DEFAULT = "gemini-2.5-flash"
+  GEMINI_MODEL_HEAVY = "gemini-2.5-flash"  # pro 503s ~100% in prod; flash fast+reliable for grounded summarization
+  # Anthropic tier still set — used by consolidate_memory worker.
+  LLM_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
+  LLM_MODEL_HEAVY = "claude-sonnet-4-6"
+
+# Secrets (set via `fly secrets set KEY=VAL`):
+#   DATABASE_URL          — Fly Postgres connection string
+#   JWT_SECRET            — random 64-char string
+#   GEMINI_API_KEY        — Google AI Studio key, BILLING ENABLED (free tier
+#                           trains on prompts — unacceptable for an internal
+#                           knowledge vault). Powers the chat path.
+#   ANTHROPIC_API_KEY     — HypeProof's own key. Powers the Phase 4
+#                           consolidate_memory worker (Haiku, low volume).
+#   GITHUB_WEBHOOK_SECRET — random, matches GitHub webhook config
+#   DISCORD_CLIENT_ID     — Phase 2 (OAuth)
+#   DISCORD_CLIENT_SECRET — Phase 2 (OAuth)
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Knowledge tool must feel instant — scale-to-zero cold start (2-10s on
+  # first request after idle) is unacceptable UX for the team SoT + the
+  # external IDE bait product. Keep 1 machine always warm. ~$5-7/mo.
+  #
+  # SINGLE MACHINE (run `fly scale count 1` — Fly otherwise auto-creates a 2nd
+  # HA machine on deploy). Root cause it caused 2026-05-15: the in-container
+  # supervisord starts nginx (8080) ~5s after the 4 uvicorns, but on the slower
+  # Fly VM + remote PG connect the uvicorns weren't bound when nginx took LB
+  # traffic on the 2nd machine → nginx 502 (connect refused 127.0.0.1:10100/20).
+  # Fly round-robins LB across machines so half of all requests 502'd. For an
+  # 8-person dogfood, HA is overkill and actively harmful here. Revisit when
+  # the boot ordering is fixed (supervisord priority / healthcheck gate).
+  auto_stop_machines = false      # always-on — no cold resume (dogfood first-impression > ~$2/mo idle savings)
+  auto_start_machines = true
+  min_machines_running = 1        # always 1 warm — no cold start. Keep count=1.
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"          # allow uvicorn warmup
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"          # cheapest tier
+  memory = "1024mb"               # 4 uvicorn (platform+langgraph 2 workers each) + nginx; 512mb OOM'd under concurrency
+  cpu_kind = "shared"
+  cpus = 1

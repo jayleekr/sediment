@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "iteration": 0,
+  "current_phase": null,
+  "last_exit_code": null,
+  "last_run_at": null,
+  "last_action": null,
+  "stalled_count": 0,
+  "started_at": null,
+  "stopped_at": null,
+  "stop_reason": null,
+  "cumulative_cost_usd": 0.0,
+  "cost_budget_usd": 100.0,
+  "max_iterations": 200
+}

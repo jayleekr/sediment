@@ -1,0 +1,39 @@
+services:
+  postgres:
+    # pg17 — stable. pg18 image changed mount path layout (issue/1259) and
+    # restart-loops on existing /var/lib/postgresql/data volumes.
+    image: pgvector/pgvector:pg17
+    container_name: curator-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: curator
+      POSTGRES_PASSWORD: curator_local_dev
+      POSTGRES_DB: curator
+    ports:
+      - "5433:5432"
+    volumes:
+      - curator-pgdata-v17:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U curator -d curator"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: curator-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - curator-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  curator-pgdata-v17:
+  curator-redisdata:

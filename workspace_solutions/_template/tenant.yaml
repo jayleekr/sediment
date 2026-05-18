@@ -1,0 +1,45 @@
+# Per-customer tenant template — Phase 10+
+# Copy this file into workspace_solutions/<your-customer-slug>/tenant.yaml
+# and edit the values.
+
+slug: customer-slug
+display_name: "Customer Name, Inc."
+region: us               # us | kr | eu
+
+# Branding
+branding:
+  logo_url: "https://customer.example.com/logo.png"
+  primary_color: "#0066ff"
+  footer_brand: false      # white-label?
+  custom_domain: "memory.customer.example.com"  # optional CNAME
+
+# Feature toggles (override defaults)
+feature_flags:
+  lens_enabled: ["mirror-loop", "doing-is-learning"]
+  mcp_tools_enabled: ["vault_search", "members_lookup", "decisions_open"]
+  max_query_complexity: "standard"
+  ingest_sources:
+    discord: { enabled: false }
+    github: { enabled: true, repo: "customer/private-vault" }
+    drive: { enabled: false }
+  memory_policy:
+    episodic_ttl_days: 180
+    decision_extraction: true
+    pii_redaction: strict
+  compliance:
+    data_residency: "kr-only"
+    audit_retention_days: 2555    # 7 years
+    sso: "saml"                   # or "okta", "azure-ad", "google"
+
+# Subscription overrides (vs default tier)
+subscription:
+  plan: enterprise
+  seat_count: 250
+  query_quota_per_month: 1000000
+  storage_quota_gb: 1000
+
+# Custom MCP tools (optional)
+mcp_overrides:
+  - id: customer_cms_search
+    description: "Search the customer's internal CMS"
+    endpoint: "https://internal.customer.example.com/api/search"

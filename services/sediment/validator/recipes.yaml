@@ -1,0 +1,170 @@
+# Auto-fix recipes — declarative.
+# When a check fails with a known signature, the loop runner can apply one of these recipes
+# without human intervention. Code-level bugs (RAG quality, RLS leak) NEVER auto-fix —
+# they produce work-order.json for human review.
+
+recipes:
+
+  # ── Infra (P0) ───────────────────────────────────────────
+  - matches:
+      check_id: P0-INFRA-01
+    fix:
+      - cmd: "docker compose -f products/sediment/infra/docker-compose.yml up -d"
+        timeout: 30
+      - wait_until_healthy: "docker exec curator-pg pg_isready -U curator -d curator"
+        timeout: 60
+    description: "Start Postgres container"
+
+  - matches:
+      check_id: P0-INFRA-02
+    fix:
+      - cmd: "docker compose -f products/sediment/infra/docker-compose.yml up -d redis"
+        timeout: 20
+    description: "Start Redis container"
+
+  - matches:
+      check_id: P0-INFRA-03
+    fix:
+      - cmd: "docker exec curator-pg psql -U curator -d curator -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
+    description: "Install pgvector extension"
+
+  - matches:
+      check_id_prefix: "P0-DDL"
+    fix:
+      - cmd: "docker exec -i curator-pg psql -U curator -d curator < products/sediment/infra/init.sql"
+    description: "Re-apply init.sql"
+
+  # ── RLS schema (P0/P1) ────────────────────────────────────
+  - matches:
+      check_id_in: ["P0-RLS-03", "P0-RLS-04"]
+    fix:
+      - cmd: "docker exec -i curator-pg psql -U curator -d curator < products/sediment/infra/init.sql"
+    description: "Re-apply init.sql to recreate missing policies"
+
+  # ── Seed data (P1) ────────────────────────────────────────
+  - matches:
+      check_id_prefix: "P1-SEED"
+    fix:
+      - cmd: "make -C products/sediment seed"
+        timeout: 60
+    description: "Run make seed"
+
+  # ── Service health ────────────────────────────────────────
+  - matches:
+      check_id: P1-INGEST-01
+    fix:
+      - background_cmd: "make -C products/sediment ingester"
+        wait_for_url: "http://localhost:11000/healthz"
+        timeout: 30
+    description: "Start vault-ingester in background"
+
+  - matches:
+      check_id: P1-INGEST-02
+    fix:
+      - background_cmd: "make -C products/sediment metadata"
+        wait_for_url: "http://localhost:12000/healthz"
+        timeout: 30
+    description: "Start metadata-svc in background"
+
+  - matches:
+      check_id: P2-HEALTH-01
+    fix:
+      - background_cmd: "make -C products/sediment platform"
+        wait_for_url: "http://localhost:10100/healthz"
+        timeout: 30
+    description: "Start curator-platform in background"
+
+  - matches:
+      check_id: P2-HEALTH-02
+    fix:
+      - background_cmd: "make -C products/sediment langgraph"
+        wait_for_url: "http://localhost:10020/healthz"
+        timeout: 30
+    description: "Start curator-langgraph in background"
+
+  - matches:
+      check_id: P2-HEALTH-05
+    fix:
+      - background_cmd: "cd web && npm run dev"
+        wait_for_url: "http://localhost:3000/curator"
+        timeout: 60
+    description: "Start Next.js dev server"
+
+  # ── Corpus ingest (P1) — runs make ingest if corpus too small
+  - matches:
+      check_id_in: ["P1-INGEST-06", "P1-INGEST-07"]
+    fix:
+      - cmd: "make -C products/sediment ingest"
+        timeout: 600
+    description: "Run repo ingest"
+
+  # ── Playwright install ───────────────────────────────────
+  - matches:
+      check_id_prefix: "P2-E2E"
+      message_contains: "playwright not installed"
+    fix:
+      - cmd: "cd products/sediment/services/sediment && .venv/bin/pip install playwright && .venv/bin/playwright install chromium"
+        timeout: 600
+    description: "Install Playwright + chromium"
+
+# ============================================================
+# 4-TIER fix policy (replaces previous binary "auto vs no_auto")
+# ============================================================
+# Philosophy (Jay 2026-05-08): "the goal is to remove human-in-loop work."
+# AI writes code by default — gated by validator + reviewer cross-check, not by
+# blanket prohibition. Only 3 files are forever forbidden because their blast
+# radius makes a single bad commit catastrophic.
+
+# ── TIER 1 ── ai_apply_immediately (no review, idempotent recovery) ──
+# These are infra/service restarts. Reviewed by the recipe itself
+# (idempotent + service health probe). No code change involved.
+ai_apply_immediately:
+  - "P*-INFRA-*"      # docker compose up, etc.
+  - "P*-HEALTH-*"     # service start
+  - "P*-INGEST-01"    # vault-ingester start
+  - "P*-INGEST-02"    # metadata-svc start
+
+# ── TIER 2 ── ai_propose_review_commit (curator-coder writes diff,
+#              curator-reviewer adversarially cross-checks, then commit) ──
+# These ARE code changes but with safety nets:
+#   1. Branch-per-change (git worktree)
+#   2. validator gate (score must not regress)
+#   3. reviewer cross-check (different model + adversarial prompt)
+#   4. post-commit full E2E + auto-revert on regression
+# Source: see harness/scripts/ai-commit.sh
+ai_propose_review_commit:
+  - "P*-GOLDEN-RAG-*"   # rag-tuner edits chunker.py / library.py search SQL
+  - "P*-SEARCH-*"       # search ranking, hybrid weights
+  - "P*-INGEST-04"      # idempotency bug → upsert logic
+  - "P*-E2E-*"          # selector drift → e2e_spec.yaml or web/ component
+  - "P*-SEC-*"          # prompt injection → system prompt strengthening
+  - "P*-INTENT-*"       # intent classifier rules
+  - "P*-MCP-*"          # workspace MCP introspection + tool dispatch (validator-side fixes incl.)
+  - "P*-DDL-*"          # NON-RLS schema changes via Alembic migration
+  - "P*-CHUNK-*"        # chunker parameter tuning
+  - "P*-CRON-*"         # cron scripts (daily_ingest, dream, retro) — idempotent, bounded scope
+  - "P*-LAUNCHD-*"      # launchd plist files — syntax/schedule fixes only
+  - "P*-GHA-*"          # GitHub Actions workflow — yaml lint fixes
+  - "P*-DISCORD-*"      # Discord ingest scripts + fixtures — no RLS tables touched
+  - "P*-SSE-*"          # SSE streaming protocol — timing/latency fixes in langgraph main.py
+
+# ── TIER 3 ── human_required (release block, write work-order only) ──
+# RLS leak = data leak = legal/contractual catastrophe. Even with reviewer,
+# we don't trust two AIs to authorize touching tenant isolation. Single bad
+# RLS commit = $1M+ legal exposure.
+human_required:
+  - "P*-RLS-*"          # any cross-tenant leakage signal — INSTANT release block
+
+# ── TIER 4 ── forbid_ai_edit (file-level lock, regardless of check) ──
+# These files are protected by .claude/guard.json. AI cannot edit them via any
+# tool (Write/Edit blocked at the harness level, not just convention).
+forbid_ai_edit:
+  - "products/sediment/infra/init.sql"   # RLS schema — adding/altering policies
+  - "products/sediment/.env"             # secrets
+  - "products/sediment/services/sediment/applications/sediment_platform/routers/billing.py"  # Stripe / financial
+  - "**/credentials*"                      # any credential file
+
+# ── Backward-compat alias (old scripts may reference no_auto_fix) ──
+no_auto_fix:
+  - "P*-RLS-*"
+  # Other categories moved to ai_propose_review_commit (with reviewer gate).

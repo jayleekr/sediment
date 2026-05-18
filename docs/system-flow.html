@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AI Curator — Self-Improving Loop Flow</title>
+<style>
+  body { margin: 0; padding: 32px; background: #0a0c12; color: #e2e8f0;
+    font-family: -apple-system, "Noto Sans KR", sans-serif; font-size: 14px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; color: #7dd3fc; margin: 28px 0 12px; }
+  .sub { color: #94a3b8; margin-bottom: 24px; font-size: 13px; }
+  svg { background: #131722; border: 1px solid #2a2f3d; border-radius: 8px; display: block; max-width: 100%; }
+  .lbl { fill: #e2e8f0; font-size: 12px; }
+  .lbl-b { fill: #e2e8f0; font-size: 13px; font-weight: 600; }
+  .sm { fill: #94a3b8; font-size: 10px; }
+  .ok { fill: #86efac; }
+  .warn { fill: #fbbf24; }
+  .err { fill: #fca5a5; }
+  .pink { fill: #f472b6; }
+  .purple { fill: #c4b5fd; }
+  .accent { fill: #7dd3fc; }
+  .arrow-line { fill: none; stroke: #7dd3fc; stroke-width: 1.5; }
+  .arrow-soft { fill: none; stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 4 3; }
+</style>
+</head>
+<body>
+
+<h1>AI Curator — Self-Improving Loop (Ralph + Validator)</h1>
+<p class="sub">Two-level loop hierarchy · Ralph (outer, phase-level) drives Validator (inner, rubric-level) · auto-fixer + specialist subagent escalation</p>
+
+<h2>Two-level loop hierarchy</h2>
+
+<svg viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#7dd3fc"/>
+    </marker>
+    <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#94a3b8"/>
+    </marker>
+    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#c4b5fd"/>
+    </marker>
+  </defs>
+
+  <!-- Outer: Supervisor + Ralph -->
+  <rect x="20" y="20" width="1160" height="320" rx="8" fill="none" stroke="#fb923c" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="40" y="44" class="lbl-b" fill="#fb923c">⟲  Outer loop — Ralph (phase-level evolution, max 200 iter)</text>
+
+  <!-- Supervisor -->
+  <g transform="translate(50,70)">
+    <rect width="200" height="80" rx="6" fill="#1a1f2e" stroke="#fb923c"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">supervisor.sh</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">auto-restart on crash</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">cooldown 60s</text>
+    <text x="100" y="70" text-anchor="middle" class="sm">max 15 restarts</text>
+  </g>
+
+  <!-- Ralph -->
+  <g transform="translate(290,70)">
+    <rect width="200" height="80" rx="6" fill="#1a1f2e" stroke="#fb923c"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">ralph.sh</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">200 iter cap</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">rate-limit exp backoff</text>
+    <text x="100" y="70" text-anchor="middle" class="sm">$100 cost ceiling</text>
+  </g>
+
+  <!-- Claude subprocess -->
+  <g transform="translate(530,70)">
+    <rect width="220" height="80" rx="6" fill="#1a1f2e" stroke="#fbbf24"/>
+    <text x="110" y="22" text-anchor="middle" class="lbl-b">claude -p (per iter)</text>
+    <text x="110" y="40" text-anchor="middle" class="sm">--dangerously-skip-permissions</text>
+    <text x="110" y="55" text-anchor="middle" class="sm">read PROMPT + state files</text>
+    <text x="110" y="70" text-anchor="middle" class="sm">make ONE change · exit</text>
+  </g>
+
+  <!-- State files -->
+  <g transform="translate(790,70)">
+    <rect width="380" height="80" rx="6" fill="#1a1f2e" stroke="#7dd3fc"/>
+    <text x="190" y="22" text-anchor="middle" class="lbl-b">markdown state machine</text>
+    <text x="190" y="40" text-anchor="middle" class="sm">TODO.md (checkboxes) · JOURNAL.md (append-only)</text>
+    <text x="190" y="55" text-anchor="middle" class="sm">LEARNINGS.md (avoid repeating mistakes)</text>
+    <text x="190" y="70" text-anchor="middle" class="sm">STATE.json (iter, phase, cost) · COMPACTED.md</text>
+  </g>
+
+  <!-- arrows -->
+  <line x1="250" y1="110" x2="290" y2="110" class="arrow-line" marker-end="url(#ar)"/>
+  <line x1="490" y1="110" x2="530" y2="110" class="arrow-line" marker-end="url(#ar)"/>
+  <line x1="750" y1="110" x2="790" y2="110" class="arrow-line" marker-end="url(#ar)"/>
+
+  <!-- subagent dispatch (from claude) -->
+  <text x="640" y="180" text-anchor="middle" class="sm">Task tool dispatch ↓</text>
+
+  <!-- Subagent layer -->
+  <g transform="translate(50,200)">
+    <rect width="1100" height="120" rx="6" fill="#0f1219" stroke="#c4b5fd"/>
+    <text x="20" y="22" class="lbl-b purple">8 SSL-structured subagents (.claude/agents/curator-*.md)</text>
+
+    <g transform="translate(20,40)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">curator-validator</text>
+    </g>
+    <g transform="translate(190,40)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">loop-orchestrator</text>
+    </g>
+    <g transform="translate(360,40)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">curator-fixer</text>
+    </g>
+    <g transform="translate(530,40)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">curator-medic</text>
+    </g>
+    <g transform="translate(700,40)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">rls-auditor</text>
+    </g>
+    <g transform="translate(870,40)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">rag-tuner</text>
+    </g>
+
+    <g transform="translate(20,80)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">e2e-debugger</text>
+    </g>
+    <g transform="translate(190,80)">
+      <rect width="160" height="32" rx="4" fill="#1f2937"/>
+      <text x="80" y="20" text-anchor="middle" class="lbl">rubric-author</text>
+    </g>
+    <text x="380" y="100" class="sm">SSL = Scheduling · Structural · Logical (Liang 2026, arXiv:2604.24026)</text>
+  </g>
+
+  <line x1="640" y1="150" x2="640" y2="200" class="arrow-line" stroke="#c4b5fd" marker-end="url(#ar3)"/>
+
+  <!-- Inner: Validator -->
+  <rect x="20" y="370" width="1160" height="310" rx="8" fill="none" stroke="#7dd3fc" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="40" y="394" class="lbl-b accent">⟲  Inner loop — Validator (rubric-level convergence, max 50 iter per phase)</text>
+
+  <!-- runner -->
+  <g transform="translate(50,420)">
+    <rect width="180" height="60" rx="6" fill="#1a1f2e" stroke="#7dd3fc"/>
+    <text x="90" y="22" text-anchor="middle" class="lbl-b">runner.py</text>
+    <text x="90" y="40" text-anchor="middle" class="sm">load rubric · iterate</text>
+    <text x="90" y="55" text-anchor="middle" class="sm">checks per phase</text>
+  </g>
+
+  <!-- dispatch -->
+  <g transform="translate(270,420)">
+    <rect width="180" height="60" rx="6" fill="#1a1f2e" stroke="#7dd3fc"/>
+    <text x="90" y="22" text-anchor="middle" class="lbl-b">dispatch.py</text>
+    <text x="90" y="40" text-anchor="middle" class="sm">bash · sql · http</text>
+    <text x="90" y="55" text-anchor="middle" class="sm">python · e2e</text>
+  </g>
+
+  <!-- 80+ checks -->
+  <g transform="translate(490,420)">
+    <rect width="200" height="60" rx="6" fill="#1a1f2e" stroke="#7dd3fc"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">80+ checks</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">P0+P1+P2+P3 across</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">L1-L11 layers</text>
+  </g>
+
+  <!-- report -->
+  <g transform="translate(730,420)">
+    <rect width="200" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">report.json + .md</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">score · blockers</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">layer breakdown</text>
+  </g>
+
+  <!-- decision -->
+  <g transform="translate(970,420)">
+    <rect width="200" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">converged?</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">≥95% + 100% blockers</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">→ exit 0</text>
+  </g>
+
+  <line x1="230" y1="450" x2="270" y2="450" class="arrow-line" marker-end="url(#ar)"/>
+  <line x1="450" y1="450" x2="490" y2="450" class="arrow-line" marker-end="url(#ar)"/>
+  <line x1="690" y1="450" x2="730" y2="450" class="arrow-line" marker-end="url(#ar)"/>
+  <line x1="930" y1="450" x2="970" y2="450" class="arrow-line" marker-end="url(#ar)"/>
+
+  <!-- failure path -->
+  <g transform="translate(50,510)">
+    <rect width="180" height="60" rx="6" fill="#1a1f2e" stroke="#c4b5fd"/>
+    <text x="90" y="22" text-anchor="middle" class="lbl-b">work-order.json</text>
+    <text x="90" y="40" text-anchor="middle" class="sm">unfixable failures</text>
+    <text x="90" y="55" text-anchor="middle" class="sm">with severity + path</text>
+  </g>
+
+  <g transform="translate(270,510)">
+    <rect width="180" height="60" rx="6" fill="#1a1f2e" stroke="#c4b5fd"/>
+    <text x="90" y="22" text-anchor="middle" class="lbl-b">fixer.py</text>
+    <text x="90" y="40" text-anchor="middle" class="sm">match recipe</text>
+    <text x="90" y="55" text-anchor="middle" class="sm">apply automation</text>
+  </g>
+
+  <g transform="translate(490,510)">
+    <rect width="200" height="60" rx="6" fill="#1a1f2e" stroke="#c4b5fd"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">specialist Task</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">rls-auditor / rag-tuner</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">e2e-debugger</text>
+  </g>
+
+  <g transform="translate(730,510)">
+    <rect width="200" height="60" rx="6" fill="#1a1f2e" stroke="#fbbf24"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">stall detection</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">5 iter no progress</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">→ escalate human</text>
+  </g>
+
+  <g transform="translate(970,510)">
+    <rect width="200" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="100" y="22" text-anchor="middle" class="lbl-b">LEARNINGS.md</text>
+    <text x="100" y="40" text-anchor="middle" class="sm">append-only memory</text>
+    <text x="100" y="55" text-anchor="middle" class="sm">across iterations</text>
+  </g>
+
+  <!-- failure arrows -->
+  <line x1="1070" y1="480" x2="1070" y2="510" class="arrow-soft" marker-end="url(#ar2)"/>
+  <line x1="970" y1="540" x2="930" y2="540" class="arrow-soft" marker-end="url(#ar2)"/>
+  <line x1="730" y1="540" x2="690" y2="540" class="arrow-soft" marker-end="url(#ar2)"/>
+  <line x1="490" y1="540" x2="450" y2="540" class="arrow-soft" marker-end="url(#ar2)"/>
+  <line x1="270" y1="540" x2="230" y2="540" class="arrow-soft" marker-end="url(#ar2)"/>
+
+  <!-- back to start -->
+  <path d="M 140 570 Q 140 620 200 620 L 950 620 Q 1010 620 1010 570" class="arrow-line" marker-end="url(#ar)"/>
+  <text x="600" y="640" text-anchor="middle" class="sm">re-run validator with patches applied</text>
+
+  <!-- legend -->
+  <text x="40" y="685" class="sm">Solid arrows = happy path  ·  dashed arrows = failure recovery  ·  purple = code/data-level (no auto-fix)  ·  orange = supervisor/Ralph layer</text>
+</svg>
+
+<h2>Live test result (2026-05-06, 18 minutes)</h2>
+
+<svg viewBox="0 0 1200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#86efac"/>
+    </marker>
+  </defs>
+
+  <g transform="translate(20,20)">
+    <rect width="160" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="80" y="22" text-anchor="middle" class="lbl-b">Bootstrap</text>
+    <text x="80" y="42" text-anchor="middle" class="sm ok">docker + venv + deps</text>
+    <text x="80" y="55" text-anchor="middle" class="sm ok">3 bugs fixed</text>
+  </g>
+
+  <line x1="180" y1="50" x2="220" y2="50" stroke="#86efac" stroke-width="1.5" marker-end="url(#ar4)"/>
+
+  <g transform="translate(220,20)">
+    <rect width="160" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="80" y="22" text-anchor="middle" class="lbl-b">Schema</text>
+    <text x="80" y="42" text-anchor="middle" class="sm ok">14 tables · 14 RLS</text>
+    <text x="80" y="55" text-anchor="middle" class="sm ok">13 policies + 2 roles</text>
+  </g>
+
+  <line x1="380" y1="50" x2="420" y2="50" stroke="#86efac" stroke-width="1.5" marker-end="url(#ar4)"/>
+
+  <g transform="translate(420,20)">
+    <rect width="160" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="80" y="22" text-anchor="middle" class="lbl-b">Seed</text>
+    <text x="80" y="42" text-anchor="middle" class="sm ok">9 lab + 1 acme</text>
+    <text x="80" y="55" text-anchor="middle" class="sm ok">2 bugs fixed</text>
+  </g>
+
+  <line x1="580" y1="50" x2="620" y2="50" stroke="#86efac" stroke-width="1.5" marker-end="url(#ar4)"/>
+
+  <g transform="translate(620,20)">
+    <rect width="160" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="80" y="22" text-anchor="middle" class="lbl-b">Ingest</text>
+    <text x="80" y="42" text-anchor="middle" class="sm ok">85 artifacts</text>
+    <text x="80" y="55" text-anchor="middle" class="sm ok">678 chunks</text>
+  </g>
+
+  <line x1="780" y1="50" x2="820" y2="50" stroke="#86efac" stroke-width="1.5" marker-end="url(#ar4)"/>
+
+  <g transform="translate(820,20)">
+    <rect width="160" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="80" y="22" text-anchor="middle" class="lbl-b">P0 + P1</text>
+    <text x="80" y="42" text-anchor="middle" class="sm ok">26/26 blockers</text>
+    <text x="80" y="55" text-anchor="middle" class="sm ok">99.4% / 89.7%</text>
+  </g>
+
+  <line x1="980" y1="50" x2="1020" y2="50" stroke="#86efac" stroke-width="1.5" marker-end="url(#ar4)"/>
+
+  <g transform="translate(1020,20)">
+    <rect width="160" height="60" rx="6" fill="#1a1f2e" stroke="#86efac"/>
+    <text x="80" y="22" text-anchor="middle" class="lbl-b">verify_rls</text>
+    <text x="80" y="42" text-anchor="middle" class="sm ok">cross-tenant</text>
+    <text x="80" y="55" text-anchor="middle" class="sm ok">isolation ✓</text>
+  </g>
+
+  <text x="600" y="140" text-anchor="middle" class="sm">7 real bugs found and fixed during live test · all logged to LEARNINGS.md</text>
+  <text x="600" y="160" text-anchor="middle" class="sm">core RAG + RLS pipeline VERIFIED · solo MVP value proposition demonstrated</text>
+</svg>
+
+</body>
+</html>

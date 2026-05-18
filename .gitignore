@@ -1,0 +1,32 @@
+.env
+.env.local
+*.pyc
+__pycache__/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+node_modules/
+.next/
+*.log
+docker-volumes/
+
+# Auto-updated pointers to most-recent validation run — noise in commits.
+output/validation/P*-latest.json
+output/validation/P*-latest.md
+# Ralph runtime state — restored from templates each run.
+harness/ralph/STATE.json
+harness/ralph/TODO.md
+harness/ralph/JOURNAL.md
+# Per-iter logs from ralph supervisor.
+output/ralph/iter-*.log
+output/ralph/iter-*.json
+output/ralph/iter-*.prompt
+output/ralph/iter-*.bak
+output/ralph/supervisor.log
+output/dogfood/*.json
+# AI commit ephemeral state files (per-CHECK_ID).
+output/ai-commit/

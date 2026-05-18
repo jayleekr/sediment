@@ -1,0 +1,27 @@
+# Auto-fix recipes skeleton.
+# Copy + customize for your project.
+
+recipes:
+
+  # Start Postgres if down
+  - matches:
+      check_id: P0-INFRA-01
+    fix:
+      - cmd: "docker compose -f infra/docker-compose.yml up -d postgres"
+        timeout: 30
+      - wait_until_healthy: "docker exec {project}-pg pg_isready -U {project} -d {project}"
+        timeout: 60
+    description: "Start Postgres container"
+
+  # Re-apply init.sql when schema/RLS check fails
+  - matches:
+      check_id_prefix: "P0-DDL"
+    fix:
+      - cmd: "docker exec -i {project}-pg psql -U {project} -d {project} < infra/init.sql"
+    description: "Re-apply init.sql"
+
+# NEVER auto-fix — these go to work-order.json for human/specialist review.
+no_auto_fix:
+  - "P*-RLS-*"
+  - "P*-GOLDEN-RAG-*"
+  - "P*-SEC-*"

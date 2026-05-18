@@ -1,0 +1,77 @@
+{
+  "_comment": "Recommended .claude/settings.local.json patch for AI Curator harness. Apply via /permissions or by manually merging into your existing .claude/settings.local.json. Outer session permissions only — Ralph loop subprocess runs with --dangerously-skip-permissions and bypasses these.",
+
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Bash(chmod +x:*)",
+      "Bash(chmod 644:*)",
+      "Bash(chmod 755:*)",
+      "Bash(chmod 600:*)",
+
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker volume ls:*)",
+      "Bash(docker network ls:*)",
+
+      "Bash(plutil -lint:*)",
+      "Bash(launchctl list:*)",
+      "Bash(launchctl print:*)",
+
+      "Bash(redis-cli ping:*)",
+      "Bash(redis-cli get:*)",
+      "Bash(redis-cli set:*)",
+      "Bash(redis-cli keys:*)",
+      "Bash(redis-cli info:*)",
+
+      "Bash(psql:*)",
+      "Bash(pg_isready:*)",
+
+      "Bash(uvicorn:*)",
+      "Bash(playwright:*)",
+      "Bash(nc:*)",
+      "Bash(test:*)",
+      "Bash(claude -p:*)",
+      "Bash(claude --dangerously-skip-permissions:*)",
+      "Bash(sleep:*)",
+      "Bash(tee:*)",
+      "Bash(tail:*)",
+      "Bash(touch:*)",
+      "Bash(stat:*)",
+      "Bash(file:*)",
+      "Bash(env:*)",
+      "Bash(date:*)",
+      "Bash(actionlint:*)",
+      "Bash(yamllint:*)",
+
+      "Bash(./products/ai-curator/harness/ralph/ralph.sh:*)",
+      "Bash(./products/ai-curator/harness/monitor/*)",
+      "Bash(products/ai-curator/services/curator/scripts/*)",
+      "Bash(products/ai-curator/services/curator/scripts/cron/*)",
+
+      "Write(products/ai-curator/**)",
+      "Write(.github/workflows/curator-*.yml)",
+      "Write(web/src/app/curator/**)",
+      "Edit(products/ai-curator/**)",
+      "Edit(web/src/app/curator/**)"
+    ],
+    "deny": [
+      "Bash(chmod 777:*)",
+      "Bash(chmod -R 777:*)",
+      "Bash(chmod -R 000:*)",
+      "Bash(docker rm -f:*)",
+      "Bash(docker volume rm:*)",
+      "Bash(docker system prune:*)",
+      "Bash(launchctl unload:*)",
+      "Bash(launchctl bootout:*)",
+      "Bash(redis-cli FLUSHALL:*)",
+      "Bash(redis-cli FLUSHDB:*)",
+      "Bash(make reset:*)",
+      "Bash(rm -rf .venv:*)",
+      "Bash(rm -rf node_modules:*)"
+    ]
+  }
+}

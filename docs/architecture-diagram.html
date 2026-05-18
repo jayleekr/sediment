@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AI Curator — Architecture & Verification Status</title>
+<style>
+  :root {
+    --bg: #0a0c12;
+    --panel: #131722;
+    --panel-2: #1a1f2e;
+    --border: #2a2f3d;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #7dd3fc;
+    --ok: #86efac;
+    --warn: #fbbf24;
+    --err: #fca5a5;
+    --orange: #fb923c;
+    --purple: #c4b5fd;
+    --pink: #f472b6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; margin: 32px 0 12px; color: var(--accent); font-weight: 600; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  .legend { display: flex; gap: 16px; margin: 12px 0; font-size: 12px; }
+  .legend span::before { content: "■"; margin-right: 6px; }
+  .ok::before { color: var(--ok); }
+  .warn::before { color: var(--warn); }
+  .pending::before { color: var(--muted); }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px;
+  }
+  .stat-num { font-size: 28px; font-weight: 600; color: var(--accent); line-height: 1; }
+  .stat-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 6px; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  svg { display: block; max-width: 100%; height: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .layer-rect { fill: var(--panel-2); stroke: var(--border); stroke-width: 1; }
+  .layer-rect.ok { stroke: var(--ok); stroke-width: 2; }
+  .layer-rect.warn { stroke: var(--warn); stroke-width: 2; }
+  .layer-rect.pending { stroke: var(--muted); stroke-dasharray: 4 3; }
+  .layer-title { fill: var(--text); font-weight: 700; font-size: 14px; }
+  .layer-desc { fill: var(--muted); font-size: 11px; }
+  .badge { fill: var(--ok); font-size: 10px; font-weight: 600; }
+  .badge.warn { fill: var(--warn); }
+  .badge.err { fill: var(--err); }
+  .arrow { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .arrow-d { fill: var(--accent); }
+  .label { fill: var(--text); font-size: 11px; }
+  .small { fill: var(--muted); font-size: 10px; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  th, td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { background: var(--panel-2); color: var(--accent); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok-text { color: var(--ok); }
+  .warn-text { color: var(--warn); }
+  .err-text { color: var(--err); }
+  .muted-text { color: var(--muted); }
+  code { background: var(--panel-2); padding: 1px 6px; border-radius: 3px; font-size: 12px; font-family: ui-monospace, monospace; }
+  .footer { margin-top: 40px; color: var(--muted); font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>AI Curator — Architecture &amp; Verification</h1>
+<p class="subtitle">2026-05-06 · 18-min live test result · 7 real bugs found+fixed · core RAG+RLS pipeline verified</p>
+
+<div class="stat-grid">
+  <div class="stat">
+    <div class="stat-num ok-text">14/14</div>
+    <div class="stat-lbl">P0 Blockers</div>
+    <div class="stat-sub">99.4% score</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num ok-text">12/12</div>
+    <div class="stat-lbl">P1 Blockers</div>
+    <div class="stat-sub">89.7% score</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num ok-text">85 / 678</div>
+    <div class="stat-lbl">Artifacts / Chunks</div>
+    <div class="stat-sub">RAG ingest verified</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num ok-text">RLS ✓</div>
+    <div class="stat-lbl">Cross-Tenant Isolation</div>
+    <div class="stat-sub">lab=1/0, acme=0/1</div>
+  </div>
+</div>
+
+<div class="legend">
+  <span class="ok">verified live</span>
+  <span class="warn">designed, not yet run</span>
+  <span class="pending">stub / placeholder</span>
+</div>
+
+<h2>1. Five-Layer Architecture (with verification status)</h2>
+
+<svg viewBox="0 0 1100 540" xmlns="http://www.w3.org/2000/svg">
+  <!-- L0 Permission patch -->
+  <rect class="layer-rect ok" x="20" y="20" width="1060" height="60" rx="6"/>
+  <text class="layer-title" x="40" y="42">L0 · Permission patch</text>
+  <text class="layer-desc" x="40" y="60">harness/permissions/apply.sh — outer prompt bypass · settings.local.json allowlist (chmod, docker, psql, ...)</text>
+  <text class="badge" x="1000" y="50">designed</text>
+  <text class="small" x="1000" y="65">manual apply</text>
+
+  <!-- L1 Ralph outer loop -->
+  <rect class="layer-rect warn" x="20" y="100" width="1060" height="80" rx="6"/>
+  <text class="layer-title" x="40" y="124">L1 · Ralph outer loop</text>
+  <text class="layer-desc" x="40" y="142">supervisor.sh (auto-restart, cooldown 60s, max 15)  →  ralph.sh (200 iter, rate-limit exp backoff)</text>
+  <text class="layer-desc" x="40" y="158">state files: TODO.md · JOURNAL.md · LEARNINGS.md · STATE.json (markdown state machine)</text>
+  <text class="layer-desc" x="40" y="172">subprocess: claude -p --dangerously-skip-permissions (zero prompts inside)</text>
+  <text class="badge warn" x="1000" y="130">not started</text>
+
+  <!-- L2 Subagents (8) -->
+  <rect class="layer-rect ok" x="20" y="200" width="1060" height="98" rx="6"/>
+  <text class="layer-title" x="40" y="224">L2 · Subagents (SSL manifest, .claude/agents/curator-*.md)</text>
+
+  <g transform="translate(40,240)">
+    <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
+    <text x="80" y="18" text-anchor="middle" class="label">curator-validator</text>
+    <text x="80" y="34" text-anchor="middle" class="small">phase entry</text>
+  </g>
+  <g transform="translate(210,240)">
+    <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
+    <text x="80" y="18" text-anchor="middle" class="label">loop-orchestrator</text>
+    <text x="80" y="34" text-anchor="middle" class="small">50-iter driver</text>
+  </g>
+  <g transform="translate(380,240)">
+    <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
+    <text x="80" y="18" text-anchor="middle" class="label">curator-fixer</text>
+    <text x="80" y="34" text-anchor="middle" class="small">recipe applier</text>
+  </g>
+  <g transform="translate(550,240)">
+    <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
+    <text x="80" y="18" text-anchor="middle" class="label">rls-auditor</text>
+    <text x="80" y="34" text-anchor="middle" class="small">read-only critical</text>
+  </g>
+  <g transform="translate(720,240)">
+    <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
+    <text x="80" y="18" text-anchor="middle" class="label">rag-tuner</text>
+    <text x="80" y="34" text-anchor="middle" class="small">recall@k diagnose</text>
+  </g>
+  <g transform="translate(890,240)">
+    <rect width="170" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
+    <text x="85" y="18" text-anchor="middle" class="label">e2e-debugger</text>
+    <text x="85" y="34" text-anchor="middle" class="small">screenshot triage</text>
+  </g>
+  <text x="40" y="296" class="small">+ rubric-author (new check stubs) + curator-medic (self-heal, 6 patterns)</text>
+
+  <!-- L3 Validator harness Python -->
+  <rect class="layer-rect ok" x="20" y="318" width="1060" height="116" rx="6"/>
+  <text class="layer-title" x="40" y="342">L3 · Validator harness (Python — services/curator/validator/)</text>
+
+  <g transform="translate(40,358)">
+    <rect width="200" height="64" rx="4" fill="#1f2937" stroke="var(--ok)"/>
+    <text x="100" y="18" text-anchor="middle" class="label">runner.py + dispatch.py</text>
+    <text x="100" y="34" text-anchor="middle" class="small">bash · sql · http</text>
+    <text x="100" y="48" text-anchor="middle" class="small">python · e2e</text>
+    <text x="100" y="61" text-anchor="middle" class="badge">verified</text>
+  </g>
+  <g transform="translate(250,358)">
+    <rect width="180" height="64" rx="4" fill="#1f2937" stroke="var(--ok)"/>
+    <text x="90" y="18" text-anchor="middle" class="label">rubric.yaml</text>
+    <text x="90" y="34" text-anchor="middle" class="small">80+ checks</text>
+    <text x="90" y="48" text-anchor="middle" class="small">P0/P1/P2/P3</text>
+    <text x="90" y="61" text-anchor="middle" class="badge">verified</text>
+  </g>
+  <g transform="translate(440,358)">
+    <rect width="180" height="64" rx="4" fill="#1f2937" stroke="var(--warn)"/>
+    <text x="90" y="18" text-anchor="middle" class="label">e2e_spec.yaml</text>
+    <text x="90" y="34" text-anchor="middle" class="small">8 Playwright flows</text>
+    <text x="90" y="48" text-anchor="middle" class="small">repeat 5 + screenshot</text>
+    <text x="90" y="61" text-anchor="middle" class="badge warn">not run</text>
+  </g>
+  <g transform="translate(630,358)">
+    <rect width="180" height="64" rx="4" fill="#1f2937" stroke="var(--ok)"/>
+    <text x="90" y="18" text-anchor="middle" class="label">recipes.yaml + fixer.py</text>
+    <text x="90" y="34" text-anchor="middle" class="small">13 auto-fix recipes</text>
+    <text x="90" y="48" text-anchor="middle" class="small">+ no_auto_fix list</text>
+    <text x="90" y="61" text-anchor="middle" class="badge">verified</text>
+  </g>
+  <g transform="translate(820,358)">
+    <rect width="240" height="64" rx="4" fill="#1f2937" stroke="var(--ok)"/>
+    <text x="120" y="18" text-anchor="middle" class="label">golden_queries.yaml</text>
+    <text x="120" y="34" text-anchor="middle" class="small">40 Q&amp;A pairs</text>
+    <text x="120" y="48" text-anchor="middle" class="small">recall@k + MRR + latency</text>
+    <text x="120" y="61" text-anchor="middle" class="badge warn">needs OpenAI key</text>
+  </g>
+
+  <!-- L4 Project under test -->
+  <rect class="layer-rect ok" x="20" y="454" width="1060" height="70" rx="6"/>
+  <text class="layer-title" x="40" y="478">L4 · Project under test — AI Curator backend</text>
+  <text class="layer-desc" x="40" y="496">Postgres+pgvector :5433 ✓ · Redis :6380 ✓ · vault-ingester :11000 ✓ · metadata-svc :12000 ✓ · 14 tables · 14 RLS · 13 policies</text>
+  <text class="layer-desc" x="40" y="513" fill="var(--warn)">curator-platform :10100 ⏸ · curator-langgraph :10020 ⏸ · web :3000 ⏸ (not started; needed for P2)</text>
+</svg>
+
+<h2>2. Validation Flow (실제 검증된 path · zero-cost iteration)</h2>
+
+<svg viewBox="0 0 1100 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <polygon points="0,0 10,5 0,10" class="arrow-d"/>
+    </marker>
+  </defs>
+
+  <g transform="translate(20,20)">
+    <rect width="200" height="56" rx="6" fill="var(--panel-2)" stroke="var(--ok)"/>
+    <text x="100" y="22" text-anchor="middle" class="label" font-weight="600">make validate-p0</text>
+    <text x="100" y="40" text-anchor="middle" class="small">single shot</text>
+  </g>
+
+  <line x1="220" y1="48" x2="280" y2="48" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(280,20)">
+    <rect width="220" height="56" rx="6" fill="var(--panel-2)" stroke="var(--ok)"/>
+    <text x="110" y="22" text-anchor="middle" class="label" font-weight="600">runner.py</text>
+    <text x="110" y="40" text-anchor="middle" class="small">load rubric · dispatch · score</text>
+  </g>
+
+  <line x1="500" y1="48" x2="560" y2="48" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(560,20)">
+    <rect width="200" height="56" rx="6" fill="var(--panel-2)" stroke="var(--ok)"/>
+    <text x="100" y="22" text-anchor="middle" class="label" font-weight="600">21 checks</text>
+    <text x="100" y="40" text-anchor="middle" class="small">L1·L3 (infra+RLS)</text>
+  </g>
+
+  <line x1="760" y1="48" x2="820" y2="48" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(820,20)">
+    <rect width="240" height="56" rx="6" fill="var(--panel-2)" stroke="var(--ok)"/>
+    <text x="120" y="22" text-anchor="middle" class="label" font-weight="600">report.md + report.json</text>
+    <text x="120" y="40" text-anchor="middle" class="small ok-text">99.4% · 14/14 blockers · PASS</text>
+  </g>
+
+  <!-- second row -->
+  <g transform="translate(20,110)">
+    <rect width="200" height="56" rx="6" fill="var(--panel-2)" stroke="var(--ok)"/>
+    <text x="100" y="22" text-anchor="middle" class="label" font-weight="600">make validate-p1</text>
+    <text x="100" y="40" text-anchor="middle" class="small">single shot</text>
+  </g>
+
+  <line x1="220" y1="138" x2="280" y2="138" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(280,110)">
+    <rect width="220" height="56" rx="6" fill="var(--panel-2)" stroke="var(--ok)"/>
+    <text x="110" y="22" text-anchor="middle" class="label" font-weight="600">SEED+INGEST+SEARCH+RLS</text>
+    <text x="110" y="40" text-anchor="middle" class="small">+ chunker + golden RAG</text>
+  </g>
+
+  <line x1="500" y1="138" x2="560" y2="138" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(560,110)">
+    <rect width="200" height="56" rx="6" fill="var(--panel-2)" stroke="var(--warn)"/>
+    <text x="100" y="22" text-anchor="middle" class="label" font-weight="600">29 checks</text>
+    <text x="100" y="40" text-anchor="middle" class="small">L1·L2·L3·L4·L8</text>
+  </g>
+
+  <line x1="760" y1="138" x2="820" y2="138" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(820,110)">
+    <rect width="240" height="56" rx="6" fill="var(--panel-2)" stroke="var(--warn)"/>
+    <text x="120" y="22" text-anchor="middle" class="label" font-weight="600">report</text>
+    <text x="120" y="40" text-anchor="middle" class="small ok-text">89.7% · 12/12 blockers · pass</text>
+  </g>
+
+  <!-- third row: failure path -->
+  <g transform="translate(280,200)">
+    <rect width="220" height="56" rx="6" fill="var(--panel-2)" stroke="var(--purple)"/>
+    <text x="110" y="22" text-anchor="middle" class="label" font-weight="600">specialist subagent</text>
+    <text x="110" y="40" text-anchor="middle" class="small">rag-tuner / rls-auditor / e2e-debugger</text>
+  </g>
+
+  <line x1="660" y1="166" x2="500" y2="200" class="arrow" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+  <text x="700" y="195" class="small">failure → triage</text>
+
+  <g transform="translate(560,200)">
+    <rect width="200" height="56" rx="6" fill="var(--panel-2)" stroke="var(--purple)"/>
+    <text x="100" y="22" text-anchor="middle" class="label" font-weight="600">work-order.json</text>
+    <text x="100" y="40" text-anchor="middle" class="small">human or sub-agent fix</text>
+  </g>
+
+  <line x1="500" y1="228" x2="560" y2="228" class="arrow" marker-end="url(#arr)"/>
+
+  <g transform="translate(820,200)">
+    <rect width="240" height="56" rx="6" fill="var(--panel-2)" stroke="var(--orange)"/>
+    <text x="120" y="22" text-anchor="middle" class="label" font-weight="600">LEARNINGS.md append</text>
+    <text x="120" y="40" text-anchor="middle" class="small">8 entries (7 real bugs)</text>
+  </g>
+
+  <line x1="760" y1="228" x2="820" y2="228" class="arrow" marker-end="url(#arr)"/>
+</svg>
+
+<h2>3. 7 Real Bugs Found in 18-Minute Live Test</h2>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Pattern</th><th>Symptom</th><th>Fix</th><th>Files</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="num">1</td>
+      <td><code>docker_credential_helper</code></td>
+      <td><code>docker-credential-desktop not found</code></td>
+      <td>PATH preamble</td>
+      <td>bootstrap-all.sh, setup-env.sh</td>
+    </tr>
+    <tr>
+      <td class="num">2</td>
+      <td><code>pg18_volume_layout</code></td>
+      <td>postgres restart-loops</td>
+      <td>downgrade to pg17 + new volume</td>
+      <td>infra/docker-compose.yml</td>
+    </tr>
+    <tr>
+      <td class="num">3</td>
+      <td><code>python_path_miscount</code></td>
+      <td><code>FileNotFoundError: data/members.json</code></td>
+      <td><code>parents[5]</code> + <code>parents[6]</code></td>
+      <td>seed_lab.py, ingest_repo.py, p0_scaffolding.py, p3_automation.py</td>
+    </tr>
+    <tr>
+      <td class="num">4</td>
+      <td><code>sqlalchemy_jsonb_cast</code></td>
+      <td><code>:exp::jsonb</code> parse 충돌</td>
+      <td><code>CAST(:exp AS jsonb)</code></td>
+      <td>seed_lab.py, +others</td>
+    </tr>
+    <tr>
+      <td class="num">5</td>
+      <td><code>empty_external_id_unique</code></td>
+      <td>UNIQUE 충돌 on <code>""</code></td>
+      <td><code>"" → None</code> (NULL exempt)</td>
+      <td>seed_lab.py</td>
+    </tr>
+    <tr>
+      <td class="num">6</td>
+      <td><code>dotfile_filter_overreach</code></td>
+      <td>0 files ingested (worktree path has <code>.claude/</code>)</td>
+      <td>filter on <code>relative_to(REPO_ROOT)</code></td>
+      <td>ingest_repo.py</td>
+    </tr>
+    <tr>
+      <td class="num">7</td>
+      <td><code>set_local_param</code></td>
+      <td><code>SET LOCAL X = $1</code> PG syntax error</td>
+      <td><code>SELECT set_config(...)</code> in 18+ places</td>
+      <td>db.py · ingester · 4 routers · 2 cron · 4 validator checks</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4. Phase Verification Status</h2>
+
+<table>
+  <thead>
+    <tr><th>Phase</th><th>Status</th><th>Score</th><th>Blockers</th><th>What was verified</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>P0</strong> Scaffolding</td>
+      <td class="ok-text">✅ PASS</td>
+      <td class="num">99.4%</td>
+      <td class="num">14/14</td>
+      <td>infra ✓ · 14 tables ✓ · RLS+FORCE+13 policies ✓ · 2 roles ✓ · BYPASSRLS ✓</td>
+    </tr>
+    <tr>
+      <td><strong>P1</strong> Read-only index</td>
+      <td class="ok-text">✅ PASS</td>
+      <td class="num">89.7%</td>
+      <td class="num">12/12</td>
+      <td>seed (10 members) · 85 artifacts · 678 chunks · BM25 ✓ · idempotent ✓ · cross-tenant 0 leak</td>
+    </tr>
+    <tr>
+      <td><strong>P2</strong> Chat MVP</td>
+      <td class="muted-text">⏸ pending</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td>requires API keys + 3 services · designed (56 checks) · not yet run</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong> Automation</td>
+      <td class="muted-text">⏸ pending</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td>cron + GHA + Discord scaffolded</td>
+    </tr>
+    <tr>
+      <td><strong>P5.5</strong> Dogfood gate</td>
+      <td class="muted-text">⏸ pending</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+      <td>10 criteria defined (NPS, RLS leak=0, recall ≥80%, win rate ≥1.5×, ...)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. File Inventory (created/modified across session)</h2>
+
+<table>
+  <thead>
+    <tr><th>Category</th><th>Count</th><th>Examples</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Subagents (.claude/agents/curator-*.md)</td><td class="num">8</td><td>validator, loop-orchestrator, fixer, rls-auditor, rag-tuner, e2e-debugger, rubric-author, medic</td></tr>
+    <tr><td>Slash skills (.claude/skills/curator/*)</td><td class="num">13</td><td>start, status, fix, tune-rag, audit-rls, debug-e2e, propose-rubric, medic, learnings, compact, resurrect, kill, restart, setup</td></tr>
+    <tr><td>Validator harness (Python, services/curator/validator/)</td><td class="num">22</td><td>runner, dispatch, e2e_runner, fixer, loop, report, types, 8 checks</td></tr>
+    <tr><td>Harness contracts + bootstrap (harness/)</td><td class="num">15</td><td>5 JSON schemas, 3 templates, ralph/, monitor/, MANIFEST, bootstrap-all.sh</td></tr>
+    <tr><td>Project docs</td><td class="num">8</td><td>SPEC.md (1084), DECISIONS.md, TEST_REQUIREMENTS.md (711), VALIDATION_PLAN.md, README, START_HERE, OVERNIGHT</td></tr>
+    <tr><td>Backend services (FastAPI)</td><td class="num">4</td><td>curator-platform, curator-langgraph, vault-ingester, metadata-svc</td></tr>
+    <tr><td>Web routes (Next.js)</td><td class="num">8</td><td>/curator, /c/[id], /library, /members, /admin, /onboard, /pricing, /auth</td></tr>
+  </tbody>
+</table>
+
+<div class="footer">
+  AI Curator architecture diagram · self-contained HTML · 2026-05-06<br>
+  Source: products/ai-curator/docs/architecture-diagram.html
+</div>
+
+</body>
+</html>

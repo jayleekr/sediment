@@ -1,0 +1,250 @@
+# SSL Skill Manifests for the 7 curator-* subagents.
+# Conforms to contracts/skill_manifest.schema.json.
+# This file is the machine-inspectable contract; the markdown agent files are the
+# prompt instantiation. Keep them in sync — when behavior changes, update both.
+
+agents:
+
+  - agent_id: curator-validator
+    version: "0.1.0"
+    model: sonnet
+    max_turns: 30
+    scheduling:
+      trigger: "/curator-validate <phase> [single]   OR   Task tool dispatch"
+      frequency: on-demand
+      idempotent: true
+      preconditions:
+        - "make up has succeeded (Postgres + Redis healthy)"
+        - "rubric.yaml exists at validator/rubric.yaml"
+    structural:
+      steps:
+        - name: pre-flight
+          description: "verify services healthy via nc + docker ps"
+          tools: [Bash]
+        - name: run-rubric
+          description: "execute make validate-pN and capture exit code"
+          tools: [Bash]
+        - name: triage
+          description: "open report.md, classify failures by check id pattern"
+          tools: [Read, Grep]
+        - name: dispatch
+          description: "invoke specialist sub-agent if needed"
+          tools: [Task]
+        - name: report
+          description: "emit JSON output contract"
+    logical:
+      inputs:
+        - { name: phase, type: "P0|P1|P2|P3", required: true, description: "rubric phase id" }
+        - { name: mode, type: "single|loop", required: false }
+        - { name: focus_layer, type: "L1..L11", required: false }
+      outputs:
+        - { name: exit_code, type: int }
+        - { name: score_pct, type: float }
+        - { name: blockers, type: "X/Y string" }
+        - { name: specialist_dispatched, type: "string|null" }
+        - { name: report_path, type: path }
+        - { name: next_action, type: string }
+      side_effects:
+        - "writes output/validation/<phase>-<ts>.json/.md"
+      resources:
+        - "Postgres :5433"
+        - "services :10100, :10020, :11000, :12000"
+      hard_rules:
+        - "never modify init.sql, rubric.yaml, e2e_spec.yaml directly"
+        - "never run make reset"
+        - "never bypass RLS in app role"
+    portability:
+      generic_logic: true
+      project_specific_paths:
+        - products/sediment/VALIDATION_PLAN.md
+        - products/sediment/services/sediment/validator/rubric.yaml
+
+  - agent_id: curator-loop-orchestrator
+    version: "0.1.0"
+    model: opus
+    max_turns: 80
+    scheduling:
+      trigger: "/curator-validate <phase> loop"
+      frequency: on-demand
+      idempotent: true
+      preconditions:
+        - "validator subagent passes pre-flight"
+    structural:
+      steps:
+        - { name: bootstrap, description: "verify harness ready", tools: [Bash, Read] }
+        - { name: run-loop, description: "make validate-loop PHASE=X", tools: [Bash] }
+        - { name: watch-progress, description: "tail history.csv", tools: [Read, Bash] }
+        - { name: read-convergence, description: "parse convergence.md", tools: [Read] }
+        - { name: escalate, description: "dispatch specialist if stalled", tools: [Task] }
+        - { name: final-report, description: "write orchestrator-summary.md", tools: [Write] }
+    logical:
+      inputs:
+        - { name: phase, type: "P0..P3", required: true }
+        - { name: max_iter, type: int, required: false }
+        - { name: target_pct, type: float, required: false }
+        - { name: cost_budget_usd, type: float, required: false }
+      outputs:
+        - { name: status, type: "converged|stalled|max_iter_reached|cost_exhausted" }
+        - { name: iterations, type: int }
+        - { name: final_score_pct, type: float }
+        - { name: specialists_dispatched, type: "string[]" }
+      side_effects:
+        - "full output/validation/loop-<phase>-<ts>/ tree"
+        - "may invoke up to 3 specialist subagents"
+      resources:
+        - "all of validator's resources + Task tool budget"
+      hard_rules:
+        - "never run two loops in parallel for same phase"
+        - "never dispatch the same specialist twice in one loop"
+        - "never write code patches"
+    portability:
+      generic_logic: true
+
+  - agent_id: curator-fixer
+    version: "0.1.0"
+    model: haiku
+    max_turns: 25
+    scheduling:
+      trigger: "after failed loop iteration when work-order has fixable items"
+      frequency: per-iteration
+      idempotent: true
+    structural:
+      steps:
+        - { name: parse-work-order, tools: [Read] }
+        - { name: match-recipes, tools: [Read] }
+        - { name: execute-recipe, tools: [Bash] }
+        - { name: report, tools: [Write] }
+    logical:
+      inputs:
+        - { name: work_order_path, type: path, required: true }
+        - { name: dry_run, type: bool, required: false }
+      outputs:
+        - { name: fixes_applied, type: "object[]" }
+        - { name: fixes_failed, type: "object[]" }
+        - { name: unfixable, type: "object[]" }
+      side_effects:
+        - "starts/stops Docker containers"
+        - "starts background services"
+        - "re-applies init.sql"
+      hard_rules:
+        - "never modify source code"
+        - "never DROP or TRUNCATE tables"
+        - "never disable RLS"
+    portability:
+      generic_logic: true
+
+  - agent_id: curator-rag-tuner
+    version: "0.1.0"
+    model: opus
+    max_turns: 40
+    scheduling:
+      trigger: "RAG/SEARCH/INGEST-04 check failures"
+    structural:
+      steps:
+        - { name: gather, tools: [Read, Bash] }
+        - { name: diagnose, tools: [Read] }
+        - { name: propose, tools: [Write] }
+        - { name: optional-ablate, tools: [Edit, Bash] }
+    logical:
+      inputs:
+        - { name: report_json, type: path, required: true }
+        - { name: auto_ablate, type: bool, required: false }
+      outputs:
+        - { name: diagnosis, type: object }
+        - { name: proposed_changes, type: "object[]" }
+      side_effects:
+        - "writes tuning-proposal-*.md"
+      hard_rules:
+        - "never edit chunker.py without auto_ablate=true confirmation"
+        - "never change embedding model silently"
+    portability:
+      generic_logic: true
+
+  - agent_id: curator-rls-auditor
+    version: "0.1.0"
+    model: opus
+    max_turns: 30
+    scheduling:
+      trigger: "any *-RLS-* check failure"
+      frequency: on-demand
+      preconditions: ["DB reachable for read-only probes"]
+    structural:
+      steps:
+        - { name: confirm-policies, tools: [Bash, Read] }
+        - { name: confirm-roles, tools: [Bash, Grep] }
+        - { name: trace-context, tools: [Read, Grep] }
+        - { name: pool-check, tools: [Read] }
+        - { name: write-audit, tools: [Write] }
+    logical:
+      inputs:
+        - { name: report_json, type: path, required: true }
+      outputs:
+        - { name: leak_source, type: "policy|code|pool|test_artifact" }
+        - { name: severity, type: "critical|high|medium" }
+        - { name: blast_radius, type: string }
+        - { name: remediation_steps, type: "object[]" }
+        - { name: release_block, type: bool }
+      side_effects: []
+      hard_rules:
+        - "READ-ONLY — never modify files"
+        - "never SELECT real tenant data"
+        - "never disable RLS to test"
+    portability:
+      generic_logic: true
+
+  - agent_id: curator-e2e-debugger
+    version: "0.1.0"
+    model: sonnet
+    max_turns: 25
+    scheduling:
+      trigger: "P*-E2E-* failure with flake rate above threshold"
+    structural:
+      steps:
+        - { name: read-flow, tools: [Read] }
+        - { name: inspect-screenshots, tools: [Read] }
+        - { name: classify, tools: [] }
+        - { name: propose, tools: [Write] }
+    logical:
+      inputs:
+        - { name: iteration_dir, type: path, required: true }
+        - { name: flow_id, type: "E2E-XX", required: true }
+      outputs:
+        - { name: failure_class, type: "selector_drift|race_condition|missing_auth|upstream_down|true_regression" }
+        - { name: evidence, type: "string[]" }
+        - { name: proposed_patch, type: object }
+      side_effects:
+        - "writes e2e-proposal-*.md"
+      hard_rules:
+        - "never modify e2e_spec.yaml directly"
+        - "never run flows in headed mode on CI"
+    portability:
+      generic_logic: true
+
+  - agent_id: curator-rubric-author
+    version: "0.1.0"
+    model: opus
+    max_turns: 35
+    scheduling:
+      trigger: "manual — when feature lands"
+      frequency: on-demand
+    structural:
+      steps:
+        - { name: diff, tools: [Bash] }
+        - { name: classify-changes, tools: [Read] }
+        - { name: draft-yaml, tools: [Write] }
+        - { name: draft-stubs, tools: [Write] }
+    logical:
+      inputs:
+        - { name: since_ref, type: "git ref", required: true }
+        - { name: target_phase, type: "P0..P9", required: true }
+      outputs:
+        - { name: new_check_count, type: int }
+        - { name: proposed_yaml_path, type: path }
+        - { name: proposed_python_stubs, type: "object[]" }
+      side_effects:
+        - "writes rubric proposal markdown"
+      hard_rules:
+        - "never directly modify rubric.yaml"
+        - "never lower existing severity"
+    portability:
+      generic_logic: true

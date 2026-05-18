@@ -1,0 +1,323 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { api, type Citation, type Message } from "../../lib/api";
+import { streamCurator } from "../../lib/sse";
+
+type StreamState = {
+  status: string;
+  citations: Citation[];
+  buffer: string;
+  done: boolean;
+  error?: string;
+};
+
+export default function ConversationPage() {
+  const { id } = useParams<{ id: string }>();
+  const sp = useSearchParams();
+  const autoAsk = sp.get("ask") === "1";
+
+  const [conv, setConv] = useState<any>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [stream, setStream] = useState<StreamState>({ status: "", citations: [], buffer: "", done: true });
+  const aborter = useRef<AbortController | null>(null);
+
+  async function load() {
+    const data = await api<{ conversation: any; messages: Message[] }>(
+      `/api/v1/conversations/${id}`
+    );
+    setConv(data.conversation);
+    setMessages(data.messages);
+    return data.messages;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const msgs = await load();
+      if (cancelled) return;
+      if (autoAsk && msgs.length && msgs[msgs.length - 1].role === "user") {
+        ask(msgs[msgs.length - 1].content, /*alreadySaved*/ true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      aborter.current?.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  async function ask(q: string, alreadySaved = false) {
+    if (!q.trim()) return;
+    if (!alreadySaved) {
+      await api(`/api/v1/conversations/${id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content: q, role: "user" }),
+      });
+      setMessages((m) => [
+        ...m,
+        { id: "tmp-" + Date.now(), role: "user", content: q, citations: [], ts: new Date().toISOString() },
+      ]);
+    }
+    setInput("");
+    setStream({ status: "thinking…", citations: [], buffer: "", done: false });
+    aborter.current = new AbortController();
+    await streamCurator(
+      id,
+      q,
+      {
+        onStatus: (_msg, meta) => setStream((s) => ({ ...s, status: `${meta?.step ?? ""} ${meta?.intent ? `(${meta.intent})` : ""}`.trim() })),
+        onCitation: (c) => setStream((s) => ({ ...s, citations: [...s.citations, c] })),
+        onDelta: (t) => setStream((s) => ({ ...s, buffer: s.buffer + t })),
+        onAnswerEnd: () => setStream((s) => ({ ...s, done: true, status: "done" })),
+        onError: (e) => setStream((s) => ({ ...s, error: e.message, done: true })),
+        onDone: async () => {
+          setStream({ status: "done", citations: [], buffer: "", done: true });
+          await load(); // re-pull messages so citations are persisted
+        },
+      },
+      aborter.current.signal
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-12 gap-6">
+      <main className="col-span-12 md:col-span-8">
+        <div className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold">{conv?.title || "(untitled)"}</h2>
+          <div className="space-y-4">
+            {messages.map((m) => (
+              <Bubble key={m.id} role={m.role} content={m.content} citations={m.citations} />
+            ))}
+            {!stream.done || stream.buffer ? (
+              <Bubble role="assistant" content={stream.buffer || "thinking…"} citations={stream.citations} streaming />
+            ) : null}
+            {stream.error && <p className="text-sm text-red-600">error: {stream.error}</p>}
+          </div>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            ask(input);
+          }}
+          className="mt-4 flex gap-2"
+        >
+          <input
+            className="flex-1 rounded border px-3 py-2"
+            placeholder="ask the lab…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            disabled={!stream.done}
+          />
+          <button
+            className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+            disabled={!stream.done}
+          >
+            Send
+          </button>
+        </form>
+      </main>
+
+      <aside className="col-span-12 md:col-span-4">
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <h3 className="mb-2 text-sm font-semibold">Citations</h3>
+          {stream.citations.length === 0 && messages.length === 0 ? (
+            <p className="text-xs text-neutral-600">Will appear here as the agent searches.</p>
+          ) : (
+            <ul className="space-y-3 text-sm">
+              {(stream.citations.length ? stream.citations : (messages.flatMap((m) => m.citations || []) as Citation[]))
+                .slice(0, 10)
+                .map((c, i) => (
+                  <CitationCard key={i} index={i + 1} citation={c} />
+                ))}
+            </ul>
+          )}
+          <div className="mt-4 border-t pt-3 text-xs text-neutral-600">
+            <div>status: {stream.status || "idle"}</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+// Explicit element styling — Tailwind 4 here has no @tailwindcss/typography
+// plugin, so `prose` is a no-op. Map each markdown node to concrete classes.
+const MD_COMPONENTS = {
+  h1: (p: any) => <h1 className="mb-3 mt-5 border-b pb-1 text-xl font-bold" {...p} />,
+  h2: (p: any) => <h2 className="mb-2 mt-5 text-lg font-semibold" {...p} />,
+  h3: (p: any) => <h3 className="mb-2 mt-4 text-base font-semibold" {...p} />,
+  h4: (p: any) => <h4 className="mb-1 mt-3 text-sm font-semibold" {...p} />,
+  p:  (p: any) => <p className="my-2 leading-relaxed" {...p} />,
+  ul: (p: any) => <ul className="my-2 list-disc space-y-1 pl-5" {...p} />,
+  ol: (p: any) => <ol className="my-2 list-decimal space-y-1 pl-5" {...p} />,
+  li: (p: any) => <li className="leading-relaxed" {...p} />,
+  a:  (p: any) => <a className="text-blue-600 underline" target="_blank" rel="noreferrer" {...p} />,
+  blockquote: (p: any) => (
+    <blockquote className="my-2 border-l-4 border-neutral-300 pl-3 italic text-neutral-600" {...p} />
+  ),
+  code: ({ inline, ...p }: any) =>
+    inline ? (
+      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[0.85em]" {...p} />
+    ) : (
+      <code className="font-mono text-xs" {...p} />
+    ),
+  pre: (p: any) => (
+    <pre
+      className="my-3 overflow-x-auto rounded bg-neutral-900 p-3 text-xs leading-snug text-neutral-100"
+      {...p}
+    />
+  ),
+  table: (p: any) => (
+    <div className="my-3 overflow-x-auto">
+      <table className="w-full border-collapse text-xs" {...p} />
+    </div>
+  ),
+  th: (p: any) => <th className="border border-neutral-300 bg-neutral-100 px-2 py-1 text-left font-semibold" {...p} />,
+  td: (p: any) => <td className="border border-neutral-300 px-2 py-1 align-top" {...p} />,
+  hr: () => <hr className="my-4 border-neutral-200" />,
+  img: (p: any) => <img className="my-2 max-w-full rounded" {...p} />,
+};
+
+function CitationCard({ index, citation }: { index: number; citation: Citation }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const hasRef = Boolean(citation.ref);
+
+  async function openModal() {
+    if (!hasRef) return;
+    setOpen(true);
+    if (body === null && !loading) {
+      setLoading(true);
+      setError(null);
+      try {
+        const resp = await api<{ body: string }>(
+          `/api/v1/library/${encodeURI(citation.ref!)}`,
+        );
+        setBody(resp.body || "(empty)");
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    }
+  }
+
+  // Esc to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      <li className="border-b pb-2 last:border-0">
+        <button
+          type="button"
+          onClick={openModal}
+          disabled={!hasRef}
+          className={`w-full text-left ${
+            hasRef ? "cursor-pointer hover:bg-neutral-50" : "cursor-default"
+          } rounded px-1 py-0.5 transition`}
+        >
+          <div className="font-mono text-xs text-neutral-500">
+            [{index}]{hasRef && <span className="ml-1 text-blue-600">↗ open</span>}
+          </div>
+          <div className="font-medium">{citation.ref || citation.display_name || "(no ref)"}</div>
+          {citation.type && (
+            <div className="text-xs text-neutral-600">
+              {citation.type}
+              {citation.date ? ` · ${citation.date}` : ""}
+            </div>
+          )}
+          {citation.content && (
+            <div className="mt-1 line-clamp-2 text-xs text-neutral-700">{citation.content}</div>
+          )}
+        </button>
+      </li>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-5 py-3">
+              <div>
+                <div className="font-mono text-xs text-neutral-500">[{index}]</div>
+                <div className="font-semibold">{citation.ref}</div>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-4 text-sm text-neutral-900">
+              {loading && <p className="text-neutral-500">Loading…</p>}
+              {error && <p className="text-red-600">error: {error}</p>}
+              {body !== null && (
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                  {body}
+                </ReactMarkdown>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const OFFLINE_MOCK_PREFIX = "[offline LLM mock]";
+const OFFLINE_FALLBACK =
+  "AI provider not configured (offline mode). Citations are real; replies are mocked. Set LLM_PROVIDER in .env to enable streaming responses.";
+
+function Bubble({
+  role,
+  content,
+  citations,
+  streaming,
+}: {
+  role: string;
+  content: string;
+  citations?: any[];
+  streaming?: boolean;
+}) {
+  const isUser = role === "user";
+  const displayContent =
+    !isUser && content.startsWith(OFFLINE_MOCK_PREFIX) ? OFFLINE_FALLBACK : content;
+  return (
+    <div data-role={role} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+          isUser ? "bg-blue-600 text-white" : "bg-neutral-100 text-neutral-900"
+        }`}
+      >
+        <div className="whitespace-pre-wrap">{displayContent}</div>
+        {streaming && <span className="ml-1 animate-pulse">▍</span>}
+        {citations && citations.length > 0 && !isUser && (
+          <div className="mt-2 text-xs text-neutral-600">
+            {citations.length} citation{citations.length === 1 ? "" : "s"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

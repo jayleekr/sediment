@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypeproof-ai.xyz/schemas/skill_manifest.schema.json",
+  "title": "SSL Skill Manifest (Liang et al. 2026)",
+  "description": "Structured representation for agent skills following the Scheduling-Structural-Logical separation. Encodes what's normally embedded in agent prompt text into machine-inspectable form.",
+  "type": "object",
+  "required": ["agent_id", "scheduling", "structural", "logical"],
+  "properties": {
+    "agent_id":   { "type": "string" },
+    "version":    { "type": "string" },
+    "model":      { "enum": ["haiku", "sonnet", "opus"] },
+    "max_turns":  { "type": "integer", "minimum": 1, "maximum": 200 },
+
+    "scheduling": {
+      "type": "object",
+      "description": "When and how often this skill executes.",
+      "required": ["trigger"],
+      "properties": {
+        "trigger":     { "type": "string" },
+        "frequency":   { "enum": ["on-demand", "per-iteration", "per-phase", "scheduled"] },
+        "idempotent":  { "type": "boolean" },
+        "preconditions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "structural": {
+      "type": "object",
+      "description": "Sequence of internal steps. Mirrors a script in script-theory terms.",
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name":        { "type": "string" },
+              "description": { "type": "string" },
+              "tools":       { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+
+    "logical": {
+      "type": "object",
+      "description": "Concrete I/O, side effects, resources.",
+      "required": ["inputs", "outputs"],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name":        { "type": "string" },
+              "type":        { "type": "string" },
+              "required":    { "type": "boolean" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name":        { "type": "string" },
+              "type":        { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "side_effects": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "resources": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hard_rules": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "portability": {
+      "type": "object",
+      "properties": {
+        "project_specific_paths": { "type": "array", "items": { "type": "string" } },
+        "generic_logic":           { "type": "boolean" }
+      }
+    }
+  }
+}

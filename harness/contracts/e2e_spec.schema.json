@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypeproof-ai.xyz/schemas/e2e_spec.schema.json",
+  "title": "E2E Browser Spec (Playwright)",
+  "type": "object",
+  "required": ["base_url", "default_timeout_ms", "flows"],
+  "properties": {
+    "base_url":           { "type": "string", "format": "uri" },
+    "default_timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 60000 },
+    "viewport": {
+      "type": "object",
+      "properties": {
+        "width":  { "type": "integer", "minimum": 320 },
+        "height": { "type": "integer", "minimum": 240 }
+      }
+    },
+    "seed_member": {
+      "type": "object",
+      "properties": {
+        "email":        { "type": "string", "format": "email" },
+        "display_name": { "type": "string" }
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flow" }
+    }
+  },
+  "$defs": {
+    "flow": {
+      "type": "object",
+      "required": ["id", "name", "severity", "steps"],
+      "properties": {
+        "id":              { "type": "string", "pattern": "^E2E-[0-9]+$" },
+        "name":            { "type": "string" },
+        "severity":        { "enum": ["blocker", "major", "minor"] },
+        "repeat":          { "type": "integer", "minimum": 1, "maximum": 20 },
+        "pass_threshold":  { "type": "integer", "minimum": 1 },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "enum": [
+            "navigate", "fill", "click", "press_key",
+            "wait_for_text", "wait_for_selector", "wait_for_idle",
+            "screenshot", "assert", "assert_no",
+            "ensure_signed_in", "signin_as", "signout"
+          ]
+        },
+        "url":            { "type": "string" },
+        "selector":       { "type": "string" },
+        "value":          {},
+        "key":            { "type": "string" },
+        "wait_for":       { "type": "string" },
+        "wait_for_url_regex": { "type": "string" },
+        "wait_for_idle":  { "type": "boolean" },
+        "timeout_ms":     { "type": "integer" },
+        "screenshot":     { "type": "string" },
+        "type":           { "enum": [
+          "text_contains", "url_contains", "selector_visible",
+          "localStorage_has", "console_errors_max", "count_min", "count_exact"
+        ]},
+        "min":            { "type": "integer" },
+        "count":          { "type": "integer" },
+        "key":            { "type": "string" },
+        "max":            { "type": "integer" },
+        "optional":       { "type": "boolean" },
+        "email":          { "type": "string", "format": "email" }
+      }
+    }
+  }
+}

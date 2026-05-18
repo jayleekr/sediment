@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypeproof-ai.xyz/schemas/work_order.schema.json",
+  "title": "Validator Work Order",
+  "description": "List of failures the auto-fixer cannot handle. Consumed by specialist subagents or human reviewer.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["check_id", "title", "guidance"],
+    "properties": {
+      "check_id": { "type": "string" },
+      "title":    { "type": "string" },
+      "layer":    { "type": "string", "pattern": "^L([0-9]|10|11)$" },
+      "severity": { "enum": ["blocker", "major", "minor"] },
+      "actual":   {},
+      "expected": {},
+      "message":  { "type": "string" },
+      "guidance": { "type": "string", "description": "Human-readable next step or specialist subagent name." },
+      "specialist": {
+        "enum": [
+          "curator-rag-tuner",
+          "curator-rls-auditor",
+          "curator-e2e-debugger",
+          "curator-fixer",
+          "curator-rubric-author",
+          null
+        ]
+      }
+    }
+  }
+}

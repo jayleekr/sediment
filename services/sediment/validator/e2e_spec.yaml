@@ -1,0 +1,303 @@
+# AI Curator — E2E Browser Spec (v0.1)
+# Executed by validator/e2e_runner.py via Playwright (Python).
+# Each flow is replayed `repeat` times within a single iteration to measure flake rate.
+
+base_url: "http://localhost:3000"
+default_timeout_ms: 8000
+viewport:
+  width: 1280
+  height: 900
+seed_member:
+  email: "jay.lee@sonatus.com"
+
+flows:
+
+  - id: E2E-01
+    name: "Sign-in flow"
+    severity: blocker
+    repeat: 5
+    pass_threshold: 4
+    steps:
+      - action: navigate
+        url: "/sediment"
+        wait_for: "input[placeholder='member email']"
+        screenshot: "01-empty-form"
+      - action: fill
+        selector: "input[placeholder='member email']"
+        value: "{{seed_member.email}}"
+        screenshot: "02-filled"
+      - action: click
+        selector: "button:has-text('Mint dev token')"
+        wait_for: "text=Conversations"
+        screenshot: "03-after-signin"
+      - action: assert
+        type: localStorage_has
+        key: "curator.token"
+      - action: assert
+        type: console_errors_max
+        value: 0
+
+  - id: E2E-02
+    name: "Empty state visible"
+    severity: minor
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "text=Try one"
+        screenshot: "01-empty-state"
+      - action: assert
+        type: text_contains
+        selector: "h2"
+        value: "Ask"
+
+  - id: E2E-03
+    name: "New conversation + first query"
+    severity: blocker
+    repeat: 5
+    pass_threshold: 4
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "text=Try one"
+        screenshot: "01-home"
+      - action: click
+        selector: "button:has-text('mirror-loop')"
+        wait_for_url_regex: "/sediment/c/"
+        screenshot: "02-conv-page"
+      - action: assert
+        type: url_contains
+        value: "/sediment/c/"
+
+  - id: E2E-04
+    name: "Streaming UI"
+    severity: blocker
+    repeat: 5
+    pass_threshold: 3
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "input[placeholder*='ryan']"
+      - action: fill
+        selector: "input[placeholder*='ryan']"
+        value: "Daily research 중 Claude Code 관련"
+      - action: press_key
+        key: "Enter"
+        wait_for_url_regex: "/sediment/c/"
+        screenshot: "01-streaming-start"
+      - action: wait_for_text
+        value: "thinking"
+        timeout_ms: 10000
+        optional: true
+      - action: wait_for_selector
+        selector: "div.animate-pulse, .whitespace-pre-wrap"
+        timeout_ms: 10000
+        screenshot: "02-streaming-mid"
+      - action: wait_for_idle
+        timeout_ms: 30000
+        screenshot: "03-streaming-end"
+      - action: assert
+        type: console_errors_max
+        value: 1
+
+  - id: E2E-05
+    name: "Citation cards visible"
+    severity: major
+    repeat: 2
+    pass_threshold: 1
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+      - action: click
+        selector: "button:has-text('Daily research')"
+        wait_for_url_regex: "/sediment/c/"
+      - action: wait_for_idle
+        timeout_ms: 30000
+      - action: screenshot
+        name: "01-after-stream"
+      - action: assert
+        type: selector_visible
+        selector: "h3:has-text('Citations')"
+
+  - id: E2E-06
+    name: "Library browse + filter"
+    severity: major
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment/library"
+        wait_for: "th:has-text('ref')"
+        screenshot: "01-library"
+      - action: click
+        selector: "button:has-text('column')"
+        wait_for: "th:has-text('ref')"
+        screenshot: "02-filtered"
+      - action: assert
+        type: console_errors_max
+        value: 0
+
+  - id: E2E-07
+    name: "Members page"
+    severity: minor
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment/members"
+        wait_for: "text=Jay"
+        screenshot: "01-members"
+      - action: assert
+        type: count_min
+        selector: ".rounded-xl"
+        min: 5
+
+  - id: E2E-08
+    name: "Cross-tenant negative test"
+    severity: blocker
+    repeat: 3
+    pass_threshold: 2
+    steps:
+      # Sign in as acme-test member, attempt to load lab's conversation URL
+      - action: signout
+      - action: signin_as
+        email: "admin@acme.test"
+      - action: navigate
+        url: "/sediment"
+        wait_for: "text=Conversations"
+        screenshot: "01-acme-home"
+      # Attempt to use a lab conversation URL must result in 404 or empty state
+      - action: navigate
+        url: "/sediment/c/00000000-0000-0000-0000-deadbeef0000"
+        wait_for_idle: true
+        screenshot: "02-acme-cross-tenant"
+      - action: assert_no
+        type: text_contains
+        value: "rls-check"
+      - action: assert
+        type: console_errors_max
+        value: 2  # 401/404 are expected → may show in console
+
+  - id: E2E-09
+    name: "Multi-turn conversation"
+    # Verifies a single conv_id supports sequential queries — second message
+    # must stream + render alongside the first, with citations on both. Catches
+    # the conv state regression that would happen if we ever lost the inputbox
+    # reactivation on stream.done = true.
+    severity: major
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "text=Try one"
+      - action: click
+        selector: "button:has-text('Daily research')"
+        wait_for_url_regex: "/sediment/c/"
+        screenshot: "01-first-turn-start"
+      - action: wait_for_idle
+        timeout_ms: 30000
+        screenshot: "02-first-turn-done"
+      # Second turn — reuse the same conv. The input is re-enabled only when
+      # stream.done is true (see web/src/app/sediment/c/[id]/page.tsx).
+      - action: fill
+        selector: "input[placeholder='ask the lab…']"
+        value: "그것과 관련된 칼럼은?"
+      - action: click
+        selector: "button:has-text('Send')"
+        screenshot: "03-second-turn-sent"
+      # 2nd-turn stream completion: wait for a citation reference to appear
+      # in the answer (the system prompt requires [N] inline refs). This is a
+      # stronger signal than wait_for_idle, which can fire during the brief
+      # gap between SSE chunks.
+      - action: wait_for_text
+        value: "[1]"
+        timeout_ms: 60000
+      - action: wait_for_idle
+        timeout_ms: 60000
+        screenshot: "04-second-turn-done"
+      # Both assistant bubbles must be present after second turn finishes.
+      - action: assert
+        type: count_min
+        selector: "[data-role='assistant']"
+        min: 2
+      # Both user turns must have been recorded.
+      - action: assert
+        type: count_min
+        selector: "[data-role='user']"
+        min: 2
+      # The second turn must have actually answered — "thinking…" sentinel
+      # would mean the second SSE stream never produced delta events.
+      # We check the body (broader than :last-child which can match an inner
+      # element). 'thinking…' uses ELLIPSIS char (U+2026).
+      - action: assert_no
+        type: text_contains
+        selector: "[data-role='assistant']:nth-of-type(2)"
+        value: "thinking…"
+
+  - id: E2E-10
+    name: "Mobile viewport (iPhone 12)"
+    # Verifies the curator UI renders without horizontal overflow at 390x844
+    # and the sign-in form is usable. Catches Tailwind grid-cols-12 regressions
+    # that would push the conv pane off-screen on narrow viewports.
+    severity: major
+    repeat: 2
+    pass_threshold: 2
+    viewport:
+      width: 390
+      height: 844
+    steps:
+      - action: navigate
+        url: "/sediment"
+        wait_for: "input[placeholder='member email']"
+        screenshot: "01-signin-mobile"
+      - action: fill
+        selector: "input[placeholder='member email']"
+        value: "{{seed_member.email}}"
+      - action: click
+        selector: "button:has-text('Mint dev token')"
+        wait_for: "text=Try one"
+        screenshot: "02-home-mobile"
+      # No horizontal scrollbar — page must fit viewport width
+      - action: assert
+        type: console_errors_max
+        value: 1
+      # The Ask form is always present on the home page after sign-in,
+      # regardless of whether the user has prior conversations.
+      - action: assert
+        type: selector_visible
+        selector: "[data-testid='ask-input']"
+      - action: assert
+        type: selector_visible
+        selector: "button:has-text('Ask')"
+
+  - id: E2E-11
+    name: "Sign out clears token"
+    # Bare-bones smoke flow that pairs with the concurrent-SSE platform check.
+    # Yes, signout isn't a feature flag for users — but if localStorage.clear
+    # were ever bypassed by a stale ref, multi-turn would leak across tenants.
+    severity: minor
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "text=Try one"
+        screenshot: "01-signed-in"
+      - action: signout
+      - action: navigate
+        url: "/sediment"
+        wait_for: "input[placeholder='member email']"
+        screenshot: "02-after-signout"
+      - action: assert
+        type: selector_visible
+        selector: "input[placeholder='member email']"

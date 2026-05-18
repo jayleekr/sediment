@@ -1,0 +1,145 @@
+# UX Rubric — visual + UX scoring for E2E screenshots
+#
+# Adapted from deck-critic (slide visual scoring) + plan-design-review (web UX).
+# Used by curator-ux-critic agent. Each axis is 1-5; overall = round(mean*2) capped at 9.
+#
+# Targets are not "release blockers" — they're guidance for ux-loop iteration.
+# The loop dispatches curator-coder when any axis < 4 with concrete findings.
+
+version: 1
+target_overall: 8           # ux-loop converges when overall >= 8 (mean 4.0 across axes)
+target_per_axis: 4          # any axis below this triggers a fix dispatch
+max_overall: 9              # 10 is never awarded (deck-critic convention)
+
+axes:
+  - id: visual_hierarchy
+    weight: 1.0
+    description: |
+      Is the primary action / message visually dominant? Does the user's eye
+      go to the most important element first?
+    evaluators:
+      - "Primary CTA (Mint dev token, Send, Ask) larger / higher-contrast than secondary actions"
+      - "Headings (h1/h2) clearly distinct from body text — minimum 1.25x font ratio"
+      - "F-pattern / Z-pattern reading flow respected on landing pages"
+    deductions:
+      - "All buttons same size and color → -1"
+      - "Body text larger than heading → -2"
+      - "No visible focal point in hero/empty state → -1"
+
+  - id: color_contrast
+    weight: 1.0
+    description: |
+      WCAG 2.2 AA contrast: text on background ≥ 4.5:1 (normal), ≥ 3:1 (large
+      text and UI components). Semantic colors used consistently.
+    evaluators:
+      - "Body text passes 4.5:1 contrast on its background"
+      - "Disabled / muted text still ≥ 3:1 to remain perceivable"
+      - "Error red distinct from success green (not red-only feedback)"
+    deductions:
+      - "Light gray text on white background (< 4.5:1) → -2"
+      - "Color-only error indication (no icon/text) → -1"
+      - "Brand color used for both error AND success → -2"
+
+  - id: typography
+    weight: 1.0
+    description: |
+      No overflow, proper line-height, readable sizes, font scale consistent.
+      Korean + English render correctly with sensible mixed-script line height.
+    evaluators:
+      - "No truncated text mid-word in tables / cards"
+      - "Line-height ≥ 1.4 for body, ≥ 1.2 for headings"
+      - "Korean text at body size ≥ 14px, English ≥ 13px"
+      - "Monospace used for code / IDs only"
+    deductions:
+      - "Text overflow with ellipsis where context is critical → -1"
+      - "Body text < 13px → -1"
+      - "More than 3 distinct font weights on the same screen → -1"
+
+  - id: layout_consistency
+    weight: 1.0
+    description: |
+      Grid alignment, consistent margins/padding, predictable component
+      placement across pages. Nav placement stable across pages.
+    evaluators:
+      - "Header (AI Curator + Chat / Library / Members) renders identically on every page"
+      - "Card padding consistent across components (e.g. 16px or 24px, not mixed)"
+      - "Tables / lists use uniform row spacing"
+    deductions:
+      - "Header drifts horizontally between pages → -1"
+      - "Cards have inconsistent shadow / border on the same page → -1"
+
+  - id: empty_state
+    weight: 0.8
+    description: |
+      Empty / loading / error states designed (not blank). Actionable CTAs
+      and copy that helps the user proceed.
+    evaluators:
+      - "Empty conversation list shows guidance ('No conversations yet — start one')"
+      - "Empty search shows examples or suggestions"
+      - "Loading state shows skeleton / spinner, not a flash of nothing"
+    deductions:
+      - "Truly blank state with no copy or CTA → -2"
+      - "Generic 'Loading...' instead of skeleton / contextual → -1"
+
+  - id: feedback_loops
+    weight: 0.8
+    description: |
+      User actions produce visible feedback within 100ms perceived. Form
+      submissions show progress. Streaming chat feels responsive.
+    evaluators:
+      - "Sign-in button shows pressed / loading state when clicked"
+      - "Streaming chat shows tokens appearing progressively (not big-bang)"
+      - "Filter button click visibly toggles active state"
+    deductions:
+      - "Submit button has no loading indicator → -1"
+      - "Streaming response appears all-at-once → -2"
+
+  - id: accessibility
+    weight: 1.0
+    description: |
+      Keyboard navigable, focus visible, touch targets ≥ 44px, semantic HTML,
+      alt text. WCAG 2.2 AA.
+    evaluators:
+      - "Interactive elements ≥ 44x44 px hit area (visible in screenshot via padding)"
+      - "Focus ring visible (the post-click screenshot should show a ring on the focused element)"
+      - "Form fields have visible labels, not placeholder-only"
+    deductions:
+      - "Touch target < 44px → -2"
+      - "Placeholder-only labels on critical fields → -1"
+      - "Missing semantic landmarks (no header / main / nav) → -1"
+
+  - id: aesthetic_polish
+    weight: 0.8
+    description: |
+      Anti-AI-slop: deliberate design, restrained palette, considered details.
+      No "obviously generated" cliches (gradients everywhere, generic emoji,
+      lorem-ipsum-style filler, bad placeholder content).
+    evaluators:
+      - "Palette ≤ 4 hues plus grays"
+      - "Spacing tokens clearly used (8 / 16 / 24 / 32, not random pixel values)"
+      - "Real domain content — no 'Lorem ipsum' / 'Sample item' / placeholder strings"
+      - "Korean copy reads natural, not machine-translated stiff"
+    deductions:
+      - "Lorem ipsum or 'Click here' filler visible → -2"
+      - "Random gradient backgrounds with no purpose → -1"
+      - "Inconsistent emoji usage in serious UI → -1"
+
+# ──────────────── overall calc ────────────────
+# Same formula as deck-critic to stay consistent across critic agents:
+#   raw = round(mean * 2)
+#   overall = min(raw, 9)
+formula: |
+  weighted_sum = sum(score[i] * weight[i])
+  weighted_total = sum(weight[i])  # 7.4
+  weighted_mean = weighted_sum / weighted_total   # 1.0–5.0
+  raw = round(weighted_mean * 2)
+  overall = min(raw, 9)
+
+# ──────────────── known noise to ignore ────────────────
+# E2E test screenshots include some artifacts unrelated to UX quality.
+# Critic should NOT deduct for these.
+noise_ignore:
+  - "OpenClaw 'N' bubble bottom-left (browser extension overlay)"
+  - "purple loading bar at top (Next.js 16 turbopack progress)"
+  - "Dev-only badges like 'local · MVP'"
+  - "test-data conversation titles like 'sec-check' or 'validator-msg' (artifacts of validator runs)"
