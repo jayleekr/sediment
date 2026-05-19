@@ -62,6 +62,37 @@ export async function mintDevToken(email: string): Promise<{ token: string; disp
   return data;
 }
 
+/* ── Activation Engine sensors (ACTIVATION_ENGINE.md §5) ── */
+
+export type CiteExportTarget = "clipboard" | "@teammate" | "thread-share";
+
+/** "cite into work" — the magic-number signal. Best-effort telemetry:
+ *  never blocks or surfaces an error to the user. */
+export async function citeExport(
+  target: CiteExportTarget,
+  opts: { message_id?: string; citation_ref?: string } = {}
+): Promise<void> {
+  try {
+    await api("/api/v1/events/cite-export", {
+      method: "POST",
+      body: JSON.stringify({ target, ...opts }),
+    });
+  } catch {
+    /* sensor failure must not affect the user */
+  }
+}
+
+export type Freshness = {
+  last_ingest_ts: string | null;
+  seconds_ago: number | null;
+  stale: boolean;
+  note?: string;
+};
+
+export async function getFreshness(): Promise<Freshness> {
+  return api<Freshness>("/api/v1/vault/freshness");
+}
+
 export type Conversation = {
   id: string;
   user_id: string | null;

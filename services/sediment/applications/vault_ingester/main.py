@@ -296,27 +296,6 @@ async def webhook_ingest(request: Request):
              deleted=len(deleted), skipped=skipped)
     return {**result, "n_ingested": n_ok, "n_deleted": len(deleted),
             "n_skipped": skipped, "ref": req.ref}
-
-
-@app.get("/v1/vault/freshness")
-async def vault_freshness():
-    """Last successful vault ingest — drives the 'updated N min ago' badge so
-    a stale vault is visible, not silent (the #1 thing that kills dogfood)."""
-    async with service_session() as s:
-        r = await s.execute(text("""
-            SELECT ts, payload FROM events
-            WHERE kind = 'vault.ingest'
-            ORDER BY ts DESC LIMIT 1
-        """))
-        row = r.first()
-    if not row:
-        return {"last_ingest_ts": None, "seconds_ago": None,
-                "stale": True, "note": "no vault.ingest yet — feed pipeline not run"}
-    ts = row[0]
-    age = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
-    return {
-        "last_ingest_ts": ts.isoformat(),
-        "seconds_ago": int(age),
-        "stale": age > 24 * 3600,            # > 1 day with no merge-ingest
-        "last": row[1],
-    }
+    # NOTE: the freshness READ endpoint lives on the PLATFORM
+    # (routers/vault.py → GET /api/v1/vault/freshness), not here — nginx only
+    # routes /webhook/ to this ingester, so a read here is browser-unreachable.

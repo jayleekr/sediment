@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { api, type Citation, type Message } from "../../lib/api";
+import { api, citeExport, type Citation, type Message } from "../../lib/api";
 import { streamCurator } from "../../lib/sse";
 
 type StreamState = {
@@ -22,7 +22,14 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [stream, setStream] = useState<StreamState>({ status: "", citations: [], buffer: "", done: true });
+  // S3(a) signal: when on, queries are tagged task_tag='owned'. The concierge
+  // sets this for the member's one owned task; persisted per browser.
+  const [ownedMode, setOwnedMode] = useState(false);
   const aborter = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setOwnedMode(localStorage.getItem("sediment.owned_task") === "1");
+  }, []);
 
   async function load() {
     const data = await api<{ conversation: any; messages: Message[] }>(
@@ -78,7 +85,8 @@ export default function ConversationPage() {
           await load(); // re-pull messages so citations are persisted
         },
       },
-      aborter.current.signal
+      aborter.current.signal,
+      ownedMode ? "owned" : undefined
     );
   }
 
@@ -119,6 +127,17 @@ export default function ConversationPage() {
             Send
           </button>
         </form>
+        <label className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+          <input
+            type="checkbox"
+            checked={ownedMode}
+            onChange={(e) => {
+              setOwnedMode(e.target.checked);
+              localStorage.setItem("sediment.owned_task", e.target.checked ? "1" : "0");
+            }}
+          />
+          🎯 This is my owned-task lookup (replacing grep / Drive / Discord)
+        </label>
       </main>
 
       <aside className="col-span-12 md:col-span-4">
@@ -190,8 +209,28 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
   const [body, setBody] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const hasRef = Boolean(citation.ref);
+  const citeText = `[${citation.ref || citation.display_name || "ref"}]${
+    citation.content ? " " + citation.content : ""
+  }`;
+
+  async function copyCite() {
+    try {
+      await navigator.clipboard.writeText(citeText);
+    } catch {
+      /* clipboard may be blocked; still log the intent */
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+    citeExport("clipboard", { citation_ref: citation.ref || undefined });
+  }
+
+  function shareCite() {
+    navigator.clipboard?.writeText(citeText).catch(() => {});
+    citeExport("thread-share", { citation_ref: citation.ref || undefined });
+  }
 
   async function openModal() {
     if (!hasRef) return;
@@ -245,6 +284,22 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
             <div className="mt-1 line-clamp-2 text-xs text-neutral-700">{citation.content}</div>
           )}
         </button>
+        <div className="mt-1 flex gap-3 text-xs">
+          <button
+            type="button"
+            onClick={copyCite}
+            className="text-neutral-500 hover:text-neutral-900"
+          >
+            {copied ? "✓ copied" : "📋 cite"}
+          </button>
+          <button
+            type="button"
+            onClick={shareCite}
+            className="text-neutral-500 hover:text-neutral-900"
+          >
+            ↗ share
+          </button>
+        </div>
       </li>
 
       {open && (

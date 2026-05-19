@@ -17,7 +17,8 @@ export async function streamCurator(
   conv_id: string,
   query: string,
   h: SSEHandlers,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  taskTag?: string | null
 ): Promise<void> {
   const token = getToken();
   const res = await fetch(`${LANGGRAPH_BASE}/v1/sediment/stream`, {
@@ -26,7 +27,8 @@ export async function streamCurator(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ conv_id, query }),
+    // task_tag='owned' marks an owned-task lookup → S3(a) signal (§5)
+    body: JSON.stringify({ conv_id, query, task_tag: taskTag || undefined }),
     signal,
   });
   if (!res.ok || !res.body) {
