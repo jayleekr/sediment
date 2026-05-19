@@ -14,7 +14,29 @@ import frontmatter
 import httpx
 
 SCRIPT = Path(__file__).resolve()
-REPO_ROOT = SCRIPT.parents[5]  # scripts→curator→services→ai-curator→products→mvp
+
+
+def _vault_root() -> Path:
+    """The checkout that holds the VAULT CONTENT (research/, web/src/content/,
+    novels/, …). Post repo-split that is `jayleekr/hypeprooflab`, NOT this
+    product repo — so it must be given explicitly. The old hardcoded
+    parents[5] assumed the pre-split monorepo and is wrong here.
+    """
+    env = os.environ.get("SEDIMENT_VAULT_ROOT")
+    if env:
+        return Path(env).resolve()
+    # Back-compat: still inside a monorepo that has research/daily? use it.
+    for p in SCRIPT.parents:
+        if (p / "research" / "daily").is_dir() or (p / "web" / "src" / "content").is_dir():
+            return p
+    raise SystemExit(
+        "SEDIMENT_VAULT_ROOT unset and no vault content found above "
+        f"{SCRIPT}. Point it at a hypeprooflab checkout: "
+        "SEDIMENT_VAULT_ROOT=/path/to/hypeprooflab"
+    )
+
+
+REPO_ROOT = _vault_root()
 sys.path.insert(0, str(SCRIPT.parents[1]))
 
 from lab_lib.db import service_session  # noqa: E402
