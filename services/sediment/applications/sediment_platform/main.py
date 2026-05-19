@@ -13,7 +13,7 @@ from lab_lib.tenant_middleware import TenantContextMiddleware
 
 from .routers import (
     auth, conversations, library, members, ingest_proxy,
-    feedback, costs, admin, onboarding, billing,
+    feedback, costs, admin, onboarding, billing, cite_export,
 )
 
 configure_logging()
@@ -48,6 +48,7 @@ app.include_router(library.router, prefix="/api/v1/library", tags=["library"])
 app.include_router(members.router, prefix="/api/v1/members", tags=["members"])
 app.include_router(ingest_proxy.router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
+app.include_router(cite_export.router, prefix="/api/v1/events/cite-export", tags=["activation"])
 app.include_router(costs.router, prefix="/api/v1/costs", tags=["costs"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(onboarding.router, prefix="/api/v1/onboard", tags=["onboarding"])

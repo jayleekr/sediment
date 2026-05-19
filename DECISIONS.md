@@ -96,5 +96,26 @@
 
 ---
 
-*Last updated: 2026-05-08*
-*Status: Multi-provider abstraction landed. Live test verified P0+P1 with offline mock.*
+## Dogfood activation gate + ship-gate (2026-05-19, ratified by Jay)
+
+Ratifies the Activation Engine (`ACTIVATION_ENGINE.md`, overnight loop v4 9/9).
+Supersedes **only the adoption clause** of `PHASE_5_5_DOGFOOD_GATE.md`.
+
+| # | 결정 | 비준 |
+|---|---|---|
+| A | Adoption verdict = **S3≥5/8 + S4≥3/8** (was DAU≥5/8). Criteria 5/6/7 (DAU/query/turns) → diagnostic-only; criterion 9 (NPS) → absorbed into S4; criteria 1–4/8/10 stay hard pass/fail. S3 is judgement-assisted → **Jay override mandatory on any S3-borderline user** | ✅ |
+| B | Per-member owned-task map (§4 Week-0 draft) approved as the working map, **each confirmed 1:1 with the member in Week-0** | ✅ |
+| C | Champions: **Ryan (content) + JY (eng)**. (Ring-2 entry needs ≥1 non-builder champion added — noted.) | ✅ |
+| D | **Ship-gate (the teeth) — HARD LINE:** demo / design-partner discovery is allowed early, but **no paying or commitment-bearing external tenant until `S3≥5/8` (Ring 1) AND `S3+` from ≥1 non-builder (Ring 2)**. Aligned with `ACTIVATION_ENGINE.md` §7 ring model (Ring 3 exit = paying-intent + non-builder S3+). | ✅ |
+| E | Magic-number (`≥5 cite-into-work/10d`) and S3 threshold `X` are **placeholders**; Week-1 instrumentation **replaces** them with measured values, locked at Week-1 exit. Neither may gate until locked. | ✅ |
+
+> **Why D matters most for the big goal.** North star (2026-06-end): Sediment
+> = the Lab's living memory it can't work without + demo-able to a first
+> external tenant. D is not a brake on that — it prevents burning the *first*
+> design partner on a tool that hasn't yet changed internal behaviour (the
+> single most expensive early-SaaS mistake).
+
+---
+
+*Last updated: 2026-05-19*
+*Status: Multi-provider abstraction landed. Dogfood activation gate + ship-gate ratified (engine build begins).*

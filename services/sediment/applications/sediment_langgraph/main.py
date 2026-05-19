@@ -57,6 +57,10 @@ async def healthz():
 class StreamReq(BaseModel):
     conv_id: str
     query: str
+    # 'owned' marks an owned-task lookup — the S3(a) substitution signal
+    # (ACTIVATION_ENGINE.md §5). Set by the concierge at session start or an
+    # in-session toggle. Optional; absence degrades S3(a) to self-report only.
+    task_tag: str | None = None
 
 
 def _sse(event: str, data) -> str:
@@ -113,6 +117,18 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
         # before the post-DONE `await _persist_message(...)` runs. Persisting
         # before DONE guarantees the row is written.
         await _persist_message(identity.tenant_id, state["conv_id"], citations, accumulator)
+
+        # Canonical 'query' activity event. Nothing else writes kind='query';
+        # p5_dogfood.py + p5_activation.py both read it (it was previously
+        # never emitted). Best-effort — a logging failure must not break the
+        # answer the user already received.
+        try:
+            await _record_query_event(
+                identity, state["conv_id"], state["query"],
+                state.get("task_tag"), intent, len(citations),
+            )
+        except Exception:
+            log.exception("query_event.record_failed")
 
         yield "data: [DONE]\n\n"
 
@@ -244,6 +260,29 @@ async def _persist_message(tenant_id: str, conv_id: str, citations: list[dict], 
                         {"cid": conv_id})
 
 
+async def _record_query_event(
+    identity: Identity, conv_id: str, query: str,
+    task_tag: str | None, intent: str, n_citations: int,
+):
+    """Write the canonical kind='query' event (query text NOT stored — only
+    length, intent, citation count, and the task_tag). task_tag='owned' is
+    the owned-task substitution signal counted by S3(a)."""
+    async with app_session(identity.tenant_id) as s:
+        await s.execute(text("""
+            INSERT INTO events (tenant_id, source, kind, member_id, payload)
+            VALUES (current_tenant_id(), 'web', 'query', :mid, CAST(:p AS jsonb))
+        """), {
+            "mid": identity.member_id,
+            "p": json.dumps({
+                "conv_id": conv_id,
+                "task_tag": task_tag,
+                "intent": intent,
+                "q_len": len(query or ""),
+                "n_citations": n_citations,
+            }),
+        })
+
+
 @app.post("/v1/sediment/stream")
 async def stream(req: StreamReq, identity: Identity = Depends(require_identity)):
     state = {
@@ -251,6 +290,7 @@ async def stream(req: StreamReq, identity: Identity = Depends(require_identity))
         "member_id": identity.member_id,
         "conv_id": req.conv_id,
         "query": req.query,
+        "task_tag": req.task_tag,
         "answer_chunks": [],
     }
     return StreamingResponse(
