@@ -17,8 +17,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const target = process.env.SEDIMENT_DEV_API_PROXY;
     if (!target) return [];
+    // Scoped to /api/v1/* (backend) and /v1/* (langgraph SSE) ONLY.
+    // Must NOT catch /api/auth/* — those are NextAuth's own routes and
+    // have to be served by Next, not proxied to Fly.
     return [
-      { source: "/api/:path*", destination: `${target}/api/:path*` },
+      { source: "/api/v1/:path*", destination: `${target}/api/v1/:path*` },
       { source: "/v1/:path*", destination: `${target}/v1/:path*` },
     ];
   },
