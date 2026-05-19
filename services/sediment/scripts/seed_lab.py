@@ -10,10 +10,23 @@ import sys
 from pathlib import Path
 from sqlalchemy import text
 
-# Resolve paths: services/sediment/scripts/seed_lab.py → repo root is up 4 levels
+# Resolve data/members.json by walking up from this script. The old hardcoded
+# parents[5] assumed the pre-split monorepo layout
+# (mvp/products/sediment/services/curator/scripts/); after the 2026-05-18
+# repo split the layout is <repo>/services/sediment/scripts/, so search
+# instead of hardcoding — survives further moves.
 SCRIPT = Path(__file__).resolve()
-REPO_ROOT = SCRIPT.parents[5]  # mvp/  (scripts→curator→services→ai-curator→products→mvp)
-MEMBERS_JSON = REPO_ROOT / "data" / "members.json"
+
+
+def _find_members_json() -> Path:
+    for parent in SCRIPT.parents:
+        cand = parent / "data" / "members.json"
+        if cand.is_file():
+            return cand
+    raise FileNotFoundError(f"data/members.json not found above {SCRIPT}")
+
+
+MEMBERS_JSON = _find_members_json()
 
 sys.path.insert(0, str(SCRIPT.parents[1]))  # services/sediment/
 
@@ -47,10 +60,11 @@ async def upsert_tenant(s, slug: str, name: str) -> str:
 
 async def upsert_member(s, tenant_id: str, m: dict) -> str:
     r = await s.execute(text("""
-        INSERT INTO members (tenant_id, external_id, email, display_name, real_name, role, title, expertise, interests)
-        VALUES (:tid, :eid, :email, :dn, :rn, :role, :title, CAST(:exp AS jsonb), CAST(:int AS jsonb))
+        INSERT INTO members (tenant_id, external_id, github_login, email, display_name, real_name, role, title, expertise, interests)
+        VALUES (:tid, :eid, :gh, :email, :dn, :rn, :role, :title, CAST(:exp AS jsonb), CAST(:int AS jsonb))
         ON CONFLICT (tenant_id, email) DO UPDATE SET
           external_id = COALESCE(NULLIF(EXCLUDED.external_id, ''), members.external_id),
+          github_login = COALESCE(NULLIF(EXCLUDED.github_login, ''), members.github_login),
           display_name = EXCLUDED.display_name,
           real_name = EXCLUDED.real_name,
           role = EXCLUDED.role,
@@ -61,6 +75,7 @@ async def upsert_member(s, tenant_id: str, m: dict) -> str:
     """), {
         "tid": tenant_id,
         "eid": (m.get("id") or None) or None,  # empty string → NULL (NULL is exempt from UNIQUE)
+        "gh": (m.get("githubLogin") or None),   # GitHub OAuth identity (SSO); NULL if unmapped
         "email": m["email"],
         "dn": m["displayName"],
         "rn": m.get("realName"),
@@ -77,6 +92,11 @@ async def main():
     members = json.loads(MEMBERS_JSON.read_text())["members"]
 
     async with service_session() as s:
+        # Idempotent migration for DBs created before github_login existed
+        # (fresh installs get it + the UNIQUE from init.sql).
+        await s.execute(text(
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS github_login TEXT"
+        ))
         tid = await upsert_tenant(s, settings.default_tenant_slug, settings.default_tenant_name)
         log.info("seed.tenant", id=tid, slug=settings.default_tenant_slug)
         for m in members:

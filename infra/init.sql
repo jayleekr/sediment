@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS members (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   external_id  TEXT,                 -- e.g., Discord ID
+  github_login TEXT,                 -- GitHub OAuth login (SSO identity, email-independent)
   email        TEXT,
   display_name TEXT NOT NULL,
   real_name    TEXT,
@@ -80,7 +81,8 @@ CREATE TABLE IF NOT EXISTS members (
   avatar_url   TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, email),
-  UNIQUE (tenant_id, external_id)
+  UNIQUE (tenant_id, external_id),
+  UNIQUE (tenant_id, github_login)
 );
 CREATE INDEX IF NOT EXISTS members_tenant_idx ON members(tenant_id);
 

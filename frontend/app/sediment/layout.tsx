@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Providers from "./Providers";
 
 export const metadata = {
   title: "Sediment — HypeProof Lab",
@@ -26,7 +27,7 @@ export default function CuratorLayout({ children }: { children: ReactNode }) {
             <a href="/sediment/admin" className="hover:underline">Admin</a>
           </nav>
         </header>
-        {children}
+        <Providers>{children}</Providers>
       </div>
     </div>
   );
