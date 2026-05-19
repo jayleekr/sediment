@@ -16,6 +16,15 @@ primary_region = "nrt"   # Tokyo — closest Fly region to Korea
 [build]
   dockerfile = "../../Dockerfile"
 
+# Runs once per `fly deploy` in a temp machine with the new image + the app
+# secrets (DATABASE_URL). seed_lab is idempotent: it does the
+# `ALTER TABLE ... ADD COLUMN IF NOT EXISTS github_login` migration AND
+# upserts tenant+members from services/sediment/data/members.json. Non-zero
+# exit fails the deploy (correct for a migration gate). This is why nobody
+# ever has to `fly ssh console` to seed again — it's automatic on deploy.
+[deploy]
+  release_command = "sh -c 'cd /app/services/sediment && python -m scripts.seed_lab'"
+
 [env]
   # Public port that nginx binds to (matches Dockerfile EXPOSE).
   PUBLIC_PORT = "8080"

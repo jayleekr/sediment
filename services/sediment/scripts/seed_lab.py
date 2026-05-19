@@ -1,4 +1,9 @@
-"""Seed default tenant + members from ../../data/members.json.
+"""Seed default tenant + members from services/sediment/data/members.json.
+
+(Lives inside the service so it ships in the Docker image — root-level
+data/ is NOT in the build context. Resolved via upward search, so dev and
+container layouts both work. Runs automatically via fly.toml release_command
+on every deploy; also `make seed` locally.)
 
 Idempotent — safe to run multiple times.
 Run: make seed
