@@ -1,18 +1,22 @@
 {
   "loop": "sediment-internal-loop-hardening",
   "started": "2026-05-19T22:30:00+09:00",
+  "ended": "2026-05-19T23:20:00+09:00",
   "scope": "internal dogfood machinery only — NO Restruct / gated / Studio / pgvector",
-  "iteration": 1,
-  "score": 8,
-  "score_history": [8],
+  "iteration": 2,
+  "score": 9,
+  "score_history": [8, 9],
   "target_score": 9,
   "max_iterations": 6,
   "plateau_window": 3,
-  "status": "running",
-  "next_action": "iter 2 — re-critique (verify 3 BLOCKING resolved + tests sound); converge or fix",
+  "status": "done",
+  "termination_reason": "score >= 9 at iter 2 (critic: decision-ready for 5/28); all POLISH cleared",
+  "next_action": "none — converged. Jay reviews docs/dogfood/ + DOGFOOD_OVERNIGHT_SUMMARY.md tomorrow",
   "stop_after_kst": "2026-05-20T07:30:00+09:00",
-  "note": "Idempotent: once status=done, any fallback wakeup reads this and no-ops.",
+  "note": "Idempotent: any scheduled fallback wakeup now reads status=done and no-ops (designed self-heal).",
   "log": [
-    "2026-05-19T22:30 iter1: critic 8/9. Applied BLOCK-1 (silent artifact-drop flag), BLOCK-2 (genuine offline dry-run), BLOCK-3 (NULL conv_id IS NULL dedup), POLISH-2 (tenant-scoped freshness), POLISH-4 (dry_run_note) + tests/test_distill.py. Commit 8e3e70c pushed."
+    "2026-05-19T22:30 iter1: critic 8/9. Applied BLOCK-1/2/3 + POLISH-2/4 + tests/test_distill.py. Commit 8e3e70c pushed.",
+    "2026-05-19T23:05 iter2: critic 9/9 — all 3 BLOCKING verified resolved, test assertions hand-traced (pass), decision-ready. Cleared POLISH-A (Optional annotation), POLISH-B (pytest pythonpath — main turnkey risk), POLISH-D (dead since). Commit d400259 pushed.",
+    "2026-05-19T23:20 CONVERGED 8→9. status=done. Fallback wakeups now idempotent no-ops."
   ]
 }
