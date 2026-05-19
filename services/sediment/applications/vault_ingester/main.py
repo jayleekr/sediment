@@ -8,10 +8,13 @@ Uses service role (BYPASSRLS) since ingest is a system task.
 from __future__ import annotations
 import asyncio
 import datetime as _dt
+import hashlib
+import hmac
+import os
 import time
 from typing import Optional, Union
 import frontmatter
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -188,3 +191,132 @@ def _json(d):
 
 def _vec(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
+
+
+# ============================================================
+# P1-L1: GitHub push → vault freshness webhook
+# nginx already routes /webhook/ → this service (infra/deploy/nginx.conf).
+# The GitHub Action (.github/workflows/vault-ingest.yml) computes the changed
+# files and POSTs them here with content, so this endpoint never has to call
+# back to GitHub. Idempotent: ingest_document upserts by (tenant_id, ref).
+# ============================================================
+class WebhookFile(BaseModel):
+    path: str
+    content: Optional[str] = None      # None when deleted=True
+    deleted: bool = False
+
+
+class WebhookIngestReq(BaseModel):
+    ref: str = "unknown"               # git ref / sha, for the audit event
+    files: list[WebhookFile]
+
+
+async def _default_tenant_id() -> Optional[str]:
+    async with service_session() as s:
+        r = await s.execute(
+            text("SELECT id::text FROM tenants WHERE slug = :slug"),
+            {"slug": settings.default_tenant_slug},
+        )
+        row = r.first()
+        return row[0] if row else None
+
+
+def _verify_github_sig(raw: bytes, header: Optional[str]) -> bool:
+    """HMAC-SHA256 of the raw body against GITHUB_WEBHOOK_SECRET.
+    If the secret is unset, skip the check (start.sh already WARNs about this)
+    so local/un-provisioned envs still function — matches existing behaviour.
+    """
+    secret = os.environ.get("GITHUB_WEBHOOK_SECRET")
+    if not secret:
+        log.warning("webhook.no_secret — signature check skipped")
+        return True
+    if not header or not header.startswith("sha256="):
+        return False
+    expected = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, header)
+
+
+@app.post("/webhook/ingest")
+async def webhook_ingest(request: Request):
+    raw = await request.body()
+    if not _verify_github_sig(raw, request.headers.get("X-Hub-Signature-256")):
+        raise HTTPException(status_code=401, detail="bad webhook signature")
+    try:
+        req = WebhookIngestReq.model_validate_json(raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"bad payload: {e}")
+
+    tid = await _default_tenant_id()
+    if not tid:
+        raise HTTPException(status_code=500, detail="default tenant not found — run `make seed`")
+
+    # Canonical filters (imported, not re-implemented — stays in sync with the
+    # full-repo ingester).
+    from scripts.ingest_repo import _detect_type, _is_excluded  # noqa: E402
+
+    to_ingest: list[IngestDocReq] = []
+    deleted: list[str] = []
+    skipped = 0
+    for f in req.files:
+        parts = tuple(f.path.split("/"))
+        if not f.path.endswith(".md") or _is_excluded(parts):
+            skipped += 1
+            continue
+        if f.deleted:
+            deleted.append(f.path)
+        elif f.content is not None:
+            to_ingest.append(IngestDocReq(
+                tenant_id=tid, ref=f.path, type=_detect_type(f.path), body=f.content,
+            ))
+        else:
+            skipped += 1
+
+    result = {"ok": True}
+    if to_ingest:
+        result["ingested"] = await ingest_batch(IngestBatchReq(tenant_id=tid, docs=to_ingest))
+    for ref in deleted:
+        try:
+            await delete_chunks(tenant_id=tid, ref=ref)
+        except Exception as e:
+            log.warning("webhook.delete.fail", ref=ref, err=str(e))
+
+    n_ok = sum(1 for r in result.get("ingested", {}).get("results", []) if r.get("ok"))
+    # Freshness breadcrumb — queried by /v1/vault/freshness + surfaced in UI so
+    # staleness is visible, not silent (ACTIVATION_ENGINE.md P1 freshness metric).
+    async with service_session() as s:
+        await s.execute(text("""
+            INSERT INTO events (tenant_id, source, kind, payload)
+            VALUES (:tid, 'github', 'vault.ingest', CAST(:p AS jsonb))
+        """), {"tid": tid, "p": _json({
+            "ref": req.ref, "n_ingested": n_ok,
+            "n_deleted": len(deleted), "n_skipped": skipped,
+        })})
+
+    log.info("webhook.ingest.done", ref=req.ref, ingested=n_ok,
+             deleted=len(deleted), skipped=skipped)
+    return {**result, "n_ingested": n_ok, "n_deleted": len(deleted),
+            "n_skipped": skipped, "ref": req.ref}
+
+
+@app.get("/v1/vault/freshness")
+async def vault_freshness():
+    """Last successful vault ingest — drives the 'updated N min ago' badge so
+    a stale vault is visible, not silent (the #1 thing that kills dogfood)."""
+    async with service_session() as s:
+        r = await s.execute(text("""
+            SELECT ts, payload FROM events
+            WHERE kind = 'vault.ingest'
+            ORDER BY ts DESC LIMIT 1
+        """))
+        row = r.first()
+    if not row:
+        return {"last_ingest_ts": None, "seconds_ago": None,
+                "stale": True, "note": "no vault.ingest yet — feed pipeline not run"}
+    ts = row[0]
+    age = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
+    return {
+        "last_ingest_ts": ts.isoformat(),
+        "seconds_ago": int(age),
+        "stale": age > 24 * 3600,            # > 1 day with no merge-ingest
+        "last": row[1],
+    }

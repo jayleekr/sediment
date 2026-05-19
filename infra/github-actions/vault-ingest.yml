@@ -1,0 +1,78 @@
+# P1-L1 vault freshness — INSTALL THIS INTO THE REPO THAT HOLDS THE VAULT
+# CONTENT (jayleekr/hypeprooflab), at .github/workflows/vault-ingest.yml.
+# It is NOT for the sediment product repo — Sediment ingests hypeprooflab's
+# knowledge (research/, columns/, decisions, novels), so the push that must
+# trigger a re-ingest happens there.
+#
+# Repo secrets required (Settings → Secrets and variables → Actions):
+#   SEDIMENT_INGEST_URL     e.g. https://hypeproof-sediment.fly.dev
+#   SEDIMENT_WEBHOOK_SECRET must equal the Fly app's GITHUB_WEBHOOK_SECRET
+name: vault-ingest
+on:
+  push:
+    branches: [main]
+    paths:
+      - "research/**/*.md"
+      - "web/src/content/**/*.md"
+      - "novels/**/*.md"
+      - "products/**/*.md"
+      - "docs/**/*.md"
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # need before..after for the diff
+      - name: Build changed-file payload
+        id: payload
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          before = os.environ.get("BEFORE") or ""
+          after  = os.environ["AFTER"]
+          # First push / unknown before → diff against parent of `after`.
+          if not before or set(before) == {"0"}:
+              before = subprocess.run(
+                  ["git", "rev-parse", f"{after}^"], capture_output=True, text=True
+              ).stdout.strip() or after
+          diff = subprocess.run(
+              ["git", "diff", "--name-status", before, after],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          files = []
+          for line in diff:
+              parts = line.split("\t")
+              status, path = parts[0], parts[-1]
+              if not path.endswith(".md"):
+                  continue
+              if status.startswith("D"):
+                  files.append({"path": path, "content": None, "deleted": True})
+              else:
+                  try:
+                      with open(path, encoding="utf-8") as fh:
+                          files.append({"path": path, "content": fh.read(),
+                                        "deleted": False})
+                  except FileNotFoundError:
+                      pass
+          body = json.dumps({"ref": after, "files": files})
+          with open("payload.json", "w", encoding="utf-8") as fh:
+              fh.write(body)
+          print(f"{len(files)} changed markdown file(s)")
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+      - name: Sign + POST to Sediment ingester
+        run: |
+          [ -s payload.json ] || { echo "no payload"; exit 0; }
+          SIG=$(openssl dgst -sha256 -hmac "$SECRET" payload.json | sed 's/^.*= /sha256=/')
+          code=$(curl -sS -o resp.json -w '%{http_code}' \
+            -X POST "$URL/webhook/ingest" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data-binary @payload.json)
+          echo "HTTP $code"; cat resp.json; echo
+          [ "$code" = "200" ] || exit 1
+        env:
+          URL: ${{ secrets.SEDIMENT_INGEST_URL }}
+          SECRET: ${{ secrets.SEDIMENT_WEBHOOK_SECRET }}
