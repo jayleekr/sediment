@@ -20,16 +20,28 @@ import sys
 from sqlalchemy import text
 
 from lab_lib.db import service_session
+from lab_lib.settings import settings
 from validator.checks.p5_activation import OUT_DIR, compute_activation
 
 
 async def _freshness() -> dict:
     try:
         async with service_session() as s:
+            # Scope to the default tenant. service_session BYPASSRLS, so an
+            # unfiltered query would return the latest vault.ingest across
+            # ALL tenants — wrong the moment a 2nd tenant exists.
+            tr = await s.execute(
+                text("SELECT id::text FROM tenants WHERE slug = :sl"),
+                {"sl": settings.default_tenant_slug},
+            )
+            trow = tr.first()
+            if not trow:
+                return {"text": "vault: unknown (no default tenant)", "stale": True}
             r = await s.execute(text("""
                 SELECT ts, payload FROM events
-                WHERE kind = 'vault.ingest' ORDER BY ts DESC LIMIT 1
-            """))
+                WHERE kind = 'vault.ingest' AND tenant_id = :tid
+                ORDER BY ts DESC LIMIT 1
+            """), {"tid": trow[0]})
             row = r.first()
     except Exception as e:
         return {"text": "vault: unknown (DB unreachable)", "stale": True, "err": str(e)}

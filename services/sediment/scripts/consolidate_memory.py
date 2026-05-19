@@ -187,13 +187,25 @@ async def _resolve_owner(tenant_id: str, hint: Optional[str]) -> Optional[str]:
 
 async def _insert_decision(tenant_id: str, conv_id: str, topic: str,
                             body: str, status: str) -> Optional[str]:
-    """Insert or return existing id. Dedup key: (tenant_id, topic, conv_id)."""
+    """Insert or return existing id. Dedup key: (tenant_id, topic, conv_id).
+
+    conv_id is NULL for event-sourced decisions (Discord #weekly etc. via
+    distill.py). In SQL, `conv_id = NULL` is never true, so a plain equality
+    dedup would insert a fresh row on every re-run → unbounded duplicates.
+    Branch on NULL to use `IS NULL` (idempotent re-runs)."""
     async with service_session() as s:
-        existing = await s.execute(text("""
-            SELECT id::text FROM decisions
-            WHERE tenant_id = :tid AND topic = :topic AND conv_id = :cid
-            LIMIT 1
-        """), {"tid": tenant_id, "topic": topic, "cid": conv_id})
+        if conv_id is None:
+            existing = await s.execute(text("""
+                SELECT id::text FROM decisions
+                WHERE tenant_id = :tid AND topic = :topic AND conv_id IS NULL
+                LIMIT 1
+            """), {"tid": tenant_id, "topic": topic})
+        else:
+            existing = await s.execute(text("""
+                SELECT id::text FROM decisions
+                WHERE tenant_id = :tid AND topic = :topic AND conv_id = :cid
+                LIMIT 1
+            """), {"tid": tenant_id, "topic": topic, "cid": conv_id})
         row = existing.first()
         if row:
             return row[0]

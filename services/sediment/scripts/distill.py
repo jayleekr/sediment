@@ -179,7 +179,38 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                "dry_run": dry_run, "flags": []}
 
     if dry_run:
+        # Genuinely offline: NO DB, NO LLM, NO ingest. Exercise the pure
+        # artifact-shaping logic (_decision_markdown + _slug + ref idempotency
+        # + DRY_DIR write) on a synthetic fixture so the runbook's "proves
+        # logic, no DB/LLM needed" claim is actually true.
         DRY_DIR.mkdir(parents=True, exist_ok=True)
+        fixture = [{
+            "src": "discord/weekly/2026-05-19",
+            "title": "#weekly 2026-05-19 (dry-run synthetic fixture)",
+            "decisions": [
+                {"topic": "Sediment 레포 분리",
+                 "body": "AX 컨설팅 SaaS 경로 — 커뮤니티 모노레포에서 독립.",
+                 "status": "made"},
+                {"topic": "강의용 Studio는 해자가 아님",
+                 "body": "Cursor류 도구·연료 수집용. 해자는 Sediment 정제 능력.",
+                 "status": "made"},
+            ],
+        }]
+        for f in fixture:
+            summary["sources"] += 1
+            for d in f["decisions"]:
+                ref, md = _decision_markdown(d, f["src"], f["title"])
+                (DRY_DIR / f"{_slug(d['topic'])}.md").write_text(md)
+                summary["decisions"] += 1
+        summary["dry_run_note"] = (
+            f"OFFLINE: synthetic fixture only. Wrote {summary['decisions']} "
+            f"decision .md to {DRY_DIR}. NO DB/LLM/ingest touched; nothing "
+            "persisted to the vault. Counts are would-be, not stored."
+        )
+        summary["flags"].append(
+            "dry-run: synthetic fixture; live run needs DB + ANTHROPIC key + "
+            "the vault_ingester running")
+        return summary
 
     try:
         tid = await _default_tenant_id()
@@ -217,10 +248,8 @@ async def run(since_hours: int, dry_run: bool) -> dict:
             for d in decisions:
                 ref, md = _decision_markdown(d, s["src"], s["title"])
                 summary["decisions"] += 1
-                if dry_run:
-                    (DRY_DIR / f"{_slug(d.get('topic','d'))}.md").write_text(md)
-                    continue
-                # conv_id only when the source is a conversation
+                # conv_id only when the source is a conversation (events → NULL,
+                # _insert_decision handles the IS NULL dedup).
                 conv_id = s["src"].split("/", 1)[1] if s["src"].startswith("conv/") else None
                 did = await _insert_decision(
                     tid, conv_id, d.get("topic", ""), d.get("body", ""),
@@ -233,10 +262,13 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                     summary["artifacts"] += 1
                     if did:
                         await _link_source_artifact(did, aid)
+                else:
+                    # BLOCK-1: never let a dropped artifact be silent — the
+                    # whole point is RAG-citable decisions.
+                    summary["flags"].append(
+                        f"artifact ingest FAILED (decision not citable): "
+                        f"{d.get('topic','?')!r} — is vault_ingester running?")
             for a in actions:
-                if dry_run:
-                    summary["actions"] += 1
-                    continue
                 owner_id = await _resolve_owner(tid, a.get("owner_hint"))
                 did = topic_to_did.get(a.get("decision_topic") or "")
                 await _insert_action(tid, did, owner_id, a.get("description", ""),

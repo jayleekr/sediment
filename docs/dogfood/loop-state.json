@@ -1,0 +1,25 @@
+{
+  "loop": "sediment-internal-loop-hardening",
+  "started": "2026-05-19T22:30:00+09:00",
+  "scope": "internal dogfood machinery only — NO Restruct / gated / Studio / pgvector",
+  "deliverables": [
+    "scripts/distill.py",
+    "scripts/dogfood_digest.py",
+    "validator/checks/p5_activation.py",
+    "applications/sediment_platform/routers/cite_export.py",
+    "applications/sediment_platform/routers/vault.py",
+    "applications/sediment_langgraph/main.py (query event)",
+    "docs/dogfood/*"
+  ],
+  "iteration": 0,
+  "score": null,
+  "score_history": [],
+  "target_score": 9,
+  "max_iterations": 6,
+  "plateau_window": 3,
+  "status": "running",
+  "next_action": "iter 1 — critic reviews deliverables; apply blocking fixes + add offline unit tests; commit+push",
+  "stop_after_kst": "2026-05-20T07:30:00+09:00",
+  "note": "Idempotent: once status=done, any fallback wakeup reads this and no-ops.",
+  "log": []
+}
