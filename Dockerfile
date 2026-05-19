@@ -44,7 +44,8 @@ COPY --from=builder /app /app
 COPY infra/deploy/supervisord.conf /etc/supervisor/conf.d/sediment.conf
 COPY infra/deploy/nginx.conf       /etc/nginx/nginx.conf
 COPY infra/deploy/start.sh         /start.sh
-RUN chmod +x /start.sh
+COPY infra/deploy/release.sh       /release.sh
+RUN chmod +x /start.sh /release.sh
 
 # Default ports (override via Fly env). Public port is 8080 (nginx).
 ENV CURATOR_PLATFORM_PORT=10100 \

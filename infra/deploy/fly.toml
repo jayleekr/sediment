@@ -23,7 +23,9 @@ primary_region = "nrt"   # Tokyo — closest Fly region to Korea
 # exit fails the deploy (correct for a migration gate). This is why nobody
 # ever has to `fly ssh console` to seed again — it's automatic on deploy.
 [deploy]
-  release_command = "sh -c 'cd /app/services/sediment && python -m scripts.seed_lab'"
+  # release.sh mirrors start.sh's DB-URL normalization (the release machine
+  # does NOT run start.sh) then runs the idempotent seed.
+  release_command = "sh /release.sh"
 
 [env]
   # Public port that nginx binds to (matches Dockerfile EXPOSE).
