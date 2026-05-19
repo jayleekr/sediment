@@ -52,6 +52,10 @@ include = ["lab_lib*", "lab_platform*", "applications*", "scripts*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Put services/sediment (this rootdir) on sys.path so `from scripts.* import`
+# / `from lab_lib.* import` resolve regardless of the invocation directory
+# (POLISH-B: previously only worked via `cd services/sediment && python -m pytest`).
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 110

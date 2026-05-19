@@ -185,7 +185,7 @@ async def _resolve_owner(tenant_id: str, hint: Optional[str]) -> Optional[str]:
         return row[0] if row else None
 
 
-async def _insert_decision(tenant_id: str, conv_id: str, topic: str,
+async def _insert_decision(tenant_id: str, conv_id: Optional[str], topic: str,
                             body: str, status: str) -> Optional[str]:
     """Insert or return existing id. Dedup key: (tenant_id, topic, conv_id).
 

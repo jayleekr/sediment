@@ -174,7 +174,6 @@ async def _link_source_artifact(decision_id: str, artifact_id: str) -> None:
 
 
 async def run(since_hours: int, dry_run: bool) -> dict:
-    since = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=since_hours)
     summary = {"sources": 0, "decisions": 0, "artifacts": 0, "actions": 0,
                "dry_run": dry_run, "flags": []}
 
@@ -221,6 +220,7 @@ async def run(since_hours: int, dry_run: bool) -> dict:
         summary["flags"].append("default tenant not found — run `make seed`")
         return summary
 
+    since = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=since_hours)
     sources = (await _conversation_sources(tid, since)) + (await _event_sources(tid, since))
     summary["sources"] = len(sources)
     if not sources:
