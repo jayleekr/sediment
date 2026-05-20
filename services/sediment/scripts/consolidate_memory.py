@@ -31,74 +31,53 @@ from sqlalchemy import text
 
 from lab_lib.db import service_session
 from lab_lib.logging import configure_logging, get_logger
+from lab_lib.prompts import Strategy, load_strategy, render_messages
 from lab_lib.settings import settings
 
 configure_logging()
 log = get_logger("consolidate")
 
 
-# Anthropic tool schema — forces the LLM to return structured JSON.
-# Each conversation can produce 0..N decisions, each with 0..N actions.
-_EXTRACT_TOOL = {
-    "name": "record_decisions_and_actions",
-    "description": (
-        "Record any explicit decisions and follow-up actions surfaced in the "
-        "conversation. Skip passing remarks and questions. A 'decision' is a "
-        "commitment to a course of action ('we'll use X', 'let's go with Y', "
-        "'결정됨: …'). An 'action' is a task assigned to a person with optional "
-        "due date. ONLY emit items that the conversation clearly establishes; "
-        "do not invent."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "decisions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "topic": {"type": "string",
-                                   "description": "Short headline, max 80 chars."},
-                        "body": {"type": "string",
-                                  "description": "1-3 sentence rationale + outcome."},
-                        "status": {"type": "string",
-                                    "enum": ["open", "made", "reverted"],
-                                    "description": "Default 'made' when clearly decided."},
-                    },
-                    "required": ["topic", "body"],
-                },
-            },
-            "actions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "description": {"type": "string"},
-                        "owner_hint": {"type": "string",
-                                        "description": "Member display name or email "
-                                                       "if mentioned, else null."},
-                        "due_date": {"type": "string",
-                                      "description": "YYYY-MM-DD if explicit, else null."},
-                        "decision_topic": {"type": "string",
-                                            "description": "Which decision (from above) "
-                                                           "this action follows from, "
-                                                           "or null if standalone."},
-                    },
-                    "required": ["description"],
-                },
-            },
-        },
-        "required": ["decisions", "actions"],
-    },
-}
+# Default strategy when caller does not specify. Conversations (Web UI chat,
+# Cline sessions) use the generic chat_thread profile. Discord / docs / code
+# events override via the `strategy_name` kwarg in `_extract`.
+DEFAULT_DISTILL_STRATEGY = "chat_thread"
 
-_SYSTEM = (
-    "You are a meeting/chat memory consolidator. Extract decisions and actions "
-    "that were CLEARLY made in this conversation. If the conversation is just "
-    "Q&A with no commitments, return empty arrays — do not invent decisions to "
-    "fill the schema. Keep topics concrete (no 'figure out X' as a decision). "
-    "Output language: match the conversation's primary language."
-)
+
+def _default_strategy(tenant_id: str | None = None) -> Strategy:
+    """Load the workhorse distill strategy. Cached at the loader level."""
+    return load_strategy("distill", DEFAULT_DISTILL_STRATEGY, tenant_id=tenant_id)
+
+
+# Backward-compat shims for callers that imported the old constants
+# (notably scripts/distill.py). New code should call _default_strategy() or
+# pass `strategy=` into _extract directly.
+def _legacy_extract_tool() -> dict:
+    return _default_strategy().tool_schema
+
+
+def _legacy_system() -> str:
+    return _default_strategy().system_prompt
+
+
+# Legacy aliases (lazy) — old imports `from scripts.consolidate_memory import
+# _EXTRACT_TOOL, _SYSTEM` keep working without forcing the YAML loader at
+# module import time. PEP 562 module-level __getattr__ fires only when the
+# attribute is NOT already in the module namespace, so we must NOT pre-bind
+# these names.
+_legacy_cache: dict[str, object] = {}
+
+
+def __getattr__(name: str):
+    if name == "_EXTRACT_TOOL":
+        if name not in _legacy_cache:
+            _legacy_cache[name] = _legacy_extract_tool()
+        return _legacy_cache[name]
+    if name == "_SYSTEM":
+        if name not in _legacy_cache:
+            _legacy_cache[name] = _legacy_system()
+        return _legacy_cache[name]
+    raise AttributeError(name)
 
 
 async def _list_conversations(since: datetime, conv_id: Optional[str], tenant_slug: str) -> list[dict]:
@@ -146,29 +125,79 @@ async def _already_consolidated(tenant_id: str, conv_id: str) -> bool:
         return r.first() is not None
 
 
-async def _extract(messages: list[dict]) -> dict:
+async def _extract(
+    messages: list[dict],
+    *,
+    strategy: Strategy | None = None,
+    strategy_name: str | None = None,
+    tenant_id: str | None = None,
+) -> dict:
+    """Extract decisions + actions from a transcript via Anthropic tool-use.
+
+    Args:
+      messages:      [{"role": "user"|"assistant", "content": str}, ...]
+      strategy:      Pre-loaded Strategy (preferred — caller picks per-source).
+      strategy_name: If `strategy` is None, load this strategy by name.
+      tenant_id:     Used only when loading a strategy by name (for tenant
+                     addendum). Ignored when `strategy` is provided.
+
+    Returns dict shape:
+      {"decisions": [...], "actions": [...], "_meta": {"prompt_version": ...}}
+
+    `_meta.prompt_version` lets callers stamp the extraction provenance on
+    persisted artifacts (events.payload.distill_meta.prompt_version) so a
+    later prompt improvement can trigger retroactive re-distill.
+    """
     if not settings.anthropic_api_key or settings.anthropic_api_key == "sk-ant-...":
         raise RuntimeError("ANTHROPIC_API_KEY not configured")
-    from anthropic import AsyncAnthropic
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    if strategy is None:
+        strategy = load_strategy(
+            "distill", strategy_name or DEFAULT_DISTILL_STRATEGY,
+            tenant_id=tenant_id,
+        )
+
     transcript = "\n\n".join(
         f"[{m['role']}] {m['content']}" for m in messages if (m.get("content") or "").strip()
     )
-    if len(transcript) < 50:
-        return {"decisions": [], "actions": []}
+    empty = {"decisions": [], "actions": [],
+             "_meta": {"prompt_version": strategy.prompt_version,
+                       "reason": "transcript_too_short"}}
+    if len(transcript) < strategy.min_body_chars:
+        return empty
+
+    from anthropic import AsyncAnthropic
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    msgs = render_messages(strategy, user_text=transcript[:32000])
     resp = await client.messages.create(
         model=settings.llm_model_default,
         max_tokens=2048,
-        system=_SYSTEM,
-        tools=[_EXTRACT_TOOL],
-        tool_choice={"type": "tool", "name": _EXTRACT_TOOL["name"]},
-        messages=[{"role": "user", "content": transcript[:32000]}],
+        system=strategy.system_prompt,
+        tools=[strategy.tool_schema],
+        tool_choice={"type": "tool", "name": strategy.tool_schema["name"]},
+        messages=msgs,
     )
-    # Walk content blocks for the tool_use block
+    # Walk content blocks for the tool_use block.
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use":
-            return block.input  # already a dict per Anthropic SDK
-    return {"decisions": [], "actions": []}
+            result = dict(block.input) if isinstance(block.input, dict) else {}
+            # Filter decisions below the strategy's confidence_threshold.
+            # `confidence` is an optional field — if absent, default to 1.0
+            # (treat as confident; the LLM didn't mark uncertainty).
+            decisions = []
+            for d in (result.get("decisions") or []):
+                c = float(d.get("confidence", 1.0))
+                if c >= strategy.confidence_threshold:
+                    decisions.append(d)
+            result["decisions"] = decisions
+            result["actions"] = list(result.get("actions") or [])
+            result["_meta"] = {
+                "prompt_version": strategy.prompt_version,
+                "threshold": strategy.confidence_threshold,
+            }
+            return result
+    return {"decisions": [], "actions": [],
+            "_meta": {"prompt_version": strategy.prompt_version,
+                      "reason": "no_tool_call_in_response"}}
 
 
 async def _resolve_owner(tenant_id: str, hint: Optional[str]) -> Optional[str]:

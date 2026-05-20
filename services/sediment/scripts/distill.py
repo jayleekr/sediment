@@ -35,10 +35,9 @@ from sqlalchemy import text
 
 from lab_lib.db import service_session
 from lab_lib.logging import configure_logging, get_logger
+from lab_lib.prompts import load_strategy
 from lab_lib.settings import settings
 from scripts.consolidate_memory import (
-    _EXTRACT_TOOL,  # noqa: F401  (kept for parity / future direct use)
-    _SYSTEM,        # noqa: F401
     _extract,
     _insert_action,
     _insert_decision,
@@ -50,11 +49,31 @@ log = get_logger("distill")
 
 INGESTER_URL = f"http://localhost:{settings.vault_ingester_port}/v1/ingest/document"
 
-# Highest-value first. #잡담 is intentionally excluded (noise — plan Diagram 3).
-GOOD_DISCORD_CHANNELS = {
-    "weekly", "daily-research", "인사이트-공유", "content-pipeline",
-}
+# v0.3 design (docs/design/collection-and-distillation.md §4):
+# CAPTURE is wide (all channels, no allow-list). Distill applies signal-to-
+# noise gates at Gate 2 (per-channel governance config) + Gate 3 (LLM
+# confidence threshold inside the strategy YAML). The old hard-coded
+# GOOD_DISCORD_CHANNELS set has been removed.
+#
+# Channel routing → strategy:
+#   - #meeting-notes  → meeting_transcript  (Gemini-produced summaries)
+#   - any other       → chat_thread          (general Discord/Slack threads)
+# Caller may force a specific strategy via env STRATEGY_OVERRIDE for A/B tests.
+MEETING_CHANNELS = {"meeting-notes", "weekly"}
+
 DRY_DIR = Path(__file__).resolve().parents[3] / "output" / "dogfood" / "distilled"
+
+
+def _strategy_for_discord_channel(channel: str) -> str:
+    """Map a Discord channel name to the appropriate distill strategy.
+
+    Both `weekly` (Jay's pre-existing meeting summary channel) and
+    `meeting-notes` (the canonical Gemini-summary channel) route to the
+    meeting_transcript strategy. Everything else uses the noisier
+    chat_thread strategy with a higher confidence floor.
+    """
+    ch = channel.lstrip("#").lower()
+    return "meeting_transcript" if ch in MEETING_CHANNELS else "chat_thread"
 
 
 def _slug(s: str) -> str:
@@ -90,13 +109,20 @@ async def _conversation_sources(tid: str, since: _dt.datetime) -> list[dict]:
             """), {"cid": cid})
             msgs = [{"role": m[0], "content": m[1]} for m in mr]
             if msgs:
-                out.append({"src": f"conv/{cid}", "title": title, "messages": msgs})
+                out.append({
+                    "src": f"conv/{cid}",
+                    "title": title,
+                    "strategy": "chat_thread",  # Web/Cline chat — same noise profile
+                    "messages": msgs,
+                })
         return out
 
 
 async def _event_sources(tid: str, since: _dt.datetime) -> list[dict]:
-    """NEW path: high-value Discord captures grouped per (channel, day) into a
-    transcript. This is the input break that was never wired."""
+    """All-channels Discord capture per v0.3 design. Groups events per
+    (channel, day) into a transcript. Each group carries a `strategy` field
+    so the distill loop can pick chat_thread vs meeting_transcript per source.
+    """
     async with service_session() as s:
         r = await s.execute(text("""
             SELECT payload, ts FROM events
@@ -108,7 +134,8 @@ async def _event_sources(tid: str, since: _dt.datetime) -> list[dict]:
     for payload, ts in rows:
         p = payload if isinstance(payload, dict) else json.loads(payload or "{}")
         ch = str(p.get("channel") or p.get("channel_name") or "").lstrip("#")
-        if ch not in GOOD_DISCORD_CHANNELS:
+        if not ch:
+            # No channel attribution — skip (cannot route strategy).
             continue
         day = (ts.date().isoformat() if hasattr(ts, "date") else str(ts)[:10])
         who = p.get("author") or p.get("user") or p.get("author_name") or "?"
@@ -120,6 +147,8 @@ async def _event_sources(tid: str, since: _dt.datetime) -> list[dict]:
         out.append({
             "src": f"discord/{ch}/{day}",
             "title": f"#{ch} {day}",
+            "channel": ch,
+            "strategy": _strategy_for_discord_channel(ch),
             "messages": [{"role": "user", "content": "\n".join(lines)}],
         })
     return out
@@ -235,15 +264,50 @@ async def run(since_hours: int, dry_run: bool) -> dict:
         )
         return summary
 
+    # Cache loaded strategies — both meeting_transcript + chat_thread are
+    # hot in any meaningful run. Loading is cheap (lru_cache on _read_yaml)
+    # but capturing references here keeps logging coherent.
+    strategy_cache: dict[str, object] = {}
+
+    def _get_strategy(name: str):
+        if name not in strategy_cache:
+            strategy_cache[name] = load_strategy("distill", name, tenant_id=tid)
+        return strategy_cache[name]
+
+    # Allow env override for A/B testing (e.g., STRATEGY_OVERRIDE=chat_thread
+    # to force the noisier strategy on meeting channels for comparison).
+    import os as _os
+    override = _os.environ.get("STRATEGY_OVERRIDE") or None
+    if override:
+        summary["flags"].append(f"STRATEGY_OVERRIDE={override} (env)")
+
     async with httpx.AsyncClient() as client:
         for s in sources:
+            chosen_name = override or s.get("strategy") or "chat_thread"
             try:
-                extracted = await _extract(s["messages"])
+                strategy = _get_strategy(chosen_name)
+            except Exception as e:
+                summary["flags"].append(
+                    f"strategy load failed ({chosen_name}) for {s['src']}: {e}"
+                )
+                continue
+            try:
+                extracted = await _extract(s["messages"], strategy=strategy)
             except Exception as e:
                 summary["flags"].append(f"extract failed for {s['src']}: {e}")
                 continue
             decisions = extracted.get("decisions") or []
             actions = extracted.get("actions") or []
+            # Record which strategy + prompt version produced this batch —
+            # surfaced in the run summary so an operator can spot a strategy
+            # routing regression at a glance.
+            summary.setdefault("by_strategy", {}).setdefault(chosen_name, {
+                "sources": 0, "decisions": 0, "actions": 0,
+                "prompt_version": extracted.get("_meta", {}).get("prompt_version"),
+            })
+            summary["by_strategy"][chosen_name]["sources"] += 1
+            summary["by_strategy"][chosen_name]["decisions"] += len(decisions)
+            summary["by_strategy"][chosen_name]["actions"] += len(actions)
             topic_to_did: dict[str, str] = {}
             for d in decisions:
                 ref, md = _decision_markdown(d, s["src"], s["title"])
