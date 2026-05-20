@@ -1,6 +1,44 @@
-# Collection & Distillation — design (v0.2)
+# Collection & Distillation — design (v0.3)
 
-> 2026-05-20. **v0.2 supersedes v0.1** (git: `23f961b`). Major changes from
+> 2026-05-20. **v0.3 supersedes v0.2** (git: `db8b4df`). §10 6개 결정 확정 +
+> 새 컴포넌트 **Data Governance Agent (§14)** 추가 (Jay 제안). Distill이
+> *vault 위로 정제*하면 Governance가 *vault 아래로 정제* — 대칭. 이게
+> 이름 "Sediment"의 의도 그 자체.
+
+## 0. v0.2 → v0.3 결정 + 추가
+
+| 항목 | 결정 |
+|---|---|
+| Discord bot 권한 | **server admin role** (Jay). 모든 채널 자동 가시 + 새 채널도 자동 capture |
+| Discord bot token | `HYPEPROOF_DISCORD_BOT_TOKEN` 이미 `~/.env`에 존재 → v1 작업 시 `fly secrets set DISCORD_BOT_TOKEN_HYPEPROOF=$HYPEPROOF_DISCORD_BOT_TOKEN` |
+| 채널 sensitivity 디폴트 | **tenant-level choice at onboarding** (HypeProof = `normal`, 외부 = admin이 선택). §0.1 참조 |
+| Member role enum | 6단계 그대로 (Jay 굿) |
+| HITL UX 타이밍 | **v1.5** (Claude 결정) — 자동 distill 신뢰도 패널 없으면 vault 노이즈 누적 시작. 가벼운 confirm/reject만 |
+| events 보유 정책 | **Data Governance Agent (§14)가 자동 결정** (Jay 제안) — 단순 N일 retention X, *가치 기반* archive/redact/keep |
+| Pricing tier | v1부터 `usage_events` 전수 기록 → v3에서 예측모델 기반 발표 (Jay) |
+| Connector 우선순위 | v1=Discord, v2=Notion (Claude 결정 — SMB knowledge base 1위, OAuth 깔끔), v3=Slack/Drive (첫 AX 고객 스택에 맞춰 미세조정) |
+
+## 0.1 채널 sensitivity 디폴트 — Q3 재설명
+
+질문: 새 채널을 capture했을 때, 그 채널 메시지가 distill되어 artifact가 됐을 때,
+**누구한테 보일 것인가가 기본값**.
+
+3가지 옵션:
+- `normal` — 그 tenant 내 모든 member가 검색·인용 가능 (디폴트 open)
+- `confidential` — admin+만 (예: `#board-meetings` 같은 민감채널 자동)
+- `restricted` — 명시적 ACL만 (이름이 들어간 사람만)
+
+**결정 (Claude, Jay "알아서"):** 
+- HypeProof Lab tenant = `normal` 디폴트 (8명 dogfood, 내부 신뢰)
+- 외부 AX 고객 tenant = `confidential` 디폴트 + admin이 채널마다 명시적 publish
+- 각 tenant.default_sensitivity 컬럼으로 onboarding 시 선택. 이후 변경 가능.
+
+이유: 외부 고객 첫 인상에서 "회사 board-meetings 자료가 인턴까지 검색됨"
+사고 = 즉시 해약. 디폴트 닫고 admin이 명시적으로 여는 게 신뢰 빌딩 패턴.
+
+---
+
+> 2026-05-20. **v0.2** (참고용, 아래 보존). Major changes from
 > Jay's refinement: (a) capture는 **all-channels / all-sources** — allow-list
 > 폐기, 필터링은 distill로 이동, (b) **3-layer RBAC** (platform / tenant /
 > member) — SaaS 처음부터 (c) **enterprise-grade continuous feed** —
@@ -505,6 +543,100 @@ Pricing tier × feature 매핑 일부:
   않도록 Anthropic OPT-OUT 설정. 계약 조항 명시.
 - **Cross-tenant 누설 사고 응답**: 어떤 메커니즘?
 
+## 14. Data Governance Agent — NEW (Jay 제안 / v2 핵심 컴포넌트)
+
+> "events 보유 = 정보 관리 에이전트가 있어야할 듯" — Jay. 단순 N-day retention
+> 정책 (cron으로 90일 지난 거 삭제) 대신, **가치 기반 자율 관리 에이전트**가
+> archive/redact/keep을 결정.
+
+### 14.1 왜 별도 에이전트인가 — 대칭
+
+Sediment 아키텍처의 두 에이전트:
+
+```
+              ┌─────────────────────────────────────────┐
+              │            events (모든 raw)             │
+              └─────────────────────────────────────────┘
+                  ▲                                 ▼
+                  │                                 │
+       (Distill Agent 위로 정제)        (Governance Agent 아래로 정제)
+       signal 추출 → vault 승격         가치 빠진 거 archive/redact/purge
+                  │                                 │
+                  ▼                                 ▼
+              ┌─────────────────────────────────────────┐
+              │       artifacts + chunks (refined)       │
+              └─────────────────────────────────────────┘
+                  │                                 ▲
+                  │                                 │
+              RAG / 인용 ◄──── 멤버 query ────► HITL confirm/reject
+```
+
+- **Distill** = "이건 가치 있다 → vault 위로". 결정·액션 추출, 임베딩.
+- **Governance** = "이건 가치 빠졌다 → vault 아래로". archive (cold storage),
+  redact (PII 제거), purge (GDPR cascade).
+
+두 에이전트가 같이 돌면 vault는 **자기 정화**. **이게 이름 "Sediment"의 의도** —
+바닥에 가라앉은 가치 있는 것만 남고, 위는 흘러간다.
+
+### 14.2 Governance Agent — 의사결정 카테고리
+
+| 클래스 | 트리거 | 행동 |
+|---|---|---|
+| **Archive** | 90일+ 비인용 events, decision-link 없음 | `events.archived_at` 세트, payload는 cold-storage (S3 또는 별도 PG schema), main 검색에서 제외하되 lazy-load 가능 |
+| **Redact** | PII 감지 (전화/주민/카드/이메일 패턴) 또는 member-deletion request | payload의 그 필드만 NULL or `[REDACTED]`로 in-place 수정. row 자체는 keep (분석 보존). audit_log 기록 |
+| **Cascade-delete** | tenant 삭제 / member soft-delete | events·artifacts·chunks·decisions·actions tenant_id FK CASCADE; PII는 즉시 redact; physical delete는 14일 후 (right-to-be-forgotten 보장) |
+| **Promote** | events에 갇혀 있는데 후속 reference 다수 (인용/재언급) → distill 재시도 | 같은 transcript를 다시 distill에 보냄 (지난 번엔 0건 추출했어도, 컨텍스트 누적 후 재시도 가능) |
+| **Preserve** | decision-link 있음 / explicit `pinned` 표시 | 어떤 정책도 적용 X. 영구 보존 |
+| **Anomaly flag** | 이상 패턴 (특정 채널 갑자기 PII 폭증, 특정 member가 sensitive 채널 다량 query 등) | tenant_admin alert |
+
+### 14.3 구현 (v2)
+
+```python
+class GovernanceStrategy(Protocol):
+    name: str                            # "archive_stale" | "redact_pii" | ...
+    schedule: str                        # weekly cron
+    
+    async def candidates(tenant_id) -> AsyncIterator[Decision]:
+        """yields events/artifacts that match this strategy's trigger."""
+    
+    async def apply(decision: Decision, dry_run: bool=False) -> Result:
+        """idempotent. dry_run mode for admin review before apply."""
+
+# v2 carries: archive_stale, redact_pii, cascade_delete, promote_for_redistill,
+# anomaly_flag
+```
+
+- LLM-assisted classification 가능 (PII 분류, 가치 평가): 같은 Anthropic key 사용
+- 실행 전 **HITL gate**: governance가 제안한 action을 24h dry-run → tenant_admin 검토
+  → confirm 시 실행 (자동 모드는 v3+; 처음엔 신뢰 빌드)
+- 모든 action audit_log 기록
+
+### 14.4 retention 정책 (per-tenant)
+
+```yaml
+# tenant.governance_policy
+default_retention_days: null            # null = 영구 (Governance가 가치로 판단)
+# 또는 명시적:
+default_retention_days: 365
+archive_after_idle_days: 90
+hard_delete_after_archived_days: 730    # 2년 후 진짜 삭제 (compliance)
+pii_redaction: auto                     # auto | manual | off
+allow_promote_for_redistill: true
+```
+
+HypeProof Lab tenant: `null` (영구, 가치 기반). 외부 고객: 그 회사 compliance에
+맞춰 admin이 onboarding 시 설정.
+
+### 14.5 v2/v3 단계
+
+- v1 (이번 주): Governance Agent **미구현**. 단 schema는 추가
+  (`events.archived_at`, `artifacts.status='archived'`, `tenants.governance_policy`).
+- v2 (2-4주, 첫 AX 고객 직전): `redact_pii` + `cascade_delete` (GDPR/PIPA 필수).
+- v3 (분기): `archive_stale` + `promote_for_redistill` + `anomaly_flag`.
+  여기서 SaaS 차별화 — 그냥 RAG SaaS는 retention period 단순, 우리는 *학습하는
+  governance*.
+
 ---
 
-*v0.2 — 2026-05-20. Author: Claude. v0.1 (`23f961b`) superseded. 검토 대기: Jay.*
+*v0.3 — 2026-05-20. v0.2 (`db8b4df`) superseded. v0.1 (`23f961b`) 히스토리에.
+검토 대기: Jay.*
