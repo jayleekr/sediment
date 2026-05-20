@@ -1,0 +1,11 @@
+{
+  "loop": "sediment-overnight-2",
+  "started": "2026-05-20T10:05:00+09:00",
+  "scope": "non-gated execution: live smoke (A) + Fly root 302 (D) + Discord ingest feasibility/wire (E) + critic pass + handoff",
+  "out_of_scope": ["Restruct", "Studio", "scripts/ingest_repo.py edits", "destructive ops", "external sends"],
+  "jay_gated_not_attempted": ["B Anthropic key", "C Supabase project", "F custom DNS"],
+  "phase": "1/4 — Phase A live smoke",
+  "status": "running",
+  "stop_after_kst": "2026-05-21T07:30:00+09:00",
+  "log": []
+}
