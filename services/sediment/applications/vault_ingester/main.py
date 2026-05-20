@@ -303,3 +303,91 @@ async def webhook_ingest(request: Request):
     # NOTE: the freshness READ endpoint lives on the PLATFORM
     # (routers/vault.py → GET /api/v1/vault/freshness), not here — nginx only
     # routes /webhook/ to this ingester, so a read here is browser-unreachable.
+
+
+# ============================================================
+# Discord capture webhook (P1-L3 mirror of P1-L1)
+# Mother bot (hypeprooflab, already has Discord MCP) fetches messages from
+# allow-listed channels (#weekly, #daily-research, #인사이트-공유, NOT #잡담),
+# batches them, HMAC-signs the body with GITHUB_WEBHOOK_SECRET (reused —
+# single rotation surface), and POSTs here. We insert into events with
+# source='discord', kind='message'. distill.py then picks them up.
+# Idempotent: dedup on (tenant_id, source, payload->>'id'). If no id, fall
+# back to (channel_id, ts, content) so re-sends don't duplicate.
+# ============================================================
+class DiscordMessage(BaseModel):
+    id: Optional[str] = None
+    kind: str = "message"
+    channel: Optional[str] = None
+    channel_id: Optional[str] = None
+    author_id: Optional[str] = None
+    author_name: Optional[str] = None
+    content: str = ""
+    ts: Optional[str] = None      # ISO; defaults to now() server-side
+
+
+class DiscordIngestReq(BaseModel):
+    messages: list[DiscordMessage]
+
+
+# Allow-list: only signal channels enter the vault. #잡담 explicitly excluded
+# (ACTIVATION_ENGINE.md §8 + Diagram-3 caption).
+GOOD_DISCORD_CHANNELS = {
+    "weekly", "daily-research", "인사이트-공유", "content-pipeline",
+}
+
+
+@app.post("/webhook/discord-ingest")
+async def webhook_discord_ingest(request: Request):
+    raw = await request.body()
+    if not _verify_github_sig(raw, request.headers.get("X-Hub-Signature-256")):
+        raise HTTPException(status_code=401, detail="bad webhook signature")
+    try:
+        req = DiscordIngestReq.model_validate_json(raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"bad payload: {e}")
+
+    tid = await _default_tenant_id()
+    if not tid:
+        raise HTTPException(status_code=500, detail="default tenant not found")
+
+    inserted = 0
+    skipped = 0
+    async with service_session() as s:
+        for m in req.messages:
+            ch = (m.channel or "").lstrip("#")
+            if ch and ch not in GOOD_DISCORD_CHANNELS:
+                skipped += 1
+                continue
+            if not (m.content or "").strip():
+                skipped += 1
+                continue
+            # Dedup by Discord message id if present (strongest), else by
+            # (channel_id, ts, author_id, content[:200]) hash.
+            payload = m.model_dump()
+            if m.id:
+                exists = await s.execute(text(
+                    "SELECT 1 FROM events WHERE tenant_id=:tid AND source='discord' "
+                    "AND payload->>'id' = :id LIMIT 1"
+                ), {"tid": tid, "id": m.id})
+            else:
+                fingerprint = f"{m.channel_id}|{m.ts}|{m.author_id}|{(m.content or '')[:200]}"
+                exists = await s.execute(text(
+                    "SELECT 1 FROM events WHERE tenant_id=:tid AND source='discord' "
+                    "AND payload->>'fingerprint' = :fp LIMIT 1"
+                ), {"tid": tid, "fp": fingerprint})
+                payload["fingerprint"] = fingerprint
+            if exists.first():
+                skipped += 1
+                continue
+            await s.execute(text("""
+                INSERT INTO events (tenant_id, source, kind, payload, ts)
+                VALUES (:tid, 'discord', :kind, CAST(:p AS jsonb),
+                        COALESCE(NULLIF(:ts, '')::timestamptz, now()))
+            """), {
+                "tid": tid, "kind": m.kind, "p": _json(payload), "ts": m.ts or "",
+            })
+            inserted += 1
+
+    log.info("webhook.discord.done", inserted=inserted, skipped=skipped)
+    return {"ok": True, "inserted": inserted, "skipped": skipped}
