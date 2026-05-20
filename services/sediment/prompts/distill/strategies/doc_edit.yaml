@@ -1,0 +1,86 @@
+name: doc_edit
+version: 0.1.0
+description: |
+  Notion / Confluence / Google Docs / Office365 / Drive doc-page changes.
+  Treats a doc-page edit as a potential decision artifact (e.g., a Spec doc
+  receiving a "Decisions" section update).
+
+extends: ../base.yaml
+
+applies_to:
+  source: [notion, confluence, google_docs, office365, quip]
+  kind: [page_create, page_edit, page_section_added]
+
+system_prompt: |
+  (BASE PROMPT applies. Additional context below.)
+
+  The input is a doc page edit (diff or full new content). Format:
+    Title: <page title>
+    Path: <workspace/space/parent breadcrumbs>
+    Author: <last editor>
+    Edited at: <ISO ts>
+    ---
+    <full body OR diff with +/- lines>
+
+  Doc-edit specific guidance:
+  - A doc edit becomes a decision only when the *content itself* asserts a
+    decision (Spec doc with new "Decision: …" section; PRD with "Approach:
+    we'll …"). Mere reformatting, typo fix, or status update is NOT a
+    decision — empty arrays.
+  - Look for section headers like "Decisions", "Approach", "Resolution",
+    "Outcome", "결정", "방향성" — those are the high-yield sections.
+  - The doc title often IS the decision topic (e.g., page "API Rate
+    Limiting Strategy" with body explaining the chosen approach).
+  - Multiple decisions in one doc (e.g., a long spec) → emit each as a
+    separate item.
+  - For DIFF inputs (+/- lines), focus on ADDED content. Removed content
+    suggests the old decision is being reverted — set status: "reverted"
+    if accompanied by replacement.
+
+  Owner attribution:
+  - Doc author is the strongest signal — owner_hint = doc author for actions
+    unless the doc text explicitly assigns differently.
+
+confidence_threshold: 0.7          # docs are deliberate — higher floor
+min_body_chars: 60                 # docs typically have more substantive body
+
+guards:
+  - "Doc title alone is not a decision — body must contain the rationale or chosen approach."
+  - "Reformatting / typo / numbering changes are NEVER decisions."
+  - "If the diff shows a section being moved/renamed without content change, that's NOT a decision."
+  - "Pure questions in the doc (e.g., RFC drafts asking 'should we X?') without resolution → status: 'open' or empty."
+
+few_shot:
+  - input: |
+      Title: API Rate Limiting Strategy
+      Path: Engineering / Specs
+      Author: JY
+      Edited at: 2026-05-19T14:00Z
+      ---
+      ## Approach
+      We will use **token-bucket** with per-user buckets stored in Redis.
+
+      ### Rationale
+      - Sliding window has too much state for our scale.
+      - Token-bucket is well-supported by ngx_lua and easy to reason about.
+      - Per-user (not per-IP) is required for our auth model.
+
+      ## Limits
+      - Free tier: 60 req/min
+      - Pro tier: 600 req/min
+    output:
+      decisions:
+        - topic: "API rate limiting = token-bucket, per-user, Redis"
+          body: "Token-bucket algorithm chosen over sliding-window for lower state. Per-user (not per-IP) bucketing. Storage in Redis. Initial limits: Free 60/min, Pro 600/min."
+          status: "made"
+          confidence: 0.92
+      actions: []   # the spec doesn't assign follow-up actions
+
+tenant_override:
+  prompt_addendum: true
+  confidence_threshold:
+    min: 0.6
+    max: 0.95
+  min_body_chars:
+    min: 50
+    max: 250

@@ -1,0 +1,127 @@
+name: code_change
+version: 0.1.0
+description: |
+  GitHub / GitLab PR + issue resolution. Architecture/library/API decisions
+  often surface in PR descriptions or issue comments rather than chat.
+
+extends: ../base.yaml
+
+applies_to:
+  source: [github, gitlab, bitbucket]
+  kind: [pr_merged, pr_closed, issue_closed, release_published]
+
+system_prompt: |
+  (BASE PROMPT applies. Additional context below.)
+
+  The input is a code-platform event payload (rendered text). Format:
+    Repo: <owner/repo>
+    Event: <pr_merged|pr_closed|issue_closed|release_published>
+    Number: #<N>
+    Title: <title>
+    Author: <github_login>
+    Merged by: <github_login>          (only for pr_merged)
+    Labels: [<labels>]
+    ---
+    Body: <full PR/issue body>
+    ---
+    Top comments (max 5, chronological):
+    [<author>] <comment>
+    ...
+
+  Code-change specific guidance:
+  - **`pr_merged`**: A merged PR almost always represents a *technical decision*.
+    Extract the chosen approach from the PR body's "Approach" / "Design" /
+    "Solution" sections. The merge itself is the ratification.
+  - **`pr_closed` without merge**: Often a "we won't do this" decision.
+    status: "reverted" if it was previously approved, otherwise check the
+    closing comment for the reason — a "won't fix" or "wrong approach" is a
+    decision; a stale-bot close is NOT.
+  - **`issue_closed`** with a resolution comment: extract the resolution.
+    Auto-closed (linked PR merged) → don't double-count if you've already
+    extracted from the PR.
+  - **`release_published`**: a release tag is rarely a decision in itself,
+    but release notes may surface previously-made decisions for promotion.
+    Default: extract only if release notes contain new decisions (e.g.,
+    "BREAKING: switched to X").
+  - **Labels** signal type: `bug` issues rarely produce decisions; `rfc`,
+    `design`, `architecture` issues almost always do.
+
+  Owner attribution:
+  - PR author = strongest signal for related actions.
+  - For follow-up TODOs mentioned in PR body ("Future work:" / "TODO:") —
+    owner_hint = PR author unless otherwise specified.
+  - Bot-authored PRs (dependabot/renovate) — owner_hint = null.
+
+  Anti-patterns:
+  - A bug-fix PR ("fix typo in README") is NOT a decision. Empty arrays.
+  - A dependency bump (renovate/dependabot) is NOT a decision unless it's a
+    *major version* with a stated migration approach.
+  - PR titles alone are insufficient — require body content.
+
+confidence_threshold: 0.7          # PRs are deliberate, but body quality varies
+min_body_chars: 60
+
+guards:
+  - "Bug-fix PRs without architectural change → empty arrays."
+  - "Bot-authored dependency bumps → empty arrays (unless major-version migration)."
+  - "If both a PR and its linked issue produce the same decision, emit once (prefer the PR as source)."
+  - "PR descriptions that are pure checklists without rationale → likely empty."
+
+few_shot:
+  - input: |
+      Repo: jayleekr/sediment
+      Event: pr_merged
+      Number: #142
+      Title: Switch chunking from naive 1k-char to semantic-paragraph splitter
+      Author: JY
+      Merged by: jayleekr
+      Labels: [architecture, retrieval]
+      ---
+      Body:
+      ## Problem
+      Naive 1k-char chunking was cutting paragraphs mid-sentence, hurting
+      retrieval quality (eval set MRR dropped 0.08 when content had longer
+      paragraphs).
+
+      ## Approach
+      Use semantic-paragraph splitter (langchain.text_splitter.MarkdownTextSplitter)
+      with target=800 chars, overlap=100. Falls back to char-split for
+      paragraphs > 1500 chars.
+
+      ## Validation
+      MRR back to 0.71 on eval set (was 0.63). No regressions on speed.
+
+      Future work: per-tenant chunk size override.
+    output:
+      decisions:
+        - topic: "Chunking strategy = semantic-paragraph splitter (target 800, overlap 100)"
+          body: "Replace naive 1k-char splitter with MarkdownTextSplitter (semantic-paragraph), target 800 chars, overlap 100. Char-split fallback for paragraphs > 1500. Eval: MRR 0.63 → 0.71. Justification: naive splitter cut paragraphs mid-sentence, hurting retrieval quality."
+          status: "made"
+          confidence: 0.95
+      actions:
+        - description: "Add per-tenant chunk size override"
+          owner_hint: "JY"
+          due_date: null
+          decision_topic: "Chunking strategy = semantic-paragraph splitter (target 800, overlap 100)"
+
+  - input: |
+      Repo: jayleekr/sediment
+      Event: pr_merged
+      Number: #199
+      Title: Fix typo in README
+      Author: dependabot[bot]
+      Labels: [docs]
+      ---
+      Body: Small typo fix in installation section.
+    output:
+      decisions: []
+      actions: []
+
+tenant_override:
+  prompt_addendum: true
+  confidence_threshold:
+    min: 0.6
+    max: 0.95
+  min_body_chars:
+    min: 50
+    max: 250

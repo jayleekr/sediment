@@ -1,0 +1,87 @@
+name: chat_thread
+version: 0.1.0
+description: |
+  Discord / Slack / Telegram / MS Teams threads. Default v1 strategy for the
+  most common signal source (HypeProof Lab's #meeting-notes, #hypeproof-studio,
+  #sediment, plus future external tenant Slack channels).
+
+extends: ../base.yaml
+
+applies_to:
+  source: [discord, slack, telegram, ms_teams]
+  kind: [message_thread, channel_window]
+
+system_prompt: |
+  (BASE PROMPT applies. Additional context below.)
+
+  The input is a chat transcript from a team channel. Format:
+    [author] message text
+    [author] message text
+    ...
+  Messages may include @mentions, emoji reactions, and URLs. Threading is
+  preserved (replies grouped under their parent).
+
+  Chat-specific guidance:
+  - Chat is noisier than meeting notes. Reactions and one-liner agreements
+    ("👍", "ok", "lgtm") rarely contain decisions on their own — but they
+    can RATIFY a proposal made above. Use the context window.
+  - A decision often spans multiple messages: proposal → discussion →
+    ratification ("let's do it", "agreed", "merged"). Look for the full arc.
+  - Quoted/replied messages indicate the conversational subject — don't
+    duplicate the quoted content as a separate decision.
+  - URLs / file references often are the "what" of a decision — preserve
+    them in `body` verbatim when relevant.
+  - If the thread is pure status report ("I did X, then Y"), that's NOT
+    a decision. Empty arrays.
+
+  Owner attribution for actions:
+  - Prefer @mentions ("@Jay please …") as the owner_hint.
+  - Self-assignments ("I'll do X") → owner_hint = message author name.
+  - Vague assignments ("someone should …") → owner_hint = null.
+
+confidence_threshold: 0.65         # slightly above base — chat is noisy
+min_body_chars: 50
+
+guards:
+  - "Empty arrays are common for pure chat. Do not stretch to fill."
+  - "Emoji-only messages (👍/🔥/ㅋㅋ) are not decisions, no matter how many."
+  - "If the thread is announcing a decision made elsewhere (e.g. 'FYI we decided X in another meeting'), still emit it — but cite the *announcement* as the source, not the original meeting."
+  - "Multi-turn ratification: a proposal in message N ratified in message N+3 is ONE decision, not two."
+
+# Few-shot example (used as user/assistant prompt turn during fewshot mode)
+few_shot:
+  - input: |
+      [Jay] Sediment 레포를 분리하는 게 어떨까. 커뮤니티 모노레포에서 빠지는 게
+        라이프사이클상 깨끗할 것 같아.
+      [JY] 동의. 외부 SaaS 경로로 가면 분리 필수.
+      [Ryan] 👍
+      [Jay] OK, 결정 — 이번 주 안에 jayleekr/sediment 신설하고 추출
+    output:
+      decisions:
+        - topic: "Sediment 레포 분리 (커뮤니티 모노레포에서 추출)"
+          body: "SaaS 외부 경로 라이프사이클 분리를 위해 jayleekr/sediment 신설하여 추출. 커뮤니티 모노레포는 별개 유지."
+          status: "made"
+          confidence: 0.9
+      actions:
+        - description: "jayleekr/sediment 레포 신설 + 히스토리 보존 추출"
+          owner_hint: "Jay"
+          due_date: null
+          decision_topic: "Sediment 레포 분리 (커뮤니티 모노레포에서 추출)"
+
+  - input: |
+      [BH] 오늘 데이터 분석 어떻게 됐어요?
+      [JY] 아직 모델 학습 중이에요. 결과는 내일 공유할게요.
+      [BH] 👍
+    output:
+      decisions: []
+      actions: []
+      # Pure status update + question. No commitment to extract.
+
+tenant_override:
+  prompt_addendum: true
+  confidence_threshold:
+    min: 0.55
+    max: 0.95
+  min_body_chars:
+    min: 40
+    max: 200

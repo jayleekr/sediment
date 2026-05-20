@@ -1,0 +1,105 @@
+name: archive_stale
+version: 0.1.0
+description: |
+  Value-degradation assessment for old / never-referenced / superseded
+  artifacts. Runs nightly as a scheduled sweep over artifacts whose
+  `last_accessed_at` is older than the tenant's stale threshold (default
+  180 days) and `created_at` > 60 days.
+
+extends: ../base.yaml
+
+applies_to:
+  source: any
+  kind: artifact_age_check
+
+system_prompt: |
+  (BASE PROMPT applies. Additional context below.)
+
+  The input is a batch of candidate artifacts that have not been accessed
+  recently. For each candidate, you receive:
+    - artifact_id (UUID)
+    - title / topic
+    - body (first 800 chars)
+    - created_at, last_accessed_at, access_count (lifetime)
+    - status (made / reverted / open)
+    - supersedes / superseded_by (artifact IDs of related decisions, if any)
+    - tenant_tags (manual labels: ["compliance", "foundational", "ephemeral", ...])
+
+  Decide ONE of:
+  - `archive` — artifact has degraded value: old, low access count, no
+    supersede relationship pointing to it. Emit with category=archive.
+  - `preserve` — artifact looks low-access but is foundational (status=made
+    + tenant_tag includes "foundational" or "compliance"; OR many other
+    artifacts cite it via supersedes). Emit with category=preserve to
+    suppress future archive passes.
+  - (skip / no proposal) — uncertain or borderline. Output empty `actions`.
+
+  ## Specific signals to consider
+  - `access_count > 20 in last 90 days` → never archive, prefer preserve.
+  - `superseded_by` is set → strong archive signal (newer version exists).
+  - `supersedes` chain length > 0 (others cite it) → preserve.
+  - `status == "reverted"` → consider `cascade_delete` instead (delegate to
+    the right strategy; here, just preserve+flag).
+  - `tenant_tags` contains "ephemeral" → strong archive signal.
+  - `tenant_tags` contains "compliance" or "foundational" → never archive.
+
+  ## Anti-patterns
+  - Do NOT propose archiving an artifact you cannot evaluate (e.g., body is
+    empty / corrupted) — output nothing.
+  - Do NOT propose archive for artifacts younger than the tenant's
+    `archive_min_age_days` (passed in input metadata).
+  - Do NOT propose archive solely on age — always combine with low access
+    count AND no supersede-chain reference.
+
+confidence_threshold: 0.7          # tilt conservative for archive
+min_reason_chars: 40
+
+guards:
+  - "Archive only when at least TWO of these signals are true: low access count, age beyond threshold, no inbound supersede references, ephemeral tag."
+  - "Compliance or foundational tags → never archive."
+  - "If body is empty or unreadable → output nothing (do not archive blindly)."
+  - "Cite the observable counts in the reason (e.g., 'access_count=2 in 18 months, superseded_by=<id>')."
+
+few_shot:
+  - input: |
+      Candidate batch:
+      [1] artifact_id=art_aaa11
+          title: "Slack notification timing — A/B test results, May 2024"
+          body: "Tested 10am vs 2pm send times. 10am had 12% higher CTR..."
+          created_at: 2024-05-01
+          last_accessed_at: 2024-08-15
+          access_count: 3
+          status: made
+          supersedes: []
+          superseded_by: art_bbb22
+          tenant_tags: ["ephemeral"]
+      [2] artifact_id=art_ccc33
+          title: "Sediment 데이터 보존 정책"
+          body: "고객 데이터는 30일 보관, 본질 결정은 영구..."
+          created_at: 2025-11-10
+          last_accessed_at: 2026-04-22
+          access_count: 18
+          status: made
+          tenant_tags: ["compliance", "foundational"]
+    output:
+      actions:
+        - category: archive
+          target_kind: artifact
+          target_id: art_aaa11
+          reason: "Access count=3 lifetime, last 18 months ago. Tagged 'ephemeral'. Superseded by art_bbb22. Value degraded — safe to archive."
+          confidence: 0.88
+        - category: preserve
+          target_kind: artifact
+          target_id: art_ccc33
+          reason: "Tagged 'compliance' + 'foundational'. 18 accesses in last 6 months. Never archive — emit preserve marker to suppress future passes."
+          confidence: 0.92
+
+tenant_override:
+  prompt_addendum: true
+  confidence_threshold:
+    min: 0.6
+    max: 0.95
+  min_reason_chars:
+    min: 30
+    max: 200
+  category_allow_list: [archive, preserve]

@@ -1,0 +1,122 @@
+name: redact_pii
+version: 0.1.0
+description: |
+  PII / secrets / credentials classification and redaction proposal. Scans
+  artifact bodies + chunk texts for sensitive spans, proposes replacement
+  tokens. PRECEDES regex-based DLP — LLM catches contextual PII (e.g., a
+  Korean name in narrative form) that regex misses.
+
+extends: ../base.yaml
+
+applies_to:
+  source: any
+  kind: pii_scan
+
+system_prompt: |
+  (BASE PROMPT applies. Additional context below.)
+
+  The input is one artifact body (or chunk text) at a time. Identify
+  sensitive spans and propose redaction. You emit a single governance
+  action with category="redact" if any spans are found; otherwise empty.
+
+  ## PII categories (use exactly these labels)
+
+  | Category | Examples | Replacement token |
+  |---|---|---|
+  | `email` | `jay@example.com` | `[EMAIL]` |
+  | `phone` | `+82-10-1234-5678`, `(415) 555-0123` | `[PHONE]` |
+  | `name_personal` | "Jay Lee", "김지웅" — when used as a personal identifier outside professional context | `[NAME]` |
+  | `address` | Street address, zip, building name | `[ADDRESS]` |
+  | `credit_card` | 13-19 digit number with Luhn check pattern | `[CC]` |
+  | `ssn_kr` | KRRN (주민번호) `XXXXXX-XXXXXXX` | `[KRRN]` |
+  | `ssn_us` | `XXX-XX-XXXX` US SSN | `[SSN]` |
+  | `api_key` | `sk-ant-…`, `ghp_…`, `xoxb-…`, `AIza…`, `AKIA…` | `[API_KEY]` |
+  | `private_token` | JWT-shaped `eyJ…`, bearer-style hex >40 chars | `[TOKEN]` |
+  | `financial_amount` | Specific dollar/won figures tied to a person | `[AMOUNT]` |
+  | `medical` | Diagnosis, prescription, health record tied to a person | `[MEDICAL]` |
+
+  ## Crucial nuance — name handling
+
+  - **Public role context** (members.md, public bios, author bylines) → NOT PII.
+    "JY (신진용) is HypeProof's AI/ML engineer" — keep.
+  - **Private personal context** ("my brother 김민수 said …", "에이전트가 김민수의
+    개인정보를 …") → IS PII. Redact.
+  - **Discord display names** when used as professional handles → keep.
+  - **Real names paired with personal identifiers** (email + name in same
+    line) → redact both.
+
+  ## Strict rules
+
+  - Span offsets are zero-indexed character positions in the input body as
+    given. Inclusive `start_char`, exclusive `end_char`. Verify offsets by
+    counting carefully.
+  - Multiple redactions in one artifact → one `redact` action with multiple
+    `redact_spans`. Do NOT emit multiple actions.
+  - If no PII found → empty `actions` array.
+  - Do not emit `redact` with empty `redact_spans` — that's contradiction.
+  - When uncertain (Korean place name vs personal name; ambiguous code
+    snippet vs token), prefer to **skip** rather than over-redact.
+
+confidence_threshold: 0.75         # PII redaction is destructive; high bar
+min_reason_chars: 30
+
+guards:
+  - "Public-role names (members, authors, professional bylines) are NOT PII."
+  - "Always include redact_spans when category=redact."
+  - "Span offsets MUST be valid into the input body (verify count)."
+  - "When uncertain, prefer skipping over over-redacting."
+  - "API key / token patterns are ALWAYS redacted regardless of context."
+
+few_shot:
+  - input: |
+      artifact_id=art_xyz99
+      body:
+      ---
+      Demo prep call notes (2026-05-15):
+      Customer contact: 박서준 (sjpark@acme.kr), phone +82-10-9876-5432.
+      They asked about pricing tier. Quoted $12,000/yr starter.
+      ---
+    output:
+      actions:
+        - category: redact
+          target_kind: artifact
+          target_id: art_xyz99
+          reason: "Contains customer's personal name, business email, and phone number tied together — classic PII trio. Also a specific quoted price tied to a named party."
+          confidence: 0.92
+          redact_spans:
+            - start_char: 56
+              end_char: 59
+              replacement: "[NAME]"
+              category: name_personal
+            - start_char: 61
+              end_char: 75
+              replacement: "[EMAIL]"
+              category: email
+            - start_char: 84
+              end_char: 100
+              replacement: "[PHONE]"
+              category: phone
+            - start_char: 137
+              end_char: 144
+              replacement: "[AMOUNT]"
+              category: financial_amount
+
+  - input: |
+      artifact_id=art_pub01
+      body:
+      ---
+      JY (신진용) is HypeProof's AI/ML engineer with a quant + physics background.
+      He leads the Sediment dogfood track.
+      ---
+    output:
+      actions: []
+      # Public-role context — JY's name + role is in members.md. Not PII.
+
+tenant_override:
+  prompt_addendum: true              # tenants may add jurisdiction-specific PII categories
+  confidence_threshold:
+    min: 0.65
+    max: 0.95
+  category_allow_list:
+    description: "Tenant may disable specific PII categories but cannot disable api_key, private_token, ssn_kr, ssn_us, credit_card (always-on for security)."
+    always_on: [api_key, private_token, ssn_kr, ssn_us, credit_card]

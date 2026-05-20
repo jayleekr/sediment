@@ -1,0 +1,94 @@
+name: meeting_transcript
+version: 0.1.0
+description: |
+  AI-generated meeting summaries (Gemini meeting notes, Otter, Fireflies,
+  Zoom transcripts). The S-tier signal source — these are already
+  structured by the upstream tool but vary in format/quality.
+
+extends: ../base.yaml
+
+applies_to:
+  source: [gemini_meeting_notes, otter, fireflies, zoom, manual_transcript]
+  kind: transcript
+
+system_prompt: |
+  (BASE PROMPT applies. Additional context below.)
+
+  The input is a meeting transcript or AI-generated meeting summary. Format
+  varies by upstream tool:
+  - Gemini meeting notes: structured with "Discussion topics" / "Action items"
+    headers, attendee names in front of utterances.
+  - Otter/Fireflies: timestamped utterances, optional speaker labels.
+  - Raw transcript: pure dialogue, attribution may be missing.
+
+  Meeting-specific guidance:
+  - This is the **highest-yield** source. Meeting summaries explicitly mark
+    decisions in dedicated sections. Extract them faithfully.
+  - If the upstream tool already labeled "Action items" section — those map
+    1:1 to your actions[] array. Owner extraction from attribution.
+  - If the tool labeled "Decisions" section — same, 1:1.
+  - If the transcript is unstructured dialogue, infer using the BASE rules:
+    look for ratification language ("we'll go with", "decided to", "agreed").
+  - Attendees are usually listed at the top — use them to disambiguate
+    @mentions and owner_hints.
+  - Meeting summaries often have a "Next steps" or "Follow-ups" section —
+    those are typically actions[].
+  - Be more generous with `confidence` here than for chat — meeting tools
+    have already pre-filtered to high-signal content.
+
+  Anti-patterns:
+  - Don't re-extract a decision that the upstream tool already structured.
+    If the input has a "Decisions:" block, copy faithfully (not "interpret").
+  - Don't lose the "왜/rationale" — meeting summaries usually include it; preserve.
+  - Don't merge two distinct decisions into one even if related (e.g. "we'll
+    use Postgres AND Supabase" → two decisions: choice of Postgres, choice
+    of Supabase host).
+
+confidence_threshold: 0.6          # at the base floor — meetings already pre-filtered
+min_body_chars: 50
+
+guards:
+  - "If the upstream meeting tool labeled a section as 'Decisions' or 'Action items', map 1:1 — do not editorialize."
+  - "Preserve the 'why' (rationale) when present in the transcript."
+  - "Attendee list helps with owner_hint resolution — use it."
+  - "Pure agenda discussions without resolution are NOT decisions."
+
+few_shot:
+  - input: |
+      [Meeting: HypeProof Weekly · 2026-05-19 · Attendees: Jay, JY, Ryan, BH]
+
+      ## Discussion
+      - Sediment 도메인 결정. Jay 제안: sediment.hypeproof-ai.xyz (subdomain).
+        JY 제안: sediment.io (별도 도메인 매입). 비용/SEO 트레이드오프 논의.
+
+      ## Decisions
+      - sediment.hypeproof-ai.xyz 채택 (subdomain). 별도 도메인은 Phase 3에서 재검토.
+        근거: 초기 비용 0, hypeproof 브랜드 이연.
+
+      ## Action items
+      - JY: Vercel custom domain 설정 + Cloudflare A record 추가. Due: 2026-05-21.
+      - Ryan: Phase 3 도메인 매입 후보 리스트업.
+    output:
+      decisions:
+        - topic: "Sediment 도메인 = sediment.hypeproof-ai.xyz (subdomain) 채택"
+          body: "Subdomain으로 시작, 별도 도메인은 Phase 3 재검토. 근거: 초기 비용 0, hypeproof 브랜드 이연 가능."
+          status: "made"
+          confidence: 0.95
+      actions:
+        - description: "Vercel custom domain 설정 + Cloudflare A record 추가"
+          owner_hint: "JY"
+          due_date: "2026-05-21"
+          decision_topic: "Sediment 도메인 = sediment.hypeproof-ai.xyz (subdomain) 채택"
+        - description: "Phase 3 도메인 매입 후보 리스트업"
+          owner_hint: "Ryan"
+          due_date: null
+          decision_topic: "Sediment 도메인 = sediment.hypeproof-ai.xyz (subdomain) 채택"
+
+tenant_override:
+  prompt_addendum: true
+  confidence_threshold:
+    min: 0.5
+    max: 0.95
+  min_body_chars:
+    min: 30
+    max: 200

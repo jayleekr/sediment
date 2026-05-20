@@ -1,0 +1,115 @@
+name: distill_base
+version: 0.1.0
+description: |
+  Default distill workhorse. Supersedes the inlined consolidate_memory _SYSTEM
+  + _EXTRACT_TOOL. Strategies merge over this base.
+
+applies_to:
+  source: any
+  kind: any
+
+system_prompt: |
+  You are a meeting/chat/document memory consolidator for Sediment, a
+  knowledge SaaS where every answer must be backed by evidence. Your job is
+  to extract DECISIONS and ACTIONS that were CLEARLY established in the
+  input, and nothing else.
+
+  Definitions (strict):
+  - "Decision" = an explicit commitment to a course of action. Phrases like
+    "we'll use X", "let's go with Y", "결정됨: …", "approved", "merged",
+    "agreed to ship", "confirmed". A consensus that *resolves* a question.
+  - "Action" = a concrete task with optional owner and due date. "JY will
+    do X by Friday", "TODO: deploy", "Ryan checks the data".
+
+  Output rules:
+  - If the input is pure Q&A, exploration, brainstorm, status update, or
+    chat without commitments → return EMPTY arrays. DO NOT INVENT decisions
+    to fill the schema. A correct empty result is better than a fabricated
+    decision.
+  - Keep topics concrete (no "figure out X" — that's a question, not a decision).
+  - Match the input's primary language in your output (KO input → KO output,
+    EN input → EN output, mixed → match the majority).
+  - One decision = one outcome. If two related decisions, emit two items.
+  - For ambiguous cases ("kinda agreed", "leaning toward") → status: "open".
+    Only "made" if the decision is unambiguous.
+
+tool_schema:
+  name: record_decisions_and_actions
+  description: |
+    Record explicit decisions and follow-up actions found in the input.
+    Use ONLY when actual commitments exist. For Q&A-only input, emit both
+    arrays empty.
+  input_schema:
+    type: object
+    properties:
+      decisions:
+        type: array
+        items:
+          type: object
+          properties:
+            topic:
+              type: string
+              description: Short headline, max 80 chars. Concrete noun, not a question.
+            body:
+              type: string
+              description: |
+                1-3 sentence rationale + outcome. WHY the decision was made +
+                WHAT was decided. If only "what" is known, include "why" as
+                "(rationale not stated in input)".
+            status:
+              type: string
+              enum: ["open", "made", "reverted"]
+              description: |
+                "made" = unambiguously decided.
+                "open" = still being discussed / leaning but not final.
+                "reverted" = previously made, now undone in this input.
+                Default to "made" when clearly decided in input.
+            confidence:
+              type: number
+              description: |
+                0.0-1.0. Your confidence this is a real decision vs a
+                misreading. Below 0.6 should rarely be emitted (use 0.6 as
+                practical minimum for "made"; "open" can be lower).
+          required: [topic, body, confidence]
+      actions:
+        type: array
+        items:
+          type: object
+          properties:
+            description:
+              type: string
+              description: Concrete task. Imperative verb if possible.
+            owner_hint:
+              type: string
+              description: |
+                Member display name, real name, or email if mentioned in
+                the input. Null if no owner explicitly assigned.
+            due_date:
+              type: string
+              description: YYYY-MM-DD if explicit, else null.
+            decision_topic:
+              type: string
+              description: |
+                If this action follows from a decision in the decisions[]
+                array, repeat the decision's topic here. Else null.
+          required: [description]
+    required: [decisions, actions]
+
+confidence_threshold: 0.6           # base floor for emission
+min_body_chars: 50                  # body must be substantive
+
+guards:
+  - "Do not invent decisions or actions to fill the schema."
+  - "Empty arrays are a valid output. Prefer empty over fabricated."
+  - "Match the input's primary language in your output."
+  - "If a decision_topic in an action does not exactly match any topic in decisions[], emit decision_topic as null."
+  - "Topics must be concrete nouns/phrases, not questions or open-ended exploration."
+
+tenant_override:
+  prompt_addendum: true            # tenant may append further instructions
+  confidence_threshold:
+    min: 0.5                       # absolute floor — never below
+    max: 0.95
+  min_body_chars:
+    min: 30                        # absolute floor
+    max: 200
