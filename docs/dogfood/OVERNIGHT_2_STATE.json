@@ -1,11 +1,19 @@
 {
   "loop": "sediment-overnight-2",
   "started": "2026-05-20T10:05:00+09:00",
-  "scope": "non-gated execution: live smoke (A) + Fly root 302 (D) + Discord ingest feasibility/wire (E) + critic pass + handoff",
-  "out_of_scope": ["Restruct", "Studio", "scripts/ingest_repo.py edits", "destructive ops", "external sends"],
+  "ended": "2026-05-20T12:55:00+09:00",
+  "scope": "non-gated execution: live smoke (A) + Fly root 302 (D) + Discord ingest webhook (E) + handoff",
+  "out_of_scope": ["Restruct (separate session)", "Studio (no access)", "scripts/ingest_repo.py edits (user reverted)", "destructive ops"],
   "jay_gated_not_attempted": ["B Anthropic key", "C Supabase project", "F custom DNS"],
-  "phase": "1/4 — Phase A live smoke",
-  "status": "running",
+  "phases": {
+    "A_live_smoke": {"status": "PASS", "note": "all API + frontend routes 200 (or correct redirect/401); SSE stream with RAG citations works; user+assistant message persistence verified"},
+    "D_fly_root_302": {"status": "PASS", "note": "nginx root location → 302 to Vercel UI; API routes (more-specific prefixes) untouched; verified browser hit / api hit both correct"},
+    "E_discord_ingest_webhook": {"status": "PASS (Sediment side)", "note": "POST /webhook/discord-ingest live; HMAC reuses GITHUB_WEBHOOK_SECRET; idempotent (id dedup + fingerprint fallback); allow-list (#잡담 dropped); 7/7 acceptance cases pass. Mother-side fetch = Jay/Restruct"}
+  },
+  "commits_pushed": ["ef7114d nginx root 302", "1caf9c2 discord-ingest webhook + Mother contract doc"],
+  "status": "done",
+  "termination_reason": "all 3 non-gated phases passed acceptance; remaining work is genuinely gated on Jay (B/C/F) or Mother (Discord fetch side, Restruct adjacent)",
+  "next_action": "none — Jay reviews docs/dogfood/DOGFOOD_OVERNIGHT_2_SUMMARY.md tomorrow",
   "stop_after_kst": "2026-05-21T07:30:00+09:00",
-  "log": []
+  "note": "Idempotent self-heal: any scheduled fallback wakeup will read status=done and no-op."
 }
