@@ -1,7 +1,14 @@
-# AI Curator — E2E Browser Spec (v0.1)
+# Sediment — E2E Browser Spec (v0.2)
 # Executed by validator/e2e_runner.py via Playwright (Python).
 # Each flow is replayed `repeat` times within a single iteration to measure flake rate.
+#
+# v0.2 (2026-05-20): multi-environment. Select with SEDIMENT_E2E_ENV (default
+# "dev"). Per-flow `environments:` tag opts a flow into other envs; flows
+# without the tag default to ["dev"] only (backwards-compat with v0.1).
+# Override base_url with SEDIMENT_E2E_BASE_URL for ad-hoc targets.
 
+# Top-level defaults below are the deprecated v0.1 form, kept as a fallback
+# for any caller that hasn't migrated to environments[env].
 base_url: "http://localhost:3000"
 default_timeout_ms: 8000
 viewport:
@@ -10,11 +17,27 @@ viewport:
 seed_member:
   email: "jay.lee@sonatus.com"
 
+environments:
+  dev:
+    # Local Next dev server (`cd frontend && npm run dev`). Uses the
+    # `Mint dev token` form which only exists in dev (member-by-email seed).
+    base_url: "http://localhost:3000"
+    auth_method: dev_token
+    seed_member:
+      email: "jay.lee@sonatus.com"
+  prod:
+    # Live standalone Vercel deploy. Prod uses GitHub OAuth — there is no
+    # automated sign-in here yet, so only auth_method=none flows run.
+    base_url: "https://sediment.hypeproof-ai.xyz"
+    auth_method: none
+    seed_member: null
+
 flows:
 
   - id: E2E-01
     name: "Sign-in flow"
     severity: blocker
+    environments: [dev]
     repeat: 5
     pass_threshold: 4
     steps:
@@ -40,6 +63,7 @@ flows:
   - id: E2E-02
     name: "Empty state visible"
     severity: minor
+    environments: [dev]
     repeat: 2
     pass_threshold: 2
     steps:
@@ -56,6 +80,7 @@ flows:
   - id: E2E-03
     name: "New conversation + first query"
     severity: blocker
+    environments: [dev]
     repeat: 5
     pass_threshold: 4
     steps:
@@ -75,6 +100,7 @@ flows:
   - id: E2E-04
     name: "Streaming UI"
     severity: blocker
+    environments: [dev]
     repeat: 5
     pass_threshold: 3
     steps:
@@ -107,6 +133,7 @@ flows:
   - id: E2E-05
     name: "Citation cards visible"
     severity: major
+    environments: [dev]
     repeat: 2
     pass_threshold: 1
     steps:
@@ -127,6 +154,7 @@ flows:
   - id: E2E-06
     name: "Library browse + filter"
     severity: major
+    environments: [dev]
     repeat: 2
     pass_threshold: 2
     steps:
@@ -146,6 +174,7 @@ flows:
   - id: E2E-07
     name: "Members page"
     severity: minor
+    environments: [dev]
     repeat: 2
     pass_threshold: 2
     steps:
@@ -162,6 +191,7 @@ flows:
   - id: E2E-08
     name: "Cross-tenant negative test"
     severity: blocker
+    environments: [dev]
     repeat: 3
     pass_threshold: 2
     steps:
@@ -192,6 +222,7 @@ flows:
     # the conv state regression that would happen if we ever lost the inputbox
     # reactivation on stream.done = true.
     severity: major
+    environments: [dev]
     repeat: 2
     pass_threshold: 2
     steps:
@@ -249,6 +280,7 @@ flows:
     # and the sign-in form is usable. Catches Tailwind grid-cols-12 regressions
     # that would push the conv pane off-screen on narrow viewports.
     severity: major
+    environments: [dev]
     repeat: 2
     pass_threshold: 2
     viewport:
@@ -285,6 +317,7 @@ flows:
     # Yes, signout isn't a feature flag for users — but if localStorage.clear
     # were ever bypassed by a stale ref, multi-turn would leak across tenants.
     severity: minor
+    environments: [dev]
     repeat: 2
     pass_threshold: 2
     steps:
@@ -301,3 +334,60 @@ flows:
       - action: assert
         type: selector_visible
         selector: "input[placeholder='member email']"
+
+  - id: E2E-12
+    name: "Prod smoke — public routes + brand + console errors"
+    # No-auth smoke against the live deploy. Walks every top-level public
+    # route, asserts the Sediment brand renders, and asserts zero console
+    # errors during the walk. Pairs with the curl-level /healthz + CORS
+    # preflight in the validator suite to give a fast post-deploy signal
+    # without needing OAuth credentials. Auth-gated routes (/library,
+    # /members, /admin) load their public shell — that's enough to catch
+    # SSR/bundle regressions even though the data calls 401.
+    severity: blocker
+    environments: [prod]
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: navigate
+        url: "/sediment"
+        wait_for: "h1:has-text('Sediment')"
+        screenshot: "01-landing"
+      - action: assert
+        type: selector_visible
+        selector: "h1:has-text('Sediment')"
+      # The env badge must read 'prod' on this URL — proves the deploy
+      # picked up the right NEXT_PUBLIC_* vars and isn't lying about its env.
+      - action: assert
+        type: text_contains
+        selector: "span.bg-emerald-100"
+        value: "prod"
+      - action: navigate
+        url: "/sediment/library"
+        wait_for_idle: true
+        screenshot: "02-library"
+      - action: navigate
+        url: "/sediment/members"
+        wait_for_idle: true
+        screenshot: "03-members"
+      - action: navigate
+        url: "/sediment/onboard"
+        wait_for_idle: true
+        screenshot: "04-onboard"
+      - action: navigate
+        url: "/sediment/admin"
+        wait_for_idle: true
+        screenshot: "05-admin"
+      - action: navigate
+        url: "/sediment/pricing"
+        wait_for_idle: true
+        screenshot: "06-pricing"
+      # Most routes fetch protected data on mount; without an auth session
+      # those calls 401 and Chromium surfaces the failed-load as a console
+      # error. That's expected, not a regression. Budget is calibrated from
+      # 2026-05-20 measurement (3 × 401 on a 6-route walk); leave headroom
+      # for ~1 extra per route, fail above that — a real JS exception or
+      # bundle-load error would push well past this.
+      - action: assert
+        type: console_errors_max
+        value: 8

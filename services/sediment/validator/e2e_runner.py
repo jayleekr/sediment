@@ -63,6 +63,18 @@ async def run_flow(spec: dict) -> CheckResult:
             passed=False, message=f"flow {flow_id} not in e2e_spec.yaml",
         )
 
+    # v0.2: env-aware filtering. Flow without `environments:` tag defaults to
+    # ["dev"] (backwards-compat — v0.1 spec only ran against localhost dev).
+    env_name = os.environ.get("SEDIMENT_E2E_ENV", "dev")
+    flow_envs = flow.get("environments", ["dev"])
+    if env_name not in flow_envs:
+        return CheckResult(
+            id=spec["id"], title=spec["title"], layer=spec["layer"], severity=spec["severity"],
+            passed=True,
+            actual={"skipped": True, "env": env_name, "flow_envs": flow_envs},
+            message=f"skipped — flow {flow_id} not enabled for env={env_name} (allowed: {flow_envs})",
+        )
+
     repeat = flow.get("repeat", 1)
     threshold = flow.get("pass_threshold", repeat)
     iter_n = int(os.environ.get("VALIDATOR_ITER", "1"))
@@ -98,12 +110,23 @@ async def run_flow(spec: dict) -> CheckResult:
 async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
     from playwright.async_api import async_playwright
 
-    base_url = full["base_url"]
+    # v0.2: env-aware base_url + seed_member.
+    # Precedence (highest first):
+    #   1. SEDIMENT_E2E_BASE_URL env var — ad-hoc override (e.g. PR preview)
+    #   2. environments[SEDIMENT_E2E_ENV].base_url — spec-defined env
+    #   3. full["base_url"] — top-level v0.1 fallback
+    env_name = os.environ.get("SEDIMENT_E2E_ENV", "dev")
+    env_cfg = (full.get("environments") or {}).get(env_name) or {}
+    base_url = (
+        os.environ.get("SEDIMENT_E2E_BASE_URL")
+        or env_cfg.get("base_url")
+        or full["base_url"]
+    )
     timeout = full.get("default_timeout_ms", 8000)
     # Per-flow viewport override — lets E2E-10 (mobile) reuse the same runner
     # without forcing a separate spec. Defaults to global viewport at 1280x900.
     vp = flow.get("viewport") or full.get("viewport", {"width": 1280, "height": 900})
-    seed_member = full.get("seed_member", {})
+    seed_member = env_cfg.get("seed_member") or full.get("seed_member", {}) or {}
     ctx_vars = {"seed_member": seed_member}
 
     artifacts: list[str] = []
