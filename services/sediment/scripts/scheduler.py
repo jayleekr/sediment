@@ -144,37 +144,26 @@ async def _run_health_check(alert_channel_name: str) -> None:
 
 
 async def _run_cost_monitor(daily_budget_usd: float, alert_channel_name: str) -> None:
-    """Rough daily LLM cost rollup from events.payload->>'distill_meta'.
+    """Daily LLM cost rollup from the llm_calls table (real token counts).
 
-    v1 stub: counts distill calls today and applies a per-call cost estimate.
-    A more rigorous version stores actual token counts in a `llm_costs`
-    table (TODO migration when multi-tenant ships).
+    Logs a structured summary; the structured logger will surface this in
+    `fly logs` and any log aggregator. Future: post to Discord alert_channel
+    when total_cost_usd > daily_budget_usd.
     """
-    from sqlalchemy import text
-    from lab_lib.db import service_session
-    # Per-call estimate (Haiku, ~6K input + 300 output)
-    HAIKU_PER_CALL = 0.0075
-    async with service_session() as s:
-        r = await s.execute(text("""
-            SELECT count(*) FROM events
-            WHERE source='discord' AND ts >= now() - interval '24 hours'
-        """))
-        events_24h = r.scalar() or 0
-        # Distill runs = events grouped by (channel, day) — a proxy
-        r = await s.execute(text("""
-            SELECT count(DISTINCT (payload->>'channel', date_trunc('day', ts)))
-            FROM events
-            WHERE source='discord' AND ts >= now() - interval '24 hours'
-        """))
-        approx_calls = int(r.scalar() or 0)
-    est = approx_calls * HAIKU_PER_CALL
-    over = est > daily_budget_usd
+    from lab_lib.cost_tracker import daily_summary
+    summary = await daily_summary(days=1)
+    over = summary["total_cost_usd"] > daily_budget_usd
     log.info(
-        "scheduler.cost", events_24h=events_24h,
-        approx_distill_calls=approx_calls,
-        est_usd=round(est, 4),
+        "scheduler.cost.daily",
+        calls=summary["total_calls"],
+        tokens_in=summary["total_tokens_in"],
+        tokens_out=summary["total_tokens_out"],
+        cost_usd=summary["total_cost_usd"],
         budget_usd=daily_budget_usd,
         over_budget=over,
+        unpriced_calls=summary["unpriced_calls"],
+        by_agent=summary["by_agent"],
+        by_model=summary["by_model"],
         alert_channel=alert_channel_name if over else None,
     )
 

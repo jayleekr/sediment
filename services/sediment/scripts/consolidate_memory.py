@@ -166,6 +166,7 @@ async def _extract(
         return empty
 
     from anthropic import AsyncAnthropic
+    from lab_lib.cost_tracker import record_call
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     msgs = render_messages(strategy, user_text=transcript[:32000])
     resp = await client.messages.create(
@@ -176,6 +177,19 @@ async def _extract(
         tool_choice={"type": "tool", "name": strategy.tool_schema["name"]},
         messages=msgs,
     )
+    # Record cost (fire-and-forget — never blocks extraction on tracker failure).
+    try:
+        await record_call(
+            model=str(resp.model),
+            agent="distill",
+            strategy=strategy.name,
+            prompt_version=strategy.prompt_version,
+            tokens_in=int(resp.usage.input_tokens),
+            tokens_out=int(resp.usage.output_tokens),
+            tenant_id=tenant_id,
+        )
+    except Exception:  # noqa: BLE001 — cost tracking must never break extraction
+        pass
     # Walk content blocks for the tool_use block.
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use":
