@@ -17,6 +17,13 @@ on:
       - "novels/**/*.md"
       - "products/**/*.md"
       - "docs/**/*.md"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "diff = only changed files (push semantics) · full = ALL .md in vault paths (use for cold reingest / Supabase cutover)"
+        type: choice
+        default: "diff"
+        options: ["diff", "full"]
 jobs:
   ingest:
     runs-on: ubuntu-latest
@@ -28,51 +35,87 @@ jobs:
         id: payload
         run: |
           python3 - <<'PY'
-          import json, os, subprocess
-          before = os.environ.get("BEFORE") or ""
-          after  = os.environ["AFTER"]
-          # First push / unknown before → diff against parent of `after`.
-          if not before or set(before) == {"0"}:
-              before = subprocess.run(
-                  ["git", "rev-parse", f"{after}^"], capture_output=True, text=True
-              ).stdout.strip() or after
-          diff = subprocess.run(
-              ["git", "diff", "--name-status", before, after],
-              capture_output=True, text=True, check=True,
-          ).stdout.splitlines()
+          import json, os, pathlib, subprocess
+          MODE = os.environ.get("MODE", "diff")
+          after = os.environ["AFTER"]
+          VAULT_PATHS = ["research", "web/src/content", "novels", "products", "docs"]
           files = []
-          for line in diff:
-              parts = line.split("\t")
-              status, path = parts[0], parts[-1]
-              if not path.endswith(".md"):
-                  continue
-              if status.startswith("D"):
-                  files.append({"path": path, "content": None, "deleted": True})
-              else:
-                  try:
-                      with open(path, encoding="utf-8") as fh:
-                          files.append({"path": path, "content": fh.read(),
+          if MODE == "full":
+              for root in VAULT_PATHS:
+                  for md in pathlib.Path(root).rglob("*.md"):
+                      try:
+                          files.append({"path": str(md), "content": md.read_text(encoding="utf-8"),
                                         "deleted": False})
-                  except FileNotFoundError:
-                      pass
+                      except Exception:
+                          pass
+              print(f"full mode: {len(files)} .md file(s) in vault paths")
+          else:
+              before = os.environ.get("BEFORE") or ""
+              # First push / unknown before → diff against parent of `after`.
+              if not before or set(before) == {"0"}:
+                  before = subprocess.run(
+                      ["git", "rev-parse", f"{after}^"], capture_output=True, text=True
+                  ).stdout.strip() or after
+              diff = subprocess.run(
+                  ["git", "diff", "--name-status", before, after],
+                  capture_output=True, text=True, check=True,
+              ).stdout.splitlines()
+              for line in diff:
+                  parts = line.split("\t")
+                  status, path = parts[0], parts[-1]
+                  if not path.endswith(".md"):
+                      continue
+                  if status.startswith("D"):
+                      files.append({"path": path, "content": None, "deleted": True})
+                  else:
+                      try:
+                          with open(path, encoding="utf-8") as fh:
+                              files.append({"path": path, "content": fh.read(),
+                                            "deleted": False})
+                      except FileNotFoundError:
+                          pass
+              print(f"diff mode: {len(files)} changed markdown file(s)")
           body = json.dumps({"ref": after, "files": files})
           with open("payload.json", "w", encoding="utf-8") as fh:
               fh.write(body)
-          print(f"{len(files)} changed markdown file(s)")
         env:
+          MODE: ${{ inputs.mode || 'diff' }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
-      - name: Sign + POST to Sediment ingester
+      - name: Sign + POST to Sediment ingester (chunked)
         run: |
           [ -s payload.json ] || { echo "no payload"; exit 0; }
-          SIG=$(openssl dgst -sha256 -hmac "$SECRET" payload.json | sed 's/^.*= /sha256=/')
-          code=$(curl -sS -o resp.json -w '%{http_code}' \
-            -X POST "$URL/webhook/ingest" \
-            -H "Content-Type: application/json" \
-            -H "X-Hub-Signature-256: $SIG" \
-            --data-binary @payload.json)
-          echo "HTTP $code"; cat resp.json; echo
-          [ "$code" = "200" ] || exit 1
+          # Chunk into <=30-file batches so each POST fits under proxy/server
+          # timeouts even with embedding cost (full-mode = 563 files for the
+          # Supabase cutover; chunking is no-op for typical push diffs).
+          python3 - <<'PY'
+          import json
+          data = json.load(open("payload.json"))
+          ref, files = data["ref"], data["files"]
+          CHUNK = 30
+          n = 0
+          for i in range(0, len(files) or 1, CHUNK):
+              with open(f"payload.batch.{n:04d}.json", "w") as f:
+                  json.dump({"ref": ref, "files": files[i:i+CHUNK]}, f)
+              n += 1
+          print(f"split {len(files)} files into {n} batch(es) of <={CHUNK}")
+          PY
+          total_ingested=0
+          for batch in payload.batch.*.json; do
+              SIG=$(openssl dgst -sha256 -hmac "$SECRET" "$batch" | sed 's/^.*= /sha256=/')
+              code=$(curl -sS --max-time 300 -o resp.json -w '%{http_code}' \
+                -X POST "$URL/webhook/ingest" \
+                -H "Content-Type: application/json" \
+                -H "X-Hub-Signature-256: $SIG" \
+                --data-binary @"$batch")
+              if [ "$code" != "200" ]; then
+                  echo "✗ $batch HTTP $code"; cat resp.json; echo; exit 1
+              fi
+              n=$(python3 -c "import json;print(json.load(open('resp.json')).get('n_ingested',0))")
+              total_ingested=$((total_ingested + n))
+              echo "  ✓ $batch HTTP 200 (n_ingested=$n, running total=$total_ingested)"
+          done
+          echo "TOTAL INGESTED: $total_ingested"
         env:
           URL: ${{ secrets.SEDIMENT_INGEST_URL }}
           SECRET: ${{ secrets.SEDIMENT_WEBHOOK_SECRET }}
