@@ -35,3 +35,47 @@ jobs:
         run: flyctl deploy --config infra/deploy/fly.toml --dockerfile Dockerfile --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # Post-deploy smoke against live prod. E2E-12 is no-auth by design — it
+  # only walks public routes and asserts the brand + console error budget
+  # against sediment.hypeproof-ai.xyz. So zero secrets are needed here.
+  # If it fails, screenshots are uploaded for triage.
+  prod_smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Playwright + chromium
+        run: |
+          pip install --quiet pyyaml 'playwright>=1.49'
+          playwright install --with-deps chromium
+      - name: Run E2E-12 prod smoke
+        env:
+          SEDIMENT_E2E_ENV: prod
+        working-directory: services/sediment
+        run: |
+          python -c "
+          import asyncio, sys
+          from validator.e2e_runner import run_flow
+          spec = {'id': 'cd-prod-smoke', 'title': 'E2E-12 prod smoke', 'layer': 'P3', 'severity': 'blocker', 'flow_id': 'E2E-12'}
+          res = asyncio.run(run_flow(spec))
+          print('passed:', res.passed)
+          print('actual:', res.actual)
+          if not res.passed:
+              print('FAIL:', res.message)
+              sys.exit(1)
+          print('OK — prod smoke passed')
+          "
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-12-screenshots
+          path: output/validation/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
