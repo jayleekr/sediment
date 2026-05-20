@@ -19,30 +19,63 @@ repo인지는 회의/Discord에서 배정받았을 것이다.
 | **`hypeproof-studio`** | VSCodium fork 기반 워크숍 도구 | Jay · 진용 · 봉호 · 재형 · TJ |
 | **`sediment`** | 지식 DB / SaaS 백엔드·프론트 | Jay · 재형 · 진용 |
 | **`hypeprooflab`** | 공개 사이트(hypeproof-ai.xyz) + 콘텐츠/운영 | Jay · 재형 |
-| **`hypeproof-harness`** | 공유 스킬/규약 — **메인테이너 전용, 멤버는 무시** |
+| **`hypeproof-harness`** | 공유 스킬/규약 + 온보딩 스킬 — **1회만 clone, 그 후엔 무시** |
 
-> **너는 harness repo를 clone하지 않는다.** 너의 consumer repo만 clone하면
-> 공유 스킬(`skill-creator` 등)이 이미 실파일로 들어가 있다. harness
-> 권한도 필요 없다.
+`hypeproof-harness`는 처음 한 번 셋업할 때만 쓴다. 그 안의 `/onboard-member`
+스킬이 자기 consumer repo를 clone하고 환경을 잡아준다. 그 다음부턴 자기
+consumer repo에서만 일한다.
 
 ---
 
-## 2. 시작하기 — 한 줄 셋업
+## 2. 시작하기 / Setup
+
+### 2a. 1회성 온보딩 (권장 — 자동화)
 
 ```bash
-git clone git@github.com:jayleekr/<your-repo>.git
-cd <your-repo>
+git clone git@github.com:jayleekr/hypeproof-harness.git
+cd hypeproof-harness
+claude            # Claude Code 세션 시작
+# 세션에서:
+/onboard-member   # 또는 한글로 "온보딩"
+```
+
+스킬이:
+1. 어느 consumer repo 멤버인지 물음 (studio/sediment/lab)
+2. `~/CodeWorkspace/<repo>`에 clone (`--recursive` 자동 적용 — studio의
+   vscodium-base 서브모듈 같이 가져옴)
+3. git hooks 설치 (`.githooks/` 있으면 — studio의 pre-push 등)
+4. Claude Code `.claude/settings.json` 검증 + MCP 서버 점검
+5. vendored `skill-creator` + `MEMBER-GUIDE.ko.md` 존재 확인
+6. 이 문서로 안내 후 종료
+
+**키/토큰 자동 저장은 안 한다** — 안내만. 본인이 처리. **재실행 안전**
+(idempotent — git pull만).
+
+### 2b. 수동 셋업 (자동화 없이)
+
+자동화 안 쓸 거면 직접:
+
+```bash
+git clone --recursive git@github.com:jayleekr/<your-repo>.git ~/CodeWorkspace/<your-repo>
+cd ~/CodeWorkspace/<your-repo>
+[ -d .githooks ] && git config core.hooksPath .githooks
 ```
 
 `<your-repo>`는 `hypeproof-studio`, `sediment`, `hypeprooflab` 중 자기 것.
+clone 직후 바로 동작 — 별도 `submodule update --init` 같은 거 없다
+(`skill-creator`는 실파일로 들어와 있음, `vscodium-base`만 studio용 서브모듈).
 
-- **studio 멤버**: `git clone --recursive` 권장 (`vscodium-base` 서브모듈 같이
-  가져옴). 자세한 빌드 셋업은 그 repo의 `DEV-GUIDE.md`.
-- **sediment 멤버**: `--recursive` 불필요. README 참고.
-- **lab 멤버**: `--recursive` 불필요. README 참고.
+### 2c. 일상 작업 — harness는 잊는다
 
-clone 직후 바로 동작한다 — 별도 `submodule update --init` 같은 거 없다
-(skill-creator는 실파일로 들어와 있음).
+온보딩 후엔 자기 consumer repo에서만 일한다. harness는 다시 clone할 필요
+없다. shared 콘텐츠는 이미 `.claude/skills/skill-creator/`와
+`docs/MEMBER-GUIDE.ko.md`(이 파일)에 vendoring돼 있다.
+
+```bash
+cd ~/CodeWorkspace/<your-repo>
+claude
+# 일상 워크플로 — §4 참조
+```
 
 ---
 
@@ -171,7 +204,8 @@ claude -w issue-15 --tmux  # 또 다른 이슈를 별도 worktree(+tmux 패널)
 ## 8. 자주 묻는 것
 
 **Q. harness repo도 clone해야 하나?**
-A. 아니. 권한도 필요 없다. 자기 consumer repo만 clone.
+A. **1회만** — 처음 온보딩 시(`/onboard-member` 스킬). 그 다음엔 안 쓴다.
+자동화 안 쓸 거면 자기 consumer repo만 직접 clone해도 동작은 한다 (§2b).
 
 **Q. `.claude/skills/skill-creator/HARNESS_VERSION` 파일은 뭐냐?**
 A. 그 vendored 스킬이 harness 어느 commit에서 복사됐는지의 증거. 손대지
