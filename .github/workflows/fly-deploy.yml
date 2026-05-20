@@ -1,0 +1,37 @@
+# Auto-deploy to Fly on main push.
+#
+# Triggers only on code/infra paths — docs-only changes skip the deploy.
+# `concurrency` serializes deploys so the Fly release_command can't collide
+# with itself. `workflow_dispatch` allows manual re-deploys from the Actions
+# tab without pushing a commit.
+#
+# Required secret: FLY_API_TOKEN (deploy-scoped, set via
+#   `fly tokens create deploy --app hypeproof-sediment --expiry 8760h`).
+
+name: Fly deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/sediment/**'
+      - 'Dockerfile'
+      - 'infra/deploy/**'
+      - '.github/workflows/fly-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy
+        run: flyctl deploy --config infra/deploy/fly.toml --dockerfile Dockerfile --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
