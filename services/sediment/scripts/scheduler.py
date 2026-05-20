@@ -215,14 +215,8 @@ async def main_async() -> int:
               _run_cost_monitor, float(cm.get("daily_budget_usd", 5.0)),
               cm.get("alert_channel_name", "sediment"))
 
-    # Print the resolved schedule so logs reveal what's actually running.
-    jobs_info = [
-        {"id": j.id, "next": str(j.next_run_time)}
-        for j in scheduler.get_jobs()
-    ]
-    log.info("scheduler.starting", jobs=jobs_info,
-             pid=os.getpid(), config=str(_CRON_YAML))
-
+    # Boot the scheduler BEFORE introspecting next_run_time — APScheduler
+    # only populates next_run_time once the scheduler is running.
     # Graceful shutdown on SIGTERM (supervisord sends this on restart).
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -233,6 +227,13 @@ async def main_async() -> int:
             pass  # Windows fallback; not reachable in our Linux container
 
     scheduler.start()
+    # Now safe to introspect next_run_time.
+    jobs_info = [
+        {"id": j.id, "next": str(j.next_run_time)}
+        for j in scheduler.get_jobs()
+    ]
+    log.info("scheduler.started", jobs=jobs_info,
+             pid=os.getpid(), config=str(_CRON_YAML))
     try:
         await stop.wait()
     finally:
