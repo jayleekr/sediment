@@ -1,0 +1,55 @@
+# Sediment Collection Agent — cron schedule.
+#
+# Loaded by services/sediment/scripts/scheduler.py at startup. Edit this file
+# + redeploy to add/remove channels or adjust frequency.
+#
+# When this graduates to multi-tenant, channels move into
+# `tenant_connectors.config.resources` (DB-driven). For dogfood + first
+# external tenant demo, YAML is the simplest auditable source of truth.
+
+discord:
+  # Fetch every 30 minutes. Per-channel watermark stored in events.payload.
+  # Tip: `*/30 * * * *` cron expression; APScheduler parses standard 5-field.
+  fetch_schedule: "*/30 * * * *"
+  channels:
+    # Highest-signal: AI-generated meeting summaries → meeting_transcript strategy
+    - id: "1460270044347891898"
+      name: "meeting-notes"
+    # General team activity → chat_thread strategy (auto-routed)
+    - id: "1458325530465009755"
+      name: "ai-에이전트"
+    - id: "1458325388315852993"
+      name: "ai-워크플로우"
+    - id: "1463019098685571257"
+      name: "인사이트-공유"
+    - id: "1506104152747671694"
+      name: "sediment"
+    - id: "1506104118500921484"
+      name: "hypeproof-studio"
+    - id: "1458782448094674944"
+      name: "ai-프로젝트"
+    - id: "1458325240185884722"
+      name: "ai-실험실"
+  # Channels excluded by design (noise / not signal):
+  #   잡담  공지사항  rule  온보딩-가이드  hackathon  일정
+
+distill:
+  # Distill once an hour at :05 — gives the latest fetch (:00, :30) a chance
+  # to land before extraction runs.
+  schedule: "5 * * * *"
+  # Look-back window per run. 2 hours overlaps the 1-hour cadence, so a
+  # missed run (e.g. machine restart) is auto-recovered within one cycle.
+  since_hours: 2
+
+# Daily watermark health canary — alerts if no new events in 24h across any
+# channel that historically had activity. (Implemented in scheduler.py;
+# alert channel = first channel whose name == "sediment", if present.)
+health_check:
+  schedule: "0 21 * * *"   # 06:00 KST = 21:00 UTC (KST = UTC+9)
+  alert_channel_name: "sediment"
+
+# Cost monitor — daily token rollup; alerts if exceeds budget.
+cost_monitor:
+  schedule: "30 21 * * *"  # 06:30 KST
+  daily_budget_usd: 5.00
+  alert_channel_name: "sediment"
