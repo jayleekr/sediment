@@ -250,23 +250,27 @@ async def webhook_ingest(request: Request):
     if not tid:
         raise HTTPException(status_code=500, detail="default tenant not found — run `make seed`")
 
-    # Canonical filters (imported, not re-implemented — stays in sync with the
-    # full-repo ingester).
-    from scripts.ingest_repo import _detect_type, _is_excluded  # noqa: E402
+    # Canonical filters from lab_lib (pure helpers, no vault-root dependency).
+    # Previously imported from scripts.ingest_repo, but that module raises
+    # SystemExit at import time when SEDIMENT_VAULT_ROOT is unset and no
+    # vault is on disk — true inside this container (vault lives in
+    # hypeprooflab, a SEPARATE repo) → webhook 500. lab_lib.vault_paths is
+    # pure logic and always importable.
+    from lab_lib.vault_paths import detect_type, is_excluded
 
     to_ingest: list[IngestDocReq] = []
     deleted: list[str] = []
     skipped = 0
     for f in req.files:
         parts = tuple(f.path.split("/"))
-        if not f.path.endswith(".md") or _is_excluded(parts):
+        if not f.path.endswith(".md") or is_excluded(parts):
             skipped += 1
             continue
         if f.deleted:
             deleted.append(f.path)
         elif f.content is not None:
             to_ingest.append(IngestDocReq(
-                tenant_id=tid, ref=f.path, type=_detect_type(f.path), body=f.content,
+                tenant_id=tid, ref=f.path, type=detect_type(f.path), body=f.content,
             ))
         else:
             skipped += 1
