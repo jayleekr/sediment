@@ -2,7 +2,29 @@ export default function PricingPage() {
   // Tenant-tier flat pricing (NOT per-seat). Internal rationale + cost math
   // lives in vault artifact `internal/pricing-strategy` (members-only).
   // See library page → search "pricing strategy".
+  //
+  // Funnel design (2026-05-21 update — Free tier added per Jay's feedback):
+  //   Free  → on-ramp ("try it on one channel, no card")
+  //   Solo  → bridge for 2-3 person studio that outgrew Free
+  //   Studio → lead tier for teams of 5-15 (the cash cow)
+  //   Pro   → upmarket 20-30 person agencies
+  //   Ent   → custom for 50+ regulated orgs
   const tiers = [
+    {
+      name: "Free",
+      price: "$0",
+      cadence: "forever",
+      sub: "No credit card required",
+      highlights: [
+        "1 channel from any source",
+        "100 events / month",
+        "7-day decision history",
+        "50 RAG chat queries / month",
+        "Community support",
+      ],
+      cta: "Get started",
+      featured: false,
+    },
     {
       name: "Solo",
       price: "$19",
@@ -13,6 +35,7 @@ export default function PricingPage() {
         "1,000 events / month",
         "Decisions + actions extraction",
         "Source citations",
+        "Email support",
       ],
       cta: "Start free trial",
       featured: false,
@@ -85,11 +108,11 @@ export default function PricingPage() {
           Flat per-team pricing — not per-seat. Add members without penalty.
         </p>
         <p className="mt-1 text-sm text-neutral-500">
-          14-day free trial on Studio &amp; Pro. No card required.
+          Start free. No credit card required. Upgrade only when your team outgrows the free quota.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {tiers.map((t) => (
           <div
             key={t.name}
