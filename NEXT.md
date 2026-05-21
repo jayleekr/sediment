@@ -57,23 +57,33 @@ with a visible freshness indicator.
 
 ---
 
-## P2 — pgvector on Fly PG  *(biggest quality lever)*
+## P2 — Supabase pgvector migration  *(done 2026-05-21)*
 
-**Problem.** `flyio/postgres-flex` has no pgvector extension. `init-fly.sql`
-was adapted: `embedding` column is `text`, HNSW index dropped. Retrieval is
-**BM25-only** — no semantic recall. This is the single biggest quality gap;
-paraphrased / conceptual queries that don't share lexical tokens miss.
+**Status:** ✅ live. Fly DATABASE_URL now points at Supabase pooler
+(`aws-1-ap-southeast-1.pooler.supabase.com`); 15 tables, pgvector 0.8.0,
+HNSW index (`vector_cosine_ops`, m=16, ef_construction=64), GIN tsv index,
+RLS on 14 tables. 690 artifacts / 6,469 chunks ingested.
 
-**Options:**
-1. Migrate Fly PG → a pgvector-capable image (custom Docker PG w/ pgvector), restore data.
-2. Move PG to Supabase (pgvector built-in, free tier OK for 8 users) — also gets us a managed dashboard.
-3. Stay BM25 but add a re-rank pass (cheaper, smaller ceiling).
+**Measured (2026-05-21):**
+- recall@3: 26 PASS / 5 PART / 9 MISS, avg 71.2%
+- p50/p95 latency: 866/2809ms
+- 5 historical baseline failures (GQ-017/020/024/029/035) all now PASS —
+  pgvector + HNSW gives real lift over the BM25-only Fly PG baseline.
+- 14 sub-1.0 queries are mostly stale `ideal_refs` (vault grew 563→690 →
+  some referenced files no longer in vault). Tracked in #10.
 
-**Recommendation:** Supabase (least ops, unblocks pgvector + gives a UI).
-Re-run schema + 563-artifact ingest against the new PG, repoint `DATABASE_URL`.
+**Fly Postgres `hypeproof-sediment-db`:** machine stopped 2026-05-21
+(volume retained as recovery point). After ~1 week of stable Supabase
+operation, destroy via:
+```
+fly machine destroy 7815619b606198 --app hypeproof-sediment-db --force
+fly volume destroy vol_v3ggq0qe0gomklx4 --app hypeproof-sediment-db
+fly apps destroy hypeproof-sediment-db
+```
 
-**Acceptance:** `recall@3` on `golden_queries.yaml` measurably up vs the
-BM25-only baseline (`services/sediment/.venv/bin/python -m validator.checks.regression_rag`).
+**Nightly recall check:** `.github/workflows/nightly-recall.yml` runs
+`validator.scripts.recall_live` daily at 18:30 UTC (03:30 KST). Fails if
+PASS count drops below 20/40 (currently 26). No secrets needed.
 
 ---
 
