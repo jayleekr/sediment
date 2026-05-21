@@ -1,26 +1,20 @@
 # launchd plists for Sediment
 
-Two plists handle scheduled ingest + memory consolidation. Install with:
+**Empty as of 2026-05-21.** Scheduled jobs (daily-ingest, dream memory
+consolidation) used to run as macOS LaunchAgents on Jay's laptop; both plists
+were deleted because:
 
-```bash
-cp infra/launchd/com.hypeproof.sediment.*.plist ~/Library/LaunchAgents/
-launchctl load -w ~/Library/LaunchAgents/com.hypeproof.sediment.daily-ingest.plist
-launchctl load -w ~/Library/LaunchAgents/com.hypeproof.sediment.dream.plist
-```
+1. They referenced the pre-split monorepo path (`hypeproof/products/sediment/`)
+   and stopped working after the 2026-05-18 repo split.
+2. Scheduling moved into the Fly VM itself via the APScheduler daemon
+   introduced in `b67b462` (Collection Agent cron). Running cron next to the
+   app removes the laptop-on dependency.
 
-To verify:
-```bash
-launchctl list | grep curator
-```
+Directory kept so the conventional install location is obvious if a
+laptop-side schedule is ever needed again.
 
-To remove:
-```bash
-launchctl unload ~/Library/LaunchAgents/com.hypeproof.sediment.daily-ingest.plist
-rm ~/Library/LaunchAgents/com.hypeproof.sediment.daily-ingest.plist
-```
-
-Logs:
-- `/tmp/curator-daily-ingest.log` / `.err`
-- `/tmp/curator-dream.log` / `.err`
-
-> If you move the repo, edit the absolute paths in the plists.
+If you do need a new plist:
+- Use the current repo layout (`services/sediment/` directly under the
+  sediment repo root, NOT `products/sediment/`).
+- Prefer adding the job to the in-VM APScheduler unless it genuinely needs
+  the host filesystem.

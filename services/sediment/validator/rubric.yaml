@@ -1000,29 +1000,12 @@ phases:
         cmd: "cd products/sediment/services/sediment && .venv/bin/python -m scripts.cron.retro"
         expected_exit: 0
 
-      - id: P3-LAUNCHD-01
-        title: "daily-ingest plist syntax valid"
-        layer: L1
-        severity: minor
-        type: bash
-        cmd: "plutil -lint products/sediment/infra/launchd/com.hypeproof.sediment.daily-ingest.plist"
-        expected_exit: 0
-
-      - id: P3-LAUNCHD-02
-        title: "dream plist syntax valid"
-        layer: L1
-        severity: minor
-        type: bash
-        cmd: "plutil -lint products/sediment/infra/launchd/com.hypeproof.sediment.dream.plist"
-        expected_exit: 0
-
-      - id: P3-GHA-01
-        title: "curator-ingest.yml workflow valid"
-        layer: L1
-        severity: minor
-        type: python
-        module: validator.checks.p3_automation
-        function: check_gha_workflow_valid
+      # P3-LAUNCHD-01, P3-LAUNCHD-02, P3-GHA-01 removed 2026-05-21 —
+      # launchd plists and the curator-ingest GHA workflow were both deleted
+      # (scheduling moved to in-VM APScheduler post repo split; ingest now
+      # runs from sediment.hypeproof-ai.xyz via fly-deploy.yml + APScheduler).
+      # If laptop-side scheduling returns, re-add a check that points at the
+      # current repo layout (services/sediment, not products/sediment).
 
       - id: P3-DISCORD-01
         title: "discord_ingest.py creates fixture if missing"

@@ -1,10 +1,8 @@
 """Phase 3 custom Python checks."""
 from __future__ import annotations
-import json
 import os
 import subprocess
 from pathlib import Path
-import yaml
 
 from lab_lib.db import service_session
 from sqlalchemy import text
@@ -46,19 +44,6 @@ async def check_dream_idempotent(spec: dict, **_) -> dict:
     return {"passed": proc2.returncode == 0,
             "actual": {"first_exit": proc1.returncode, "second_exit": proc2.returncode},
             "message": "" if proc2.returncode == 0 else proc2.stderr[:300]}
-
-
-def check_gha_workflow_valid(spec: dict, **_) -> dict:
-    """Parse the YAML and check minimal expected keys present."""
-    p = REPO_ROOT / ".github" / "workflows" / "curator-ingest.yml"
-    if not p.exists():
-        return {"passed": False, "message": "curator-ingest.yml missing"}
-    try:
-        d = yaml.safe_load(p.read_text())
-    except yaml.YAMLError as e:
-        return {"passed": False, "message": f"YAML parse error: {e}"}
-    has_jobs = isinstance(d.get("jobs"), dict) and "ingest" in d["jobs"]
-    return {"passed": has_jobs, "actual": {"jobs": list(d.get("jobs", {}).keys())}}
 
 
 async def check_discord_fixture_creation(spec: dict, **_) -> dict:
