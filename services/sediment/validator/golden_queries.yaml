@@ -16,31 +16,35 @@
 queries:
 
   # ─── Lab philosophy / lens (4) ──────────────────────────────
+  # Refreshed 2026-05-21: PHILOSOPHY.md no longer in vault. SPEC.md is now
+  # the authoritative source for lab philosophy (mirror-loop, doing-is-learning,
+  # vanilla-wins) — both terms appear in its brand/concept section. Ralph
+  # LEARNINGS.md is the secondary source where they're worked through.
   - id: GQ-001
     q: "What is the mirror-loop lens about?"
     expected_intent: library
-    ideal_refs: ["PHILOSOPHY.md", "research/lens"]
+    ideal_refs: ["products/sediment/SPEC.md", "research/lens"]
     difficulty: easy
     lang: en
 
   - id: GQ-002
     q: "doing-is-learning이 무슨 뜻이야?"
     expected_intent: library
-    ideal_refs: ["PHILOSOPHY.md"]
+    ideal_refs: ["products/sediment/SPEC.md"]
     difficulty: easy
     lang: ko
 
   - id: GQ-003
     q: "vanilla-wins lens 적용 사례 있나?"
     expected_intent: library
-    ideal_refs: ["PHILOSOPHY.md", "research"]
+    ideal_refs: ["products/sediment/SPEC.md", "research"]
     difficulty: medium
     lang: ko
 
   - id: GQ-004
     q: "humanities-hypothesis 핵심 주장"
     expected_intent: library
-    ideal_refs: ["PHILOSOPHY.md"]
+    ideal_refs: ["products/sediment/SPEC.md", "products/sediment/harness/ralph/LEARNINGS.md"]
     difficulty: medium
     lang: ko
 
@@ -225,10 +229,12 @@ queries:
     difficulty: easy
     lang: ko
 
+  # Refreshed 2026-05-21: docs/5-5-pilot-structure path no longer in vault.
+  # 5/5 pilot content lives in the Q2 roadmap.
   - id: GQ-030
     q: "5/5 파일럿 관련 결정사항"
     expected_intent: decision
-    ideal_refs: ["docs/5-5-pilot-structure", "products"]
+    ideal_refs: ["products/hypeproof-roadmap-2026Q2.md", "products"]
     difficulty: medium
     lang: ko
 
@@ -239,18 +245,23 @@ queries:
     difficulty: medium
     lang: ko
 
+  # Refreshed 2026-05-21: AGENTS.md not in vault. Mother bot is documented
+  # in the research pipeline DESIGN doc — Mother is the system Mother runs
+  # daily research from.
   - id: GQ-032
     q: "Mother bot 역할"
     expected_intent: library
-    ideal_refs: ["AGENTS.md", "products"]
+    ideal_refs: ["research/DESIGN.md", "products"]
     difficulty: medium
     lang: ko
 
   # ─── AI Curator self-references (3) ─────────────────────────
+  # Refreshed 2026-05-21: infra/init.sql isn't an artifact (.md only). RLS
+  # design lives in SPEC §11.11 + TEST_REQUIREMENTS RLS section.
   - id: GQ-033
     q: "Postgres RLS 설계 어떻게 했어?"
     expected_intent: library
-    ideal_refs: ["products/sediment/SPEC.md", "products/sediment/infra/init.sql"]
+    ideal_refs: ["products/sediment/SPEC.md", "products/sediment/TEST_REQUIREMENTS.md"]
     difficulty: medium
     lang: ko
 
