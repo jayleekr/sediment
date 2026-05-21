@@ -31,9 +31,14 @@ import yaml
 
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
 EMAIL = os.environ.get("SEDIMENT_EMAIL", "jay.lee@sonatus.com")
-MIN_PASS = int(os.environ.get("RECALL_MIN_PASS", "20"))  # of 40
+MIN_PASS = int(os.environ.get("RECALL_MIN_PASS", "20"))  # default = hypeproof-lab baseline
 
-_GOLDEN = Path(__file__).resolve().parents[1] / "golden_queries.yaml"
+# Default queries file = hypeproof-lab. Override with RECALL_QUERIES env or
+# --queries CLI arg for other tenants (e.g. kids-edu).
+_GOLDEN = Path(os.environ.get(
+    "RECALL_QUERIES",
+    str(Path(__file__).resolve().parents[1] / "golden_queries.yaml"),
+))
 
 
 def _recall_at_k(hits, ideal, k):

@@ -391,3 +391,47 @@ flows:
       - action: assert
         type: console_errors_max
         value: 8
+
+  - id: E2E-13
+    name: "kids-edu tenant — chat returns a citation"
+    # Proves multi-tenant ingest works end-to-end: signin_as a kids-edu admin,
+    # submit a chat query that should land citations on the
+    # JinyongShin/hypeproof_kids_edu vault (specifically the AI Native 7
+    # mindsets concept), and assert that AT LEAST ONE citation reference
+    # renders in the answer. The reference selector is the same one already
+    # tested in E2E-09 ([1] / [2] / [3] inline refs from the chat prompt).
+    #
+    # Why this is the proof: validates the whole pipeline — github_repo_fetch
+    # → events → vault_ingester → chunks (with embeddings) → /v1/chat → SSE
+    # → citation render. If any link breaks, the assertion fails.
+    #
+    # Tagged [prod] because kids-edu data only exists in the Supabase prod
+    # DB — dev would need its own GitHub-Repo-Connector run to be testable.
+    severity: major
+    environments: [prod]
+    repeat: 2
+    pass_threshold: 2
+    steps:
+      - action: signout
+      - action: signin_as
+        email: "jayleekr0125@gmail.com"
+      - action: navigate
+        url: "/sediment"
+        wait_for: "text=Try one"
+        screenshot: "01-kids-edu-home"
+      - action: fill
+        selector: "input[placeholder='ask the lab…']"
+        value: "AI Native 마인드 7종 설명해줘"
+      - action: click
+        selector: "button:has-text('Send')"
+        wait_for_url_regex: "/sediment/c/"
+        screenshot: "02-chat-sent"
+      - action: wait_for_idle
+        timeout_ms: 45000
+        screenshot: "03-chat-done"
+      # Any of [1], [2], [3], [4], [5] is sufficient — system prompt mandates
+      # at least one inline citation when chunks are present. Absence = either
+      # no retrieval or no chunks ingested = end-to-end regression.
+      - action: assert
+        type: text_matches_regex
+        value: "\\[[1-5]\\]"

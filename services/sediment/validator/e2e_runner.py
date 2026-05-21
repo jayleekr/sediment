@@ -271,6 +271,12 @@ async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
                         val = step["value"]
                         text = await page.text_content(sel) or ""
                         ok = (val in text)
+                    elif t == "text_matches_regex":
+                        import re as _re
+                        sel = step.get("selector", "body")
+                        pattern = step["value"]
+                        text = await page.text_content(sel) or ""
+                        ok = bool(_re.search(pattern, text))
                     elif t == "url_contains":
                         ok = step["value"] in page.url
                     elif t == "selector_visible":
