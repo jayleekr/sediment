@@ -134,7 +134,8 @@ async def _delete_artifact_chunks(tenant_id: str, ref: str) -> int:
 # ---------------------------------------------------------------------------
 
 INGESTER_BASE = os.environ.get(
-    "VAULT_INGESTER_BASE", "http://127.0.0.1:8000"
+    "VAULT_INGESTER_BASE",
+    f"http://127.0.0.1:{os.environ.get('VAULT_INGESTER_PORT', '11000')}",
 )
 
 
@@ -237,13 +238,14 @@ async def _process_integration(
                 continue
 
             for ev in events:
-                # 1) Raw event row (audit / replay)
+                # 1) Raw event row (audit / replay). Dedup'd on external_id;
+                #    duplicates DO fall through to step 2 so a transient
+                #    vault_ingester failure on a prior run is self-healing.
                 try:
                     if await _insert_event(integration["tenant_id"], ev):
                         summary["events_inserted"] += 1
                     else:
                         summary["events_skipped_dup"] += 1
-                        continue  # already processed in a prior run
                 except Exception as e:
                     log.warning("github.event.insert_failed",
                                 ext=ev.external_id, err=str(e)[:200])
@@ -252,7 +254,10 @@ async def _process_integration(
                     )
                     continue
 
-                # 2) Chunk + embed via vault_ingester (or hard-delete)
+                # 2) Chunk + embed via vault_ingester (or hard-delete).
+                #    vault_ingester upserts artifacts by (tenant_id, ref) and
+                #    replaces chunks atomically, so re-running with the same
+                #    content is a no-op semantically.
                 path = ev.payload.get("path") or ""
                 if ev.kind == "file_delete":
                     n = await _delete_artifact_chunks(integration["tenant_id"], path)
