@@ -1,6 +1,7 @@
 # Auto-deploy to Fly on main push.
 #
-# Triggers only on code/infra paths — docs-only changes skip the deploy.
+# Triggers only on runtime-affecting paths. Validator/tests changes don't
+# trigger a deploy (they're in the image but not invoked at runtime).
 # `concurrency` serializes deploys so the Fly release_command can't collide
 # with itself. `workflow_dispatch` allows manual re-deploys from the Actions
 # tab without pushing a commit.
@@ -14,7 +15,18 @@ on:
   push:
     branches: [main]
     paths:
-      - 'services/sediment/**'
+      # Allowlist — runtime code + image inputs only. validator/ and tests/
+      # changes don't deploy (they ride along in the image but aren't invoked
+      # by supervisord; would be a wasteful deploy).
+      - 'services/sediment/applications/**'
+      - 'services/sediment/lab_lib/**'
+      - 'services/sediment/lab_platform/**'
+      - 'services/sediment/scripts/**'
+      - 'services/sediment/prompts/**'
+      - 'services/sediment/data/**'
+      - 'services/sediment/config/**'
+      - 'services/sediment/pyproject.toml'
+      - 'services/sediment/uv.lock'
       - 'Dockerfile'
       - 'infra/deploy/**'
       - '.github/workflows/fly-deploy.yml'
@@ -44,16 +56,33 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Pinned to match services/sediment/uv.lock. Bump together. Floating
+      # ranges caused breakage when chromium bumped major and old playwright
+      # couldn't drive it.
+      PLAYWRIGHT_VERSION: "1.60.0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install Playwright + chromium
-        run: |
-          pip install --quiet pyyaml 'playwright>=1.49'
-          playwright install --with-deps chromium
+      # Cache the chromium download (~150MB). Key includes the Playwright
+      # version (which dictates the bundled chromium revision) and the OS.
+      - name: Cache Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Install Playwright Python package
+        run: pip install --quiet pyyaml "playwright==${PLAYWRIGHT_VERSION}"
+      - name: Install chromium binary (skip on cache hit)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: playwright install --with-deps chromium
+      - name: Install chromium system deps (cache hit path)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium
       - name: Run E2E-12 prod smoke
         env:
           SEDIMENT_E2E_ENV: prod

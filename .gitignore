@@ -17,6 +17,8 @@ docker-volumes/
 # Auto-updated pointers to most-recent validation run — noise in commits.
 output/validation/P*-latest.json
 output/validation/P*-latest.md
+# Playwright screenshots from E2E runs (local dev + CI smoke uploads).
+output/validation/screenshots/
 # Ralph runtime state — restored from templates each run.
 harness/ralph/STATE.json
 harness/ralph/TODO.md
