@@ -28,179 +28,217 @@
 | 9. GA + pricing | 🟡 stub | (deployment-time work) |
 | 10+. Enterprise | 📁 placeholder | workspace_solutions/_template + terraform stub |
 
-> ⚠️ The Directory Map further down predates the 2026-05-18 split out of
-> `jayleekr/hypeprooflab`. Actual paths now: this repo root → `services/sediment/`
-> (no `products/` prefix) and `frontend/` (Sediment UI) instead of `web/src/app/curator/`.
-> Routes under `frontend/app/sediment/` not `/curator`. See `CLAUDE.md` for current layout.
-
 ---
 
 ## Quick Start (local, 5 minutes)
 
-Prerequisites: Docker, Python 3.11+, Node 20+, OpenAI API key (embedding), Anthropic API key (LLM, optional — runs in offline mode without).
+Prerequisites: Docker, Python 3.11+, Node 20+, OpenAI API key (embeddings), Anthropic or Gemini API key (LLM — runs in offline mock mode without).
 
 ```bash
-# 1. From repo root
-cd products/sediment
+# 1. From repo root (this repo IS the project; no products/ prefix anymore)
+cd services/sediment
 
 # 2. Configure
 cp .env.example .env
-# edit .env — set ANTHROPIC_API_KEY and OPENAI_API_KEY (optional but recommended)
+# edit .env — set ANTHROPIC_API_KEY (or GEMINI_API_KEY) and OPENAI_API_KEY
 
-# 3. Start Postgres + Redis
-make up
+# 3. Start Postgres + Redis (from repo root, not services/sediment)
+cd .. && cd .. && make -C . up   # or just: docker compose -f infra/docker-compose.yml up -d
 
 # 4. Install Python deps
-make install
+cd services/sediment && uv sync   # or `pip install -e .`
 
-# 5. Seed default tenant + members from data/members.json
-make seed
+# 5. Seed default tenants + members from data/members.json
+.venv/bin/python -m scripts.seed_lab
 
-# 6. In 4 separate terminals, start the services:
-make platform      # :10100  REST API
-make langgraph     # :10020  SSE stream
-make ingester      # :11000  vault ingest
-make metadata      # :12000  metadata queries
+# 6. Start the 4 services + scheduler (5 terminals; or supervisord in prod)
+.venv/bin/uvicorn applications.sediment_platform.main:app  --port 10100 --reload
+.venv/bin/uvicorn applications.sediment_langgraph.main:app --port 10020 --reload
+.venv/bin/uvicorn applications.vault_ingester.main:app     --port 11000 --reload
+.venv/bin/uvicorn applications.metadata_svc.main:app       --port 12000 --reload
+.venv/bin/python  -m scripts.scheduler                              # APScheduler cron
 
-# 7. Initial vault ingest (research/, columns/, novels/)
-make ingest
+# 7. Initial vault ingest (point at the hypeprooflab content repo)
+.venv/bin/python -m scripts.ingest_repo --root /path/to/hypeprooflab
 
 # 8. Verify cross-tenant isolation
-make verify-rls
+.venv/bin/python -m scripts.verify_rls
 
 # 9. Run the web UI
-cd ../../web && npm run dev
-# open http://localhost:3000/curator
+cd ../../frontend && npm install && npm run dev
+# open http://localhost:3000/sediment
 ```
+
+For prod deploy: just `git push origin main` — see `.github/workflows/fly-deploy.yml` and `infra/deploy/README.md`.
 
 ---
 
 ## Architecture (8명 팀 → SaaS multi-tenant ready)
 
 ```
-                      ┌─────────────────────────┐
-                      │  Next.js /curator/*     │  (web/)
-                      │  chat · library · mem   │
-                      └──────────┬──────────────┘
-                                 │ JWT
-       ┌─────────────────────────┼─────────────────────────┐
-       │                         │                         │
-┌──────▼──────┐         ┌────────▼────────┐        ┌───────▼────────┐
-│  platform   │         │   langgraph     │        │  ingester      │
-│  :10100     │         │   :10020 SSE    │        │  :11000        │
-│  REST       │         │   lab_curator   │        │  RAG ingest    │
-│             │         │   _graph        │        │                │
-│ tenant ctx  │         │                 │        │ service role   │
-│ middleware  │         │  Workspace MCP  │        │ (BYPASSRLS)    │
-└──────┬──────┘         │  :8888          │        └───────┬────────┘
-       │                │  12 tools       │                │
-       │                └────────┬────────┘                │
-       │                         │                         │
-       └─────────────────────────▼─────────────────────────┘
-                          ┌─────────────┐
-                          │  Postgres   │  pgvector + RLS
-                          │   :5433     │  ┌──────────────────┐
-                          │             │  │ All tables have  │
-                          │   curator   │  │ tenant_id NOT    │
-                          │     DB      │  │ NULL + policies  │
-                          │             │  └──────────────────┘
-                          └─────────────┘
-                          ┌─────────────┐
-                          │   Redis     │  :6380 cache/SSE
-                          └─────────────┘
+                    ┌──────────────────────────────┐
+                    │  Next.js  /sediment/*        │  (frontend/, Vercel)
+                    │  chat · library · members    │
+                    └───────────────┬──────────────┘
+                                    │ JWT  (HTTPS)
+                ┌───────────────────┼─────────────────────────────┐
+                │                   │                             │
+        ┌───────▼────────┐ ┌────────▼─────────┐ ┌─────────────────▼──────────┐
+        │  platform      │ │  langgraph       │ │  ingester                  │
+        │  :10100  REST  │ │  :10020 SSE      │ │  :11000  /webhook/*        │
+        │  workspace_    │ │  curator_graph   │ │  + RAG batch ingest        │
+        │  curator_graph │ │  Workspace MCP   │ │                            │
+        │  tenant_ctx    │ │  12 tools        │ │  service role (BYPASSRLS)  │
+        │  middleware    │ │                  │ │                            │
+        └───────┬────────┘ └──────────┬───────┘ └───────────────┬────────────┘
+                │                     │                         │
+                │             ┌───────▼──────────┐              │
+                │             │ scheduler.py     │              │
+                │             │ (APScheduler)    │              │
+                │             │ Discord :30m +   │              │
+                │             │ distill hourly + │              │
+                │             │ consolidate 12h  │              │
+                │             └───────┬──────────┘              │
+                │                     │                         │
+                └─────────────────────┼─────────────────────────┘
+                                      ▼
+                          ┌─────────────────────────┐
+                          │  Supabase Postgres      │  pgvector 0.8.0 + HNSW
+                          │  (pooler :5432)         │  + RLS 14 tables
+                          │                         │  ┌─────────────────────┐
+                          │  690 artifacts          │  │ All tenant tables   │
+                          │  6469 chunks            │  │ have tenant_id NOT  │
+                          │                         │  │ NULL + policies     │
+                          └─────────────────────────┘  └─────────────────────┘
+
+  Internal-only (not routed):  metadata-svc :12000 (validator queries)
+  Production: 5 services + nginx packed into a single Fly VM (NRT) via supervisord;
+              fronted by nginx :8080 → platform/langgraph/ingester via path routing.
 ```
 
 **Multi-tenant guarantees:**
 1. Every tenant-scoped table has `tenant_id UUID NOT NULL`.
 2. Postgres RLS policies (`USING tenant_id = current_tenant_id()`) enforce isolation.
-3. App role (`curator_app`) is subject to RLS. Service role (`curator_service`) is `BYPASSRLS` — used only by ingest/cron/admin.
-4. `TenantContextMiddleware` on every request: JWT → `SET LOCAL app.tenant_id`.
-5. `make verify-rls` runs cross-tenant checks (insert markers in 2 tenants, assert no leakage).
+3. App role (`curator_app`) is subject to RLS. Service role (`curator_service`) is `BYPASSRLS` — used only by ingest/cron/admin. (Dogfood currently runs as `postgres` superuser on Supabase — single-tenant phase only.)
+4. `TenantContextMiddleware` on every request: JWT → `SELECT set_config('app.tenant_id', ...)`.
+5. `verify_rls.py` runs cross-tenant checks (insert markers in 2 tenants, assert no leakage).
 
 ---
 
-## Directory Map
+## Directory Map (post 2026-05-18 repo split — this is the live layout)
 
 ```
-products/sediment/
-├── SPEC.md                      # full design doc (v0.2)
-├── DECISIONS.md                 # all §11 questions answered
-├── README.md                    # this file
-├── Makefile                     # `make <target>`
-├── .env.example
-├── .gitignore
+sediment/                              # repo root (was: products/sediment/)
+├── SPEC.md                            # full design doc
+├── DECISIONS.md                       # §11 questions answered + ongoing
+├── NEXT.md                            # post-MVP roadmap + ops baseline
+├── PHASE_5_5_DOGFOOD_GATE.md          # dogfood gate criteria
+├── CLAUDE.md                          # per-project AI-agent guardrails
+├── Dockerfile                         # multi-svc image (nginx + 5 uvicorns)
+├── README.md                          # this file
+│
+├── .claude/
+│   └── guard.json                     # tool-level edit protection (init.sql, .env, billing.py)
+│
+├── .github/workflows/
+│   ├── fly-deploy.yml                 # main push → fly deploy + E2E-12 smoke
+│   └── nightly-recall.yml             # daily recall@3 sweep
+│
+├── frontend/                          # Standalone Next.js 16 UI (Vercel project)
+│   ├── package.json
+│   ├── next.config.ts                 # turbopack + (dev) /api/v1 proxy to Fly
+│   └── app/
+│       ├── layout.tsx                 # root + env-aware badge
+│       ├── auth.ts                    # GitHub OAuth via NextAuth (Phase 5)
+│       └── sediment/                  # all 9 routes (chat, library, members, admin, ...)
 │
 ├── infra/
-│   ├── docker-compose.yml       # Postgres + Redis
-│   ├── init.sql                 # DDL + RLS policies + roles
-│   ├── launchd/                 # macOS cron plists
-│   └── terraform/               # Phase 9+ deploy stub
+│   ├── init.sql                       # DDL + RLS policies + roles (guard.json blocks edits)
+│   ├── docker-compose.yml             # local dev: pgvector pg17 + redis
+│   ├── deploy/                        # production deploy (Fly)
+│   │   ├── fly.toml                   # app config (NRT, 1 VM, 1024MB)
+│   │   ├── start.sh                   # entrypoint: normalize DB URL, exec supervisord
+│   │   ├── release.sh                 # fly release_command — idempotent seed_lab
+│   │   ├── nginx.conf                 # :8080 routing + /proxy/anthropic egress
+│   │   ├── supervisord.conf           # 4 uvicorn + scheduler + nginx
+│   │   ├── run-with-db.sh             # admin wrapper (DB URL normalize)
+│   │   └── README.md                  # first-deploy runbook
+│   ├── github-actions/
+│   │   └── vault-ingest.yml           # template: install into hypeprooflab repo
+│   ├── launchd/                       # intentionally empty (in-VM APScheduler replaces)
+│   ├── terraform/                     # Phase 9+ deploy stub (README only)
+│   └── SUPABASE_MIGRATION.md          # P2 cutover guide (done 2026-05-21)
 │
-├── services/sediment/            # Python FastAPI monorepo
+├── services/sediment/                 # Python FastAPI services
 │   ├── pyproject.toml
-│   ├── lab_lib/                 # shared
+│   ├── uv.lock
+│   ├── lab_lib/                       # shared
 │   │   ├── settings.py
 │   │   ├── logging.py
-│   │   ├── db.py                # async session + tenant context
-│   │   ├── auth.py              # JWT mint/decode
+│   │   ├── db.py                      # async session + tenant context
+│   │   ├── auth.py                    # JWT mint/decode
 │   │   ├── tenant_middleware.py
-│   │   ├── embeddings.py        # OpenAI text-embedding-3-small
-│   │   └── chunker.py           # heading-aware Markdown chunker
+│   │   ├── embeddings.py              # OpenAI text-embedding-3-small
+│   │   ├── chunker.py                 # heading-aware Markdown chunker
+│   │   ├── prompts.py                 # YAML strategy loader (distill, governance)
+│   │   ├── vault_paths.py             # ref/path helpers
+│   │   ├── cost_tracker.py            # llm_calls table + daily rollup
+│   │   └── connectors/                # Discord HTTP + base connector
 │   ├── applications/
-│   │   ├── curator_platform/    # :10100 REST
-│   │   │   ├── main.py
-│   │   │   └── routers/         # auth, conversations, library, members,
-│   │   │                        # ingest_proxy, feedback, costs, admin,
-│   │   │                        # onboarding, billing
-│   │   ├── curator_langgraph/   # :10020 SSE
-│   │   │   ├── main.py
-│   │   │   └── graphs/lab_curator_graph.py
-│   │   ├── vault_ingester/      # :11000
-│   │   │   └── main.py
-│   │   └── metadata_svc/        # :12000
-│   │       └── main.py
+│   │   ├── sediment_platform/         # :10100 REST (auth, library, members, admin, billing, ...)
+│   │   ├── sediment_langgraph/        # :10020 SSE (workspace_curator_graph)
+│   │   ├── vault_ingester/            # :11000 (webhook/* batch ingest)
+│   │   ├── metadata_svc/              # :12000 (internal validator queries)
+│   │   └── sediment_mcp/              # FastMCP server (12 tools)
 │   ├── lab_platform/
-│   │   ├── mcp_servers/
-│   │   │   └── workspace_mcp.py # 12 tenant-aware tools
-│   │   └── agents/              # (Phase 4 expansion)
+│   │   └── mcp_servers/workspace_mcp.py
+│   ├── prompts/                       # YAML strategies (loaded by lab_lib/prompts.py)
+│   │   ├── distill/                   # base.yaml + 4 strategies (chat_thread, doc_edit, ...)
+│   │   └── governance/                # base.yaml + 3 strategies (anomaly_flag, ...)
+│   ├── config/
+│   │   └── cron.yaml                  # APScheduler schedule (8 Discord channels, etc.)
 │   ├── scripts/
-│   │   ├── seed_lab.py
-│   │   ├── ingest_repo.py
+│   │   ├── seed_lab.py                # idempotent tenant/member seed
+│   │   ├── ingest_repo.py             # bulk vault ingest
 │   │   ├── verify_rls.py
-│   │   ├── discord_ingest.py
-│   │   └── cron/
-│   │       ├── daily_ingest.sh
-│   │       ├── retro.py
-│   │       └── dream.py
-│   ├── tests/                   # pytest
+│   │   ├── discord_fetch.py           # cron HTTP fetcher
+│   │   ├── discord_ingest.py          # legacy fixture-based ingester
+│   │   ├── distill.py                 # per-source distill (uses prompts.py)
+│   │   ├── consolidate_memory.py      # conv → decisions/actions
+│   │   ├── scheduler.py               # APScheduler daemon
+│   │   ├── dogfood_digest.py
+│   │   ├── reingest_to.sh
+│   │   └── cron/dream.py              # Sunday memory consolidation (legacy)
+│   ├── data/
+│   │   └── members.json               # baked into image; release_command upserts
+│   ├── tests/
 │   │   ├── test_rls.py
 │   │   ├── test_chunker.py
-│   │   └── test_auth.py
-│   └── migrations/              # alembic (placeholder for Phase 6)
+│   │   ├── test_auth.py
+│   │   └── test_prompts.py
+│   └── validator/
+│       ├── rubric.yaml                # check definitions (parent-only edits)
+│       ├── recipes.yaml               # 4-tier code-mod policy
+│       ├── e2e_spec.yaml              # 12 Playwright flows, multi-env (dev/prod)
+│       ├── golden_queries.yaml        # 40-query RAG eval set
+│       ├── ux_rubric.yaml
+│       ├── runner.py / loop.py / e2e_runner.py / report.py / fixer.py / dispatch.py
+│       ├── checks/                    # per-check Python (p3_automation, lib_rag, ...)
+│       └── scripts/
+│           └── recall_live.py         # live recall@3 (used by nightly-recall.yml)
 │
-├── workspace_solutions/         # Phase 10+ enterprise dedicated
-│   └── _template/
-│       ├── README.md
-│       └── tenant.yaml
+├── harness/
+│   ├── ralph/                         # autonomous self-improving loop
+│   │   ├── ralph.sh / supervisor.sh
+│   │   ├── RALPH_PROMPT.md            # agent contract
+│   │   ├── LEARNINGS.md               # append-only memory across iterations
+│   │   └── *.template.*               # restored each iter
+│   ├── scripts/                       # ai-commit.sh, lint-sql-cast.sh, restart-services-if-changed.sh
+│   └── contracts/ / monitor/ / permissions/ / templates/
 │
-└── docs/                        # extra design/runbook docs (empty)
-```
-
-The Next.js side lives in `web/src/app/curator/`:
-```
-web/src/app/curator/
-├── layout.tsx
-├── page.tsx                    # chat home + dev sign-in
-├── c/[id]/page.tsx             # conversation + SSE
-├── library/page.tsx
-├── members/page.tsx
-├── admin/page.tsx
-├── onboard/page.tsx            # Phase 6 wizard stub
-├── pricing/page.tsx            # Phase 8 pricing page stub
-├── auth/README.md              # NextAuth.js guide for Phase 5
-└── lib/
-    ├── api.ts
-    └── sse.ts
+└── docs/
+    └── design/
+        └── collection-and-distillation.md  # v0.3 design (Collection + Data Governance Agent)
 ```
 
 ---
