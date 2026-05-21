@@ -52,6 +52,15 @@ consolidate:
   since_hours: 13
   limit: 50
 
+# GitHub repo sync — pulls markdown file revisions from every tenant whose
+# `integrations` row has kind='github'. Per-integration config (repos, path
+# filters, watermark) lives in the DB; this block only controls cadence.
+# Cron expression is UTC: 0 0-13 * * * = top of each hour from 00–13 UTC
+# = 09–22 KST. Idle overnight (Korean team's working hours).
+github_repo_sync:
+  enabled: true
+  schedule: "0 0-13 * * *"
+
 # Daily watermark health canary — alerts if no new events in 24h across any
 # channel that historically had activity. (Implemented in scheduler.py;
 # alert channel = first channel whose name == "sediment", if present.)

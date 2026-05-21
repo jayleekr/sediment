@@ -123,6 +123,17 @@ async def _run_consolidate(tenant: str, since_hours: int, limit: int) -> None:
         log.exception("scheduler.consolidate.error", err=str(e)[:200])
 
 
+async def _run_github_repo_sync() -> None:
+    """Pull every tenant's github integration (kind='github'). One pass
+    advances watermarks for all configured tenants."""
+    from scripts.github_repo_fetch import amain as gh_amain
+    try:
+        rc = await gh_amain(["--all"])
+        log.info("scheduler.github_repo_sync.done", rc=rc)
+    except Exception as e:
+        log.exception("scheduler.github_repo_sync.error", err=str(e)[:200])
+
+
 async def _run_health_check(alert_channel_name: str) -> None:
     """Check that each watched channel has had an event in the last 24h.
     Logs (and can post to Discord) channels that have gone silent.
@@ -228,6 +239,13 @@ async def main_async() -> int:
                   cs.get("tenant", "hypeproof-lab"),
                   int(cs.get("since_hours", 13)),
                   int(cs.get("limit", 50)))
+
+    # GitHub repo sync (every tenant with a github integration row)
+    gh = cfg.get("github_repo_sync") or {}
+    if gh.get("enabled", True):
+        _add_cron(scheduler, "github_repo_sync",
+                  gh.get("schedule", "0 0-13 * * *"),  # 09-22 KST hourly
+                  _run_github_repo_sync)
 
     # Health canary
     hc = cfg.get("health_check") or {}

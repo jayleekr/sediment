@@ -1,0 +1,117 @@
+# Golden Query Dataset — kids-edu tenant (seed v0.1, 10 queries)
+#
+# Companion to golden_queries.yaml (which targets the hypeproof-lab tenant).
+# These queries probe the JinyongShin/hypeproof_kids_edu vault as ingested
+# via the GitHub Repo connector. Grounded in actual file paths observed
+# during the 2026-05-21 smoke ingest (193 file_revision events).
+#
+# Format: same as golden_queries.yaml. Run via:
+#   python -m validator.checks.regression_rag --queries validator/golden_queries_kids_edu.yaml \
+#       --tenant kids-edu
+#
+# Annotator: Jay (initial seed, 2026-05-21)
+# Tenant: kids-edu (JinyongShin/hypeproof_kids_edu)
+# Ingest scope: kids_edu_vault/wiki/ + meeting_notes/
+
+tenant: kids-edu
+
+queries:
+
+  # ─── AI Native mindsets framework (3) ────────────────────────
+  - id: KE-001
+    q: "AI Native 마인드 7종이 뭐야?"
+    expected_intent: library
+    ideal_refs: ["kids_edu_vault/wiki/specs/core/ai-native-assets.md", "kids_edu_vault/wiki/hot.md"]
+    difficulty: easy
+    lang: ko
+
+  - id: KE-002
+    q: "Verification Reflex와 Delegation Judgment의 차이"
+    expected_intent: library
+    ideal_refs: ["kids_edu_vault/wiki/specs/core/ai-native-assets.md"]
+    difficulty: medium
+    lang: ko
+
+  - id: KE-003
+    q: "Iteration Reflex가 커리큘럼에 어떻게 반영되었나"
+    expected_intent: library
+    ideal_refs: [
+      "kids_edu_vault/wiki/specs/core/ai-native-assets.md",
+      "kids_edu_vault/wiki/specs/skins/mixed/sk-biopharma-curriculum-v1.md",
+    ]
+    difficulty: hard
+    lang: ko
+
+  # ─── SK Biopharm pilot (2) ───────────────────────────────────
+  - id: KE-004
+    q: "SK바이오팜 파일럿 1회차 일정과 대상"
+    expected_intent: library
+    ideal_refs: [
+      "kids_edu_vault/wiki/hot.md",
+      "kids_edu_vault/wiki/comms/2026-05-12-sk-biopharma-meeting.md",
+      "kids_edu_vault/wiki/deliverables/sk-biopharma-pilot.md",
+      "meeting_notes/2026-05-12.md",
+    ]
+    difficulty: easy
+    lang: ko
+
+  - id: KE-005
+    q: "bitree 파일럿이 SK 회의 이후 어떻게 확정됐나"
+    expected_intent: decision
+    ideal_refs: [
+      "kids_edu_vault/wiki/comms/2026-05-14-sk-biopharma-followup.md",
+      "kids_edu_vault/wiki/stakeholders/sk-biopharma.md",
+      "kids_edu_vault/wiki/hot.md",
+    ]
+    difficulty: medium
+    lang: ko
+
+  # ─── Tech decisions (3) ──────────────────────────────────────
+  - id: KE-006
+    q: "왜 iframe sandbox를 webcontainers 대신 선택했나"
+    expected_intent: decision
+    ideal_refs: ["kids_edu_vault/wiki/decisions/iframe-sandbox-over-webcontainers.md"]
+    difficulty: medium
+    lang: ko
+
+  - id: KE-007
+    q: "Langfuse 도입 결정 배경"
+    expected_intent: decision
+    ideal_refs: [
+      "kids_edu_vault/wiki/decisions/adr-langgraph-gemini-backend.md",
+      "kids_edu_vault/wiki/specs/langfuse-observability.md",
+    ]
+    difficulty: medium
+    lang: ko
+
+  - id: KE-008
+    q: "LLM provider scaling — 40명 동시 접속 대응 전략"
+    expected_intent: decision
+    ideal_refs: [
+      "kids_edu_vault/wiki/decisions/llm-provider-scaling.md",
+      "kids_edu_vault/wiki/specs/llm-scaling-test-plan.md",
+    ]
+    difficulty: hard
+    lang: ko
+
+  # ─── HypeProof Studio v0.1 (1) ───────────────────────────────
+  - id: KE-009
+    q: "HypeProof Studio v0.1 빌드 일정과 게이트"
+    expected_intent: library
+    ideal_refs: [
+      "kids_edu_vault/wiki/concepts/hypeproof-studio.md",
+      "kids_edu_vault/wiki/decisions/adr-hypeproof-studio-v01.md",
+      "kids_edu_vault/wiki/hot.md",
+    ]
+    difficulty: medium
+    lang: ko
+
+  # ─── Dental supersearch curriculum (1) ──────────────────────
+  - id: KE-010
+    q: "치과 슈퍼서치엔진 v4 워크샵 구조"
+    expected_intent: library
+    ideal_refs: [
+      "kids_edu_vault/wiki/specs/track-b/dental-supersearch-curriculum-v4.md",
+    ]
+    difficulty: medium
+    lang: ko

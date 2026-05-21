@@ -117,6 +117,53 @@ async def main():
             ON CONFLICT (tenant_id, email) DO NOTHING
         """), {"tid": tid2})
 
+        # 3rd tenant: kids-edu (HypeProof Kids Edu vault — 2nd real tenant,
+        # consent from Jinyong 2026-05-21). See jayleekr/sediment#13.
+        tid_kids = await upsert_tenant(s, "kids-edu", "HypeProof Kids Edu")
+        log.info("seed.tenant", id=tid_kids, slug="kids-edu")
+
+        kids_admins = [
+            {"email": "jayleekr0125@gmail.com", "displayName": "Jay Lee",
+             "realName": "Jay Lee", "role": "admin", "githubLogin": "jayleekr"},
+            {"email": "jinyong.shin@hypeproof.io", "displayName": "Jinyong Shin",
+             "realName": "Jinyong Shin", "role": "admin", "githubLogin": "JinyongShin"},
+        ]
+        for m in kids_admins:
+            await upsert_member(s, tid_kids, m)
+
+        # GitHub integration row — config matches connector kwargs.
+        # integrations has no UNIQUE constraint on (tenant_id, kind), so
+        # we update existing instead of inserting to avoid duplicate rows
+        # on re-seed (state.head_sha preserved across runs).
+        kids_cfg = {
+            "repos": ["JinyongShin/hypeproof_kids_edu"],
+            "path_prefixes": ["kids_edu_vault/wiki/", "meeting_notes/"],
+            "path_excludes": [".raw/", ".obsidian/", "node_modules/"],
+            "extensions": [".md"],
+            "branch": None,
+            "schedule": "hourly_daytime_kst",  # 09-22 KST
+        }
+        r = await s.execute(text("""
+            SELECT id, config FROM integrations
+            WHERE tenant_id = CAST(:tid AS uuid) AND kind = 'github'
+            LIMIT 1
+        """), {"tid": tid_kids})
+        existing = r.first()
+        if existing is None:
+            kids_cfg["state"] = {"head_sha": None}
+            await s.execute(text("""
+                INSERT INTO integrations (tenant_id, kind, config)
+                VALUES (CAST(:tid AS uuid), 'github', CAST(:cfg AS jsonb))
+            """), {"tid": tid_kids, "cfg": json.dumps(kids_cfg)})
+        else:
+            # Preserve runtime state (head_sha watermark) across re-seeds.
+            old_cfg = existing[1] or {}
+            kids_cfg["state"] = old_cfg.get("state") or {"head_sha": None}
+            await s.execute(text("""
+                UPDATE integrations SET config = CAST(:cfg AS jsonb)
+                WHERE id = CAST(:id AS uuid)
+            """), {"id": str(existing[0]), "cfg": json.dumps(kids_cfg)})
+
     log.info("seed.done")
 
 
