@@ -349,6 +349,38 @@ async def consolidate_conv(conv: dict, dry_run: bool = False) -> dict:
              "decisions": len(decisions), "actions": inserted_actions}
 
 
+async def run(
+    tenant: str = "hypeproof-lab",
+    since_hours: int = 24,
+    conv_id: Optional[str] = None,
+    dry_run: bool = False,
+    limit: int = 50,
+) -> dict:
+    """Programmatic entry point for the scheduler. Same semantics as main()
+    but typed args + returns a summary dict instead of printing JSON.
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    convs = await _list_conversations(since, conv_id, tenant)
+    convs = convs[:limit]
+    log.info("consolidate.start", n_conversations=len(convs),
+              tenant=tenant, since_hours=since_hours, dry_run=dry_run)
+
+    totals = {"convs": 0, "decisions": 0, "actions": 0, "skipped": 0}
+    for c in convs:
+        try:
+            r = await consolidate_conv(c, dry_run=dry_run)
+        except Exception as e:
+            log.exception("consolidate.conv.error", conv_id=c["id"])
+            r = {"status": "error", "err": str(e)[:200]}
+        totals["convs"] += 1
+        if r.get("status") in ("ok", "dry_run"):
+            totals["decisions"] += r.get("decisions", 0)
+            totals["actions"] += r.get("actions", 0)
+        elif r.get("status") == "already":
+            totals["skipped"] += 1
+    return totals
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tenant", default="hypeproof-lab",
@@ -362,34 +394,21 @@ async def main():
                      help="max conversations per run")
     args = ap.parse_args()
 
-    since = datetime.now(timezone.utc) - timedelta(hours=args.since_hours)
-    convs = await _list_conversations(since, args.conv_id, args.tenant)
-    if args.conv_id and not convs:
-        print(f"conv {args.conv_id} not found in tenant {args.tenant}", file=sys.stderr)
-        sys.exit(1)
+    if args.conv_id:
+        # Single-conv path: skip the silent-empty-exit by checking existence.
+        single = await _list_conversations(
+            datetime.now(timezone.utc) - timedelta(hours=args.since_hours),
+            args.conv_id, args.tenant,
+        )
+        if not single:
+            print(f"conv {args.conv_id} not found in tenant {args.tenant}",
+                  file=sys.stderr)
+            sys.exit(1)
 
-    convs = convs[: args.limit]
-    log.info("consolidate.start", n_conversations=len(convs),
-              tenant=args.tenant, since_hours=args.since_hours,
-              dry_run=args.dry_run)
-
-    totals = {"convs": 0, "decisions": 0, "actions": 0, "skipped": 0}
-    for c in convs:
-        try:
-            r = await consolidate_conv(c, dry_run=args.dry_run)
-        except Exception as e:
-            log.exception("consolidate.conv.error", conv_id=c["id"])
-            r = {"status": "error", "err": str(e)[:200]}
-        totals["convs"] += 1
-        if r.get("status") in ("ok", "dry_run"):
-            totals["decisions"] += r.get("decisions", 0)
-            totals["actions"] += r.get("actions", 0)
-        elif r.get("status") == "already":
-            totals["skipped"] += 1
-        if args.dry_run and r.get("preview"):
-            print(f"\n=== {c.get('title','(no title)')[:60]} ===")
-            print(json.dumps(r["preview"], ensure_ascii=False, indent=2)[:600])
-
+    totals = await run(
+        tenant=args.tenant, since_hours=args.since_hours,
+        conv_id=args.conv_id, dry_run=args.dry_run, limit=args.limit,
+    )
     print(json.dumps({"summary": totals}, ensure_ascii=False))
 
 

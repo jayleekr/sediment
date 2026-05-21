@@ -41,6 +41,17 @@ distill:
   # missed run (e.g. machine restart) is auto-recovered within one cycle.
   since_hours: 2
 
+# Phase 4 memory consolidator — walks recent conversations and extracts
+# structured decisions + actions into the decisions/actions tables. Runs on
+# Anthropic Haiku (low volume, ~$1/mo). Twice-daily cadence gives accumulated
+# chat a chance to land without thrashing every hour; since_hours covers the
+# 12h gap with overlap so a missed run self-heals next cycle.
+consolidate:
+  schedule: "15 */12 * * *"   # 00:15 + 12:15 UTC = 09:15 + 21:15 KST
+  tenant: "hypeproof-lab"
+  since_hours: 13
+  limit: 50
+
 # Daily watermark health canary — alerts if no new events in 24h across any
 # channel that historically had activity. (Implemented in scheduler.py;
 # alert channel = first channel whose name == "sediment", if present.)

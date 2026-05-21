@@ -107,6 +107,22 @@ async def _run_distill(since_hours: int) -> None:
         log.exception("scheduler.distill.error", err=str(e)[:200])
 
 
+async def _run_consolidate(tenant: str, since_hours: int, limit: int) -> None:
+    """Phase 4 consolidator — extract decisions/actions from recent convs."""
+    from scripts.consolidate_memory import run as consolidate_run
+    try:
+        summary = await consolidate_run(
+            tenant=tenant, since_hours=since_hours, limit=limit, dry_run=False,
+        )
+        log.info("scheduler.consolidate.done",
+                 convs=summary.get("convs", 0),
+                 decisions=summary.get("decisions", 0),
+                 actions=summary.get("actions", 0),
+                 skipped=summary.get("skipped", 0))
+    except Exception as e:
+        log.exception("scheduler.consolidate.error", err=str(e)[:200])
+
+
 async def _run_health_check(alert_channel_name: str) -> None:
     """Check that each watched channel has had an event in the last 24h.
     Logs (and can post to Discord) channels that have gone silent.
@@ -203,6 +219,15 @@ async def main_async() -> int:
     dst = cfg.get("distill") or {}
     _add_cron(scheduler, "distill", dst.get("schedule", "5 * * * *"),
               _run_distill, int(dst.get("since_hours", 2)))
+
+    # Consolidate (Phase 4 — chat → decisions/actions)
+    cs = cfg.get("consolidate") or {}
+    if cs:
+        _add_cron(scheduler, "consolidate", cs.get("schedule", "15 */12 * * *"),
+                  _run_consolidate,
+                  cs.get("tenant", "hypeproof-lab"),
+                  int(cs.get("since_hours", 13)),
+                  int(cs.get("limit", 50)))
 
     # Health canary
     hc = cfg.get("health_check") or {}
