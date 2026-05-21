@@ -1,8 +1,12 @@
 # Sediment — NEXT (post-MVP roadmap)
 
-> Status: **MVP is LIVE and dogfood-ready** as of 2026-05-15.
-> UI → https://web-nu-seven-39.vercel.app/sediment (Vercel)
-> API → https://hypeproof-sediment.fly.dev (Fly, API-only; `/sediment` 404 is by design)
+> Status: **MVP is LIVE + first public reveal** as of 2026-05-20.
+> UI → https://sediment.hypeproof-ai.xyz/sediment (standalone Vercel)
+> API → https://hypeproof-sediment.fly.dev (Fly, API-only; `/` 302→UI)
+> Old URL → https://web-nu-seven-39.vercel.app/sediment (307→new domain via hypeprooflab#56)
+>
+> Pipeline: every main push → auto `fly deploy` (GHA `fly-deploy.yml`) →
+> post-deploy E2E-12 prod smoke against the live URL. No more manual deploys.
 >
 > This file lists the big remaining work, in priority order. Each item is
 > sized to be picked up cold in a fresh session. See the
@@ -11,37 +15,22 @@
 
 ---
 
-## P0 — Frontend standalone cutover  *(blocks "clean separation")*
+## P0 — Frontend standalone cutover  *(functionally complete 2026-05-20)*
 
-**Why this is P0 now.** This repo was split out of `jayleekr/hypeprooflab`
-(2026-05-18). The backend came over cleanly. The **frontend did not** — it
-still lives in and deploys from the community Next.js app.
+**Done:**
+1. ✅ Standalone Next.js 16 app scaffolded under `frontend/` (build green, 9 routes)
+2. ✅ New Vercel project deploying `frontend/` at custom domain
+   `sediment.hypeproof-ai.xyz` with env vars pointing at the Fly API
+3. ✅ Smoke verified live — 6 public routes 200, Fly API CORS allows new
+   origin, env-aware badge reads "prod"
+4. ✅ Old URL `web-nu-seven-39.vercel.app/sediment` → 307 → new domain
+   (hypeprooflab#56 merged) — dogfood bookmarks keep working
+5. ✅ Dogfood team announced (5/20 Discord #sediment first reveal)
 
-**Current state (updated 2026-05-18).** Standalone Next.js 16 app scaffolded
-under `frontend/` and **building clean locally** — the 11 UI files moved
-verbatim to `frontend/app/sediment/`, zero code changes. The earlier
-"imports shared `CookieConsent`/libs" fear was wrong: real deps are only
-`next`/`react`/`react-dom`/`react-markdown`/`remark-gfm`; `next-auth` was just
-a Phase-5 code-fence in `auth/README.md`. The **live dogfood UI is still
-served by hypeprooflab's `web/`** (Vercel `web-nu-seven-39.vercel.app/sediment`),
-deliberately left there so an auto-deploy cron doesn't break the team's
-dogfood mid-cutover.
-
-**Work:**
-1. ~~Scaffold a standalone Next.js app here.~~ **✅ DONE** — `frontend/`
-   (package.json, next.config.ts, tsconfig, Tailwind v4, root layout +
-   globals.css, `/`→`/sediment` redirect). `npm run build` green, 9 routes.
-2. New Vercel project from this repo (**root dir `frontend/`**) → custom
-   domain (P3: `sediment.hypeproof-ai.xyz`), `NEXT_PUBLIC_CURATOR_PLATFORM_URL`
-   + `NEXT_PUBLIC_CURATOR_LANGGRAPH_URL` → Fly API. *(gated on Jay)*
-3. Verify E2E (Playwright) against the new deploy. *(gated on Jay)*
-4. Repoint the dogfood team to the new URL. *(gated on Jay)*
-5. **Only then** delete `web/src/app/sediment/` from `hypeprooflab` (it is
-   intentionally still there until this step — do not remove it earlier).
-   *(gated on Jay)*
-
-**Acceptance:** Sediment UI deploys from this repo, no Sediment code remains
-in `hypeprooflab`'s working tree, dogfood uninterrupted.
+**Remaining (small, separate issues will be filed):**
+- After ~3 days soak: flip hypeprooflab redirect from 307 → 308
+- After 308 stable: delete `web/src/app/sediment/` from `hypeprooflab`
+  (dead code once redirect ships permanently)
 
 ---
 
@@ -120,8 +109,26 @@ unconditional 302 to the UI root). Low effort, removes a recurring confusion.
 - **gemini-2.5-pro is unusable in prod** (~100% 503, ~60s latency). Chat is
   pinned to `gemini-2.5-flash` (fast, grounded). Revisit pro only if Google
   fixes availability and answer quality on flash proves insufficient.
-- **Branch not on main yet** — MVP work lives on
-  `ai/coder/p2-sec-05-20260513T105526`. (Being merged in this session.)
+
+---
+
+## Operational baseline (added 2026-05-20)
+
+- **CD**: every main push touching runtime paths (allowlist in
+  `.github/workflows/fly-deploy.yml`) → auto `fly deploy --remote-only`
+  → release_command (idempotent `seed_lab`) → rolling update. ~3–4 min.
+- **Smoke**: post-deploy job runs Playwright E2E-12 against
+  `sediment.hypeproof-ai.xyz` (no auth, 6 routes, brand assert,
+  console-error budget 8). Zero secrets needed. Screenshots upload as
+  artifact on failure. Playwright pinned to `1.60.0`, chromium cached.
+- **Spec**: `validator/e2e_spec.yaml` v0.2 multi-env. `SEDIMENT_E2E_ENV`
+  selects dev (localhost, dev-token auth) or prod (live URL, no auth).
+  Flow without `environments:` tag defaults to `[dev]` (backwards compat).
+- **Discord ingest**: APScheduler in-VM (`b67b462`) runs every 30 min
+  per `services/sediment/config/cron.yaml` (8 channels). Replaces the
+  removed laptop-side launchd plists.
+- **GH cross-repo**: redirect from hypeprooflab old URL → new domain
+  shipped as `hypeprooflab#56` (307, will flip 308 after soak).
 
 ---
 

@@ -1,23 +1,37 @@
 # Sediment
 
-> Internal HypeProof Lab product → SaaS multi-tenant pivot.
+> HypeProof Lab's evidence-grounded memory layer — "where doing becomes knowing".
 > Built from the AI Technician (Sonatus) architecture pattern: LangGraph + pgvector + domain MCP + tenant-aware everything.
+> Designed to scale into a multi-tenant SaaS.
 
-**Status**: All phases scaffolded locally. Phases 0-5 are wired and runnable; Phases 6-9 are stubbed UI + endpoints; Phase 10+ has placeholders.
+**Live (2026-05-20):**
+- UI → https://sediment.hypeproof-ai.xyz/sediment (standalone Next.js on Vercel)
+- API → https://hypeproof-sediment.fly.dev (Fly NRT, single-VM multi-service)
+- Old URL → https://web-nu-seven-39.vercel.app/sediment (307→new domain)
+- CD → main push triggers `fly deploy` + post-deploy E2E-12 smoke
+  (`.github/workflows/fly-deploy.yml`)
+
+**Status**: MVP live + first dogfood release. Phases 0-5 wired and shipped; Phases 6-9 stubbed UI + endpoints; Phase 10+ placeholders.
 
 | Phase | Status | What's wired |
 |---|---|---|
 | 0. Spec & Scaffolding | ✅ | DECISIONS.md, dirs, docker, init.sql with RLS |
 | 1. Read-only index | ✅ | vault-ingester (RAG), metadata-svc, seed/ingest scripts |
-| 2. Chat MVP | ✅ | curator-platform 10 routers, curator-langgraph SSE, lab_curator_graph, Workspace MCP 12 tools, Next.js /curator/* |
-| 3. Ingest automation | ✅ | daily_ingest.sh, retro.py, launchd plists, GitHub Action |
+| 2. Chat MVP | ✅ | sediment-platform 10 routers, sediment-langgraph SSE, workspace_curator_graph, Workspace MCP 12 tools, standalone Next.js `frontend/app/sediment/*` |
+| 3. Ingest automation | ✅ | APScheduler in-VM (`config/cron.yaml`, 8 Discord channels every 30 min), webhook endpoints (`/webhook/ingest`, `/webhook/discord-ingest`), `consolidate_memory.py`, `distill.py` |
 | 4. Memory consolidation | ✅ | dream.py (archive + boost + decision/action extraction + usage rollup) |
-| 5. Auth + RBAC + RLS test | ✅ | dev-token + NextAuth.js guide, pytest cross-tenant verify |
+| 5. Auth + RBAC + RLS test | ✅ | dev-token + GitHub OAuth (prod), pytest cross-tenant verify |
+| 5.5. Dogfood gate | 🟢 active | `PHASE_5_5_DOGFOOD_GATE.md` — 10 criteria, measurement begins on `feature_flags.dogfood_gate_active = true` |
 | 6. Tenant onboarding | 🟡 stub | UI wizard + onboarding API endpoint |
 | 7. Stripe + quota | 🟡 stub | webhook handler + checkout endpoint stub |
 | 8. Beta launch | 🟡 stub | pricing page |
 | 9. GA + pricing | 🟡 stub | (deployment-time work) |
 | 10+. Enterprise | 📁 placeholder | workspace_solutions/_template + terraform stub |
+
+> ⚠️ The Directory Map further down predates the 2026-05-18 split out of
+> `jayleekr/hypeprooflab`. Actual paths now: this repo root → `services/sediment/`
+> (no `products/` prefix) and `frontend/` (Sediment UI) instead of `web/src/app/curator/`.
+> Routes under `frontend/app/sediment/` not `/curator`. See `CLAUDE.md` for current layout.
 
 ---
 
