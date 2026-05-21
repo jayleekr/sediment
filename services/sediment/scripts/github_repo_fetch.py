@@ -164,16 +164,21 @@ async def _ingest_doc(
 # ---------------------------------------------------------------------------
 
 def _classify_doc_type(path: str) -> str:
-    """Pick artifact 'type' from path heuristics. Matches lab_lib.vault_paths
-    conventions but localized for GitHub-sourced refs (no vault root)."""
+    """Pick artifact `type` from path heuristics. MUST return a value in
+    init.sql's CHECK constraint:
+      column | research | novel | note | decision | meeting | message | event
+    """
     p = path.lower()
-    if "/meeting" in p or "meeting" in Path(p).stem:
+    if "/meeting" in p or "meeting" in Path(p).stem or "meeting_notes/" in p:
         return "meeting"
     if "/decisions/" in p or "/adr" in p:
         return "decision"
-    if "/concepts/" in p or "/specs/" in p:
-        return "concept"
-    return "wiki"
+    if "/research" in p:
+        return "research"
+    # specs / concepts / runbooks / intel / stakeholders / comms / etc all
+    # collapse to "note" — there's no finer-grained category in the schema
+    # that fits, and adding one is a DDL change (out of scope).
+    return "note"
 
 
 async def _process_integration(
