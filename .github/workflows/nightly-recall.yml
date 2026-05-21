@@ -1,0 +1,54 @@
+# Nightly recall@3 sweep against live prod.
+#
+# Why this exists: deploy + smoke (fly-deploy.yml) tells you the surface
+# is up. This tells you the retrieval QUALITY hasn't drifted. RAG quality
+# can degrade silently when chunking, embedding, or index params change.
+#
+# No secrets — recall_live.py mints its own dev token via the public API
+# (same path E2E-12 uses). Threshold is intentionally generous (≥20/40)
+# so genuine breakage trips the alarm, normal noise doesn't.
+#
+# If quality drops below threshold, the job fails — workflow_dispatch a
+# re-run after fixing, or open an issue tracking the regression.
+
+name: Nightly recall
+
+on:
+  schedule:
+    # 18:30 UTC = 03:30 KST (after the 21:15 consolidate cron has run +
+    # before morning traffic). Cron uses UTC.
+    - cron: "30 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-recall
+  cancel-in-progress: false
+
+jobs:
+  recall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install minimal deps
+        run: pip install --quiet pyyaml httpx
+      - name: Run recall@3
+        working-directory: services/sediment
+        env:
+          SEDIMENT_API: https://hypeproof-sediment.fly.dev
+          SEDIMENT_EMAIL: jay.lee@sonatus.com
+          RECALL_MIN_PASS: "20"
+          RECALL_JSON_OUT: ${{ github.workspace }}/recall.json
+        run: python -m validator.scripts.recall_live
+      - name: Upload recall JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-recall-${{ github.run_id }}
+          path: recall.json
+          if-no-files-found: ignore
+          retention-days: 30
