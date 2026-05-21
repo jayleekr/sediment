@@ -1,0 +1,167 @@
+{
+  "ingested_at": "2026-05-21T13:44:58.577614Z",
+  "repo": "JinyongShin/hypeproof_kids_edu",
+  "event_count": 10,
+  "events": [
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/assets/assets_v0.1.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/assets/assets_v0.1.md",
+        "blob_sha": "5a5398efe21bf0b9c71ac1f3f53f688a258ac7f1",
+        "content": "<2755 chars>",
+        "change": "initial",
+        "size": 5908
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-01-05-meeting.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-01-05-meeting.md",
+        "blob_sha": "337bda3c72bd7d951f2abd912c241c1a991a53dc",
+        "content": "<794 chars>",
+        "change": "initial",
+        "size": 1131
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-01-12-meeting.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-01-12-meeting.md",
+        "blob_sha": "8fd4c74446fc151440d2ee22d7743cb329c24070",
+        "content": "<782 chars>",
+        "change": "initial",
+        "size": 1087
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-01-19-meeting.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-01-19-meeting.md",
+        "blob_sha": "f031bb99227c7b0f1e7926b9bdc30aa618472b54",
+        "content": "<859 chars>",
+        "change": "initial",
+        "size": 1215
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-01-26-meeting.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-01-26-meeting.md",
+        "blob_sha": "4dcdf0a5b17ce895d3982e0e88183b41a60d66d7",
+        "content": "<774 chars>",
+        "change": "initial",
+        "size": 1150
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-02-09-meeting.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-02-09-meeting.md",
+        "blob_sha": "ac9dd0270bcbcc5dd29e0ca7b3e276177e808d9e",
+        "content": "<812 chars>",
+        "change": "initial",
+        "size": 1162
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-04-11-call-note.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-04-11-call-note.md",
+        "blob_sha": "4cf6c44e7d998cac1909756ceb33dc5c31b9205c",
+        "content": "<708 chars>",
+        "change": "initial",
+        "size": 1053
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-04-12-jay-workshop-structure.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-04-12-jay-workshop-structure.md",
+        "blob_sha": "16a4913d5ab9d425dd1da0c8c99cfa41ae3bb35f",
+        "content": "<2669 chars>",
+        "change": "initial",
+        "size": 4348
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-04-12-team-briefing-research.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-04-12-team-briefing-research.md",
+        "blob_sha": "155d2a11bf4a4c7e684dc9fca7f609d1b7c28b8a",
+        "content": "<6660 chars>",
+        "change": "initial",
+        "size": 11051
+      }
+    },
+    {
+      "external_id": "71e166202c73d86eb3a8c46a871efa7a73674fbc::kids_edu_vault/wiki/comms/2026-04-17-jay-jinyong-call.md",
+      "kind": "file_revision",
+      "source": "github",
+      "resource_id": "JinyongShin/hypeproof_kids_edu",
+      "payload": {
+        "repo": "JinyongShin/hypeproof_kids_edu",
+        "branch": "main",
+        "commit_sha": "71e166202c73d86eb3a8c46a871efa7a73674fbc",
+        "path": "kids_edu_vault/wiki/comms/2026-04-17-jay-jinyong-call.md",
+        "blob_sha": "d2a86ed0a00949ee0465fc949d027d679f108e20",
+        "content": "<2450 chars>",
+        "change": "initial",
+        "size": 4170
+      }
+    }
+  ]
+}
