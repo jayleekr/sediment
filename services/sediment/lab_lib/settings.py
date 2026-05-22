@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     # LLM / embedding
     anthropic_api_key: str = ""
     openai_api_key: str = ""
-    embedding_model: str = "text-embedding-3-small"
+    gemini_api_key: str = ""
+    # Embedding provider: gemini (default, see sediment#16) | openai | zero
+    embedding_provider: str = "gemini"
+    embedding_model: str = "gemini-embedding-001"
     embedding_dim: int = 1536
     # Tiered models, per provider. stream_chat picks heavy vs default by the
     # `tier` arg AND the active provider (claude model names break the Gemini

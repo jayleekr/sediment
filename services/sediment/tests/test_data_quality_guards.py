@@ -72,7 +72,7 @@ def test_meta_summary_has_tenant_filter():
 # ---------------------------------------------------------------------------
 
 def test_embed_logs_critical_on_first_no_key(monkeypatch, capsys):
-    """If OPENAI_API_KEY is missing, the FIRST embed call must emit a
+    """If no provider key is set, the FIRST embed call must emit a
     CRITICAL-equivalent log so it can't be silently lost (sediment#16).
 
     Structlog goes to stdout (captured via capsys), not the stdlib logging
@@ -80,18 +80,22 @@ def test_embed_logs_critical_on_first_no_key(monkeypatch, capsys):
     """
     from lab_lib import embeddings as emb
 
-    # Reset module-level state
-    emb._client = None
+    # Reset module-level state — force `zero` provider so we exercise the
+    # no-key path regardless of what's in the actual env.
+    emb._client_gemini = None
+    emb._client_openai = None
     emb._NO_KEY_WARN_COUNT = 0
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "zero")
     monkeypatch.setattr(emb.settings, "openai_api_key", "")
+    monkeypatch.setattr(emb.settings, "gemini_api_key", "")
 
     vec = emb.embed_one("hello")
 
     assert vec == [0.0] * emb.settings.embedding_dim
     captured = capsys.readouterr()
     # First-time alert must mention the CRITICAL marker and the issue ref
-    assert "embed.no_api_key.CRITICAL" in captured.out or \
-           "embed.no_api_key.CRITICAL" in captured.err, \
+    assert "embed.no_provider_key.CRITICAL" in captured.out or \
+           "embed.no_provider_key.CRITICAL" in captured.err, \
            f"Expected loud first-time alert in stdout/stderr; got out={captured.out[-300:]!r} err={captured.err[-300:]!r}"
     assert emb._NO_KEY_WARN_COUNT == 1
 
@@ -100,9 +104,12 @@ def test_embed_subsequent_calls_log_warn_only(monkeypatch, capsys):
     """After the first CRITICAL, subsequent zero-fallback calls log WARN
     (not error) to avoid log-spam — but include a running counter."""
     from lab_lib import embeddings as emb
-    emb._client = None
+    emb._client_gemini = None
+    emb._client_openai = None
     emb._NO_KEY_WARN_COUNT = 0
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "zero")
     monkeypatch.setattr(emb.settings, "openai_api_key", "")
+    monkeypatch.setattr(emb.settings, "gemini_api_key", "")
 
     emb.embed_one("first")    # CRITICAL
     emb.embed_one("second")   # WARN
@@ -111,16 +118,19 @@ def test_embed_subsequent_calls_log_warn_only(monkeypatch, capsys):
     assert emb._NO_KEY_WARN_COUNT == 3
     out = capsys.readouterr().out
     # The CRITICAL appears exactly once
-    assert out.count("embed.no_api_key.CRITICAL") == 1
+    assert out.count("embed.no_provider_key.CRITICAL") == 1
 
 
 def test_embed_zero_vector_shape_unchanged(monkeypatch):
     """Length contract — zero vectors must still be 1536-d."""
     from lab_lib import embeddings as emb
-    emb._client = None
+    emb._client_gemini = None
+    emb._client_openai = None
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "zero")
     monkeypatch.setattr(emb.settings, "openai_api_key", "")
+    monkeypatch.setattr(emb.settings, "gemini_api_key", "")
     vec = emb.embed_one("hello")
-    assert len(vec) == emb.settings.embedding_dim
+    assert len(vec) == emb.EMBEDDING_DIM
 
 
 # ---------------------------------------------------------------------------
