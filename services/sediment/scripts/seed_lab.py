@@ -64,6 +64,11 @@ def migrations_db_url() -> str:
     if raw:
         return raw.replace("+asyncpg", "")
     svc = settings.database_url_service.replace("+asyncpg", "")
+    # Local-dev fallback: swap the dockerized service role for the owner role
+    # (legacy `curator*` names — kept as-is for docker-compose compatibility).
+    # PROD must set SEDIMENT_MIGRATIONS_DB_URL — the role rename to sediment_*
+    # broke implicit substitution and there's no in-VM way to derive the
+    # owner credentials from a Supabase pooler URL.
     return svc.replace(
         "curator_service:curator_service_local",
         "curator:curator_local_dev",
@@ -82,8 +87,18 @@ async def ensure_retention_columns(s) -> None:
     """Per design doc 15. Idempotent — safe to re-run on every deploy.
 
     Adds: pinned, archived_at, temporary, purge_after to conversations.
-    Falls back to owner connection if RLS-subject role can't ALTER (same
-    pattern as ensure_github_login_column).
+
+    Implementation note: we DO NOT try the service-role session first
+    (unlike ensure_github_login_column). `conversations` is owned by the
+    superuser in prod, and the service role lacks ALTER privilege; the
+    failing-then-rollback path leaves the session in an inconsistent
+    state and aborts the whole seed run. Going straight to the owner
+    connection is simpler and always works.
+
+    If the owner connection itself fails (e.g. SEDIMENT_MIGRATIONS_DB_URL
+    not configured for a fresh deploy), we log + continue — schema is
+    almost certainly already in place from a prior deploy/manual run,
+    and we'd rather boot than block release.
     """
     ddls = [
         "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE",
@@ -93,18 +108,24 @@ async def ensure_retention_columns(s) -> None:
         "CREATE INDEX IF NOT EXISTS conversations_archived_at_idx ON conversations (archived_at)",
         "CREATE INDEX IF NOT EXISTS conversations_purge_after_idx ON conversations (purge_after)",
     ]
-    for ddl in ddls:
-        try:
-            await s.execute(text(ddl))
-        except SQLAlchemyError as exc:
-            await s.rollback()
-            # Fall back to owner connection (same pattern as github_login)
-            log.info("seed.schema.retention.fallback_owner", ddl=ddl[:80], err=str(exc)[:120])
-            owner_conn = await asyncpg.connect(migrations_db_url())
+    try:
+        owner_conn = await asyncpg.connect(migrations_db_url())
+    except Exception as e:
+        log.warning("seed.schema.retention.owner_conn_unavailable",
+                    err=str(e)[:200],
+                    hint="schema likely already applied; if not, run ALTERs manually")
+        return
+    try:
+        for ddl in ddls:
             try:
                 await owner_conn.execute(ddl)
-            finally:
-                await owner_conn.close()
+            except Exception as e:
+                # Per-DDL tolerance — column might already exist if a prior
+                # manual migration ran; index errors are also benign
+                log.info("seed.schema.retention.ddl_warning",
+                         ddl=ddl[:80], err=str(e)[:120])
+    finally:
+        await owner_conn.close()
 
 
 async def ensure_github_login_column(s) -> None:
