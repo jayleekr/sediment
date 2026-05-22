@@ -94,7 +94,9 @@ pub async fn run_device_flow(http: &Http) -> Result<TokenResp> {
                 } else if s.contains("access_denied") {
                     return Err(anyhow!("device login denied"));
                 } else if s.contains("expired_token") {
-                    return Err(anyhow!("device code expired — re-run `sediment auth login`"));
+                    return Err(anyhow!(
+                        "device code expired — re-run `sediment auth login`"
+                    ));
                 } else {
                     return Err(e);
                 }
@@ -117,7 +119,9 @@ fn try_open_browser(url: &str) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     let _ = std::process::Command::new(cmd).arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new(cmd).args(["/C", "start", url]).spawn();
+    let _ = std::process::Command::new(cmd)
+        .args(["/C", "start", url])
+        .spawn();
 
     Ok(())
 }

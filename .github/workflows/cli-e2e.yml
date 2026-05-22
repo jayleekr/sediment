@@ -50,7 +50,8 @@ jobs:
           cd services/sediment
           PGPASSWORD=curator_local_dev psql -h localhost -p 5433 -U curator -d curator -f ../../infra/init.sql
           PYTHONPATH=. .venv/bin/python -m scripts.apply_migrations
-          PYTHONPATH=. .venv/bin/python -m scripts.seed_local || true
+          PYTHONPATH=. .venv/bin/python -m scripts.seed_lab
+          PYTHONPATH=. .venv/bin/python -m scripts.verify_rls || true
 
       - name: Start platform
         run: |

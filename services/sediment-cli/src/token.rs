@@ -31,7 +31,9 @@ mod backend {
     }
 
     pub fn set(account: &str, token: &str) -> Result<()> {
-        entry(account)?.set_password(token).context("writing keychain entry")
+        entry(account)?
+            .set_password(token)
+            .context("writing keychain entry")
     }
 
     pub fn delete(account: &str) -> Result<()> {
@@ -98,15 +100,18 @@ fn read_index() -> Result<Vec<String>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let body = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
-    Ok(body.lines().filter(|l| !l.trim().is_empty()).map(String::from).collect())
+    let body =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    Ok(body
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(String::from)
+        .collect())
 }
 
 fn write_index(items: &[String]) -> Result<()> {
     let path = index_path()?;
-    std::fs::write(&path, items.join("\n"))
-        .with_context(|| format!("writing {}", path.display()))
+    std::fs::write(&path, items.join("\n")).with_context(|| format!("writing {}", path.display()))
 }
 
 fn add_to_index(account: &str) -> Result<()> {

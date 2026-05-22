@@ -33,13 +33,27 @@ fn path_traversal_dot_dot_anywhere_rejected() {
     for ref_path in &["foo/../bar", "a/b/../../c", "valid/../../etc"] {
         let (code, out, _) = run(
             &["--format", "json", "read", ref_path],
-            &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+            &[
+                ("SEDIMENT_TOKEN", "x"),
+                ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+            ],
         );
-        assert!(code != 0, "expected reject for {}: code={} out={}", ref_path, code, out);
+        assert!(
+            code != 0,
+            "expected reject for {}: code={} out={}",
+            ref_path,
+            code,
+            out
+        );
         let v: serde_json::Value = serde_json::from_str(&out).expect("json");
         assert!(
-            v["error"]["message"].as_str().unwrap().contains("path traversal"),
-            "{}: missing path traversal message in {}", ref_path, out
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("path traversal"),
+            "{}: missing path traversal message in {}",
+            ref_path,
+            out
         );
     }
 }
@@ -52,7 +66,10 @@ fn path_traversal_url_encoded_passes_through_to_server() {
     // ultimate guard. (Server-side server test lives in test_security.py.)
     let (code, _out, _) = run(
         &["--format", "json", "read", "%2e%2e/%2e%2e/etc/passwd"],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     // Network unreachable wins (the request would be attempted)
     assert!(code != 0);
@@ -65,7 +82,10 @@ fn empty_query_rejected_by_clap() {
     // We assert it doesn't panic.
     let (code, _, _) = run(
         &["search", ""],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0); // network error, not a panic
 }
@@ -80,7 +100,10 @@ fn search_limit_zero_clamped_to_one() {
     // but we can check the CLI doesn't blow up.
     let (code, _, stderr) = run(
         &["search", "x", "--limit", "0"],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0, "expected non-zero exit for unreachable URL");
     assert!(!stderr.contains("panicked"));
@@ -90,7 +113,10 @@ fn search_limit_zero_clamped_to_one() {
 fn search_huge_limit_clamped() {
     let (code, _, _) = run(
         &["search", "x", "--limit", "99999"],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0); // network err — but no panic
 }
@@ -99,7 +125,10 @@ fn search_huge_limit_clamped() {
 fn recent_days_huge_no_overflow() {
     let (code, _, stderr) = run(
         &["recent", "--days", "999999"],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0);
     assert!(!stderr.contains("overflow"));
@@ -116,7 +145,10 @@ fn search_unicode_query_does_not_panic() {
     let q = "한국어 검색 🔍\u{200B}";
     let (code, _, stderr) = run(
         &["search", q],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0);
     assert!(!stderr.contains("panicked"));
@@ -126,7 +158,10 @@ fn search_unicode_query_does_not_panic() {
 fn read_with_unicode_ref_does_not_panic() {
     let (code, _, _) = run(
         &["read", "한국어/노트.md"],
-        &[("SEDIMENT_TOKEN", "x"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "x"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0);
 }
@@ -156,7 +191,12 @@ fn ndjson_output_is_single_line_for_single_value() {
     let (code, out, _) = run(&["--format", "ndjson", "schema", "search"], &[]);
     assert_eq!(code, 0);
     let lines: Vec<&str> = out.lines().filter(|l| !l.is_empty()).collect();
-    assert_eq!(lines.len(), 1, "expected one NDJSON line, got {}", lines.len());
+    assert_eq!(
+        lines.len(),
+        1,
+        "expected one NDJSON line, got {}",
+        lines.len()
+    );
     let _: serde_json::Value = serde_json::from_str(lines[0]).expect("ndjson parses");
 }
 
@@ -170,7 +210,10 @@ fn sediment_token_env_short_circuits_keyring() {
     // reach the network step (proving the env path wins).
     let (code, _, _) = run(
         &["whoami"],
-        &[("SEDIMENT_TOKEN", "fake.jwt"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "fake.jwt"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0);
     // It made it to the HTTP step (network_unreachable). If env priority was

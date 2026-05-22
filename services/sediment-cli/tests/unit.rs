@@ -35,7 +35,12 @@ fn help_lists_all_subcommands() {
     for cmd in &[
         "auth", "whoami", "search", "ask", "read", "recent", "schema",
     ] {
-        assert!(out.contains(cmd), "expected help to mention {}: {}", cmd, out);
+        assert!(
+            out.contains(cmd),
+            "expected help to mention {}: {}",
+            cmd,
+            out
+        );
     }
 }
 
@@ -53,12 +58,19 @@ fn no_token_produces_auth_envelope_with_hint() {
     let (code, out, _) = run(
         &["--account", "nobody@example.test", "whoami"],
         // empty creds dir to ensure keychain is empty
-        &[("SEDIMENT_DEV_MODE", "1"), ("XDG_CONFIG_HOME", "/tmp/_sediment_t_no_token")],
+        &[
+            ("SEDIMENT_DEV_MODE", "1"),
+            ("XDG_CONFIG_HOME", "/tmp/_sediment_t_no_token"),
+        ],
     );
     assert!(code != 0, "expected non-zero exit for unauthenticated call");
     let parsed: serde_json::Value =
         serde_json::from_str(&out).expect(&format!("stdout was not JSON: {}", out));
-    assert!(parsed.get("error").is_some(), "missing error envelope: {}", out);
+    assert!(
+        parsed.get("error").is_some(),
+        "missing error envelope: {}",
+        out
+    );
 }
 
 #[test]
@@ -108,7 +120,10 @@ fn read_rejects_path_traversal_client_side() {
 fn read_rejects_absolute_path_client_side() {
     let (code, out, _) = run(
         &["--format", "json", "read", "/etc/passwd"],
-        &[("SEDIMENT_TOKEN", "any.jwt"), ("SEDIMENT_BASE_URL", "http://127.0.0.1:1")],
+        &[
+            ("SEDIMENT_TOKEN", "any.jwt"),
+            ("SEDIMENT_BASE_URL", "http://127.0.0.1:1"),
+        ],
     );
     assert!(code != 0);
     let v: serde_json::Value = serde_json::from_str(&out).expect("json");

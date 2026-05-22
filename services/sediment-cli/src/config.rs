@@ -54,10 +54,9 @@ impl Config {
 
         // 2. Credentials file env override.
         if let Ok(path) = env::var("SEDIMENT_CREDENTIALS_FILE") {
-            let body = fs::read_to_string(&path)
-                .with_context(|| format!("reading {}", path))?;
-            let parsed: CredsFile = serde_json::from_str(&body)
-                .with_context(|| format!("parsing {} as JSON", path))?;
+            let body = fs::read_to_string(&path).with_context(|| format!("reading {}", path))?;
+            let parsed: CredsFile =
+                serde_json::from_str(&body).with_context(|| format!("parsing {} as JSON", path))?;
             return Ok(Self {
                 base_url,
                 account: account_flag.or(Some(parsed.account.clone())),

@@ -101,11 +101,7 @@ fn render_table(out: &mut impl Write, value: &Value) -> anyhow::Result<()> {
     let mut widths: Vec<usize> = cols.iter().map(|c| c.len()).collect();
     let cell_vals: Vec<Vec<String>> = rows
         .iter()
-        .map(|r| {
-            cols.iter()
-                .map(|c| stringify_cell(r.get(c)))
-                .collect()
-        })
+        .map(|r| cols.iter().map(|c| stringify_cell(r.get(c))).collect())
         .collect();
     for row in &cell_vals {
         for (i, cell) in row.iter().enumerate() {

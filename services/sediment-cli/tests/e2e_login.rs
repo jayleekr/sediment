@@ -115,9 +115,7 @@ fn e2e_device_login_against_running_platform() {
 
     // Wait for CLI to complete (max 60s — interval is 5s; first poll already
     // happened, second poll will succeed).
-    let out = child
-        .wait_with_output()
-        .expect("CLI wait_with_output");
+    let out = child.wait_with_output().expect("CLI wait_with_output");
     assert!(
         out.status.success(),
         "CLI exited non-zero: stdout={}, stderr={}",
@@ -129,7 +127,10 @@ fn e2e_device_login_against_running_platform() {
     let v: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("login stdout not JSON: {} ({})", stdout, e));
     assert_eq!(v["ok"], true);
-    assert_eq!(v["account"].as_str().unwrap().to_lowercase(), email.to_lowercase());
+    assert_eq!(
+        v["account"].as_str().unwrap().to_lowercase(),
+        email.to_lowercase()
+    );
     assert!(v["member_id"].is_string());
     assert!(v["tenant_id"].is_string());
 }

@@ -68,9 +68,7 @@ enum Cmd {
         stream: bool,
     },
     /// Fetch one artifact body by ref path.
-    Read {
-        r#ref: String,
-    },
+    Read { r#ref: String },
     /// List artifacts added/updated in the last N days.
     Recent {
         #[arg(short, long, default_value_t = 7)]
@@ -84,9 +82,7 @@ enum Cmd {
         page_all: bool,
     },
     /// Introspect the JSON schema of a tool (search, ask, read, recent, whoami).
-    Schema {
-        tool: String,
-    },
+    Schema { tool: String },
 }
 
 #[derive(Subcommand, Debug)]

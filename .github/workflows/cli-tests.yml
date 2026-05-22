@@ -65,10 +65,13 @@ jobs:
           cd services/sediment
           PGPASSWORD=curator_local_dev psql -h localhost -p 5433 -U curator -d curator -f ../../infra/init.sql
           PYTHONPATH=. .venv/bin/python -m scripts.apply_migrations
-      - name: Seed
+      - name: Seed tenants + members + RLS marker artifacts
         run: |
           cd services/sediment
-          PYTHONPATH=. .venv/bin/python -m scripts.seed_local || true
+          PYTHONPATH=. .venv/bin/python -m scripts.seed_lab
+          # verify_rls inserts the rls-test/*-marker-RLS.md artifacts that
+          # cross-tenant tests rely on as bleed canaries.
+          PYTHONPATH=. .venv/bin/python -m scripts.verify_rls || true
       - name: Backend UT
         run: |
           cd services/sediment

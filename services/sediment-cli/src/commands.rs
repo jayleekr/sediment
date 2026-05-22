@@ -57,7 +57,10 @@ pub async fn auth_login(cfg: &Config, account_hint: Option<String>, fmt: Format)
 }
 
 pub async fn auth_status(cfg: &Config, fmt: Format) -> Result<()> {
-    let acc = cfg.account.clone().ok_or_else(|| anyhow!("no active account — run `sediment auth login`"))?;
+    let acc = cfg
+        .account
+        .clone()
+        .ok_or_else(|| anyhow!("no active account — run `sediment auth login`"))?;
     let tok = cfg.token.as_deref().filter(|t| !t.is_empty());
     let Some(tok) = tok else {
         output::render(&json!({"account": acc, "logged_in": false}), fmt)?;
@@ -123,7 +126,8 @@ pub async fn auth_set_default(account: &str, fmt: Format) -> Result<()> {
     if !accs.iter().any(|a| a == account) {
         return Err(anyhow!(
             "account `{}` has no stored credentials — run `sediment auth login --account {}`",
-            account, account
+            account,
+            account
         ));
     }
     config::write_default_account(account)?;
@@ -166,9 +170,7 @@ pub async fn search(
     if let Some(t) = r#type {
         q.push(("type", t.into()));
     }
-    let v: Value = http
-        .get_json_with("/api/v1/library/search", &q)
-        .await?;
+    let v: Value = http.get_json_with("/api/v1/library/search", &q).await?;
     output::render(&v, fmt)
 }
 
@@ -209,9 +211,7 @@ pub async fn recent(
     }
 
     if !page_all {
-        let v: Value = http
-            .get_json_with("/api/v1/library", &q)
-            .await?;
+        let v: Value = http.get_json_with("/api/v1/library", &q).await?;
         return output::render(&v, fmt);
     }
 
@@ -225,9 +225,7 @@ pub async fn recent(
     for page in 0..MAX_PAGES {
         let mut paged = q.clone();
         paged.push(("offset", offset.to_string()));
-        let v: Value = http
-            .get_json_with("/api/v1/library", &paged)
-            .await?;
+        let v: Value = http.get_json_with("/api/v1/library", &paged).await?;
         let items_arr = v.get("items").and_then(|i| i.as_array());
         let items_len = items_arr.map(|a| a.len() as u32).unwrap_or(0);
         // Repeat-detection: if the first ref equals the previous page's first
@@ -238,7 +236,10 @@ pub async fn recent(
             .and_then(|r| r.as_str())
             .map(String::from);
         if page > 0 && first_ref.is_some() && first_ref == last_first_ref {
-            eprintln!("(--page-all: server did not honor offset; stopping after {} pages)", page);
+            eprintln!(
+                "(--page-all: server did not honor offset; stopping after {} pages)",
+                page
+            );
             break;
         }
         last_first_ref = first_ref;
@@ -366,7 +367,9 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
         println!(); // close the streamed answer with a newline
     }
     let warning = if answer.starts_with("[offline LLM mock]") {
-        Some("service is running with offline LLM mock — citations are real, answer text is stubbed")
+        Some(
+            "service is running with offline LLM mock — citations are real, answer text is stubbed",
+        )
     } else {
         None
     };

@@ -54,11 +54,7 @@ impl Http {
         path: &str,
         query: &Q,
     ) -> Result<T> {
-        let resp = self
-            .request(Method::GET, path)
-            .query(query)
-            .send()
-            .await?;
+        let resp = self.request(Method::GET, path).query(query).send().await?;
         Self::decode(resp).await
     }
 
@@ -67,11 +63,7 @@ impl Http {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let resp = self
-            .request(Method::POST, path)
-            .json(body)
-            .send()
-            .await?;
+        let resp = self.request(Method::POST, path).json(body).send().await?;
         Self::decode(resp).await
     }
 
@@ -85,16 +77,8 @@ impl Http {
         Ok(resp)
     }
 
-    pub async fn raw_post(
-        &self,
-        path: &str,
-        body: serde_json::Value,
-    ) -> Result<Response> {
-        let resp = self
-            .request(Method::POST, path)
-            .json(&body)
-            .send()
-            .await?;
+    pub async fn raw_post(&self, path: &str, body: serde_json::Value) -> Result<Response> {
+        let resp = self.request(Method::POST, path).json(&body).send().await?;
         if !resp.status().is_success() {
             let s = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -107,9 +91,16 @@ impl Http {
         let status = resp.status();
         if status.is_success() {
             let body = resp.bytes().await?;
-            let value = serde_json::from_slice::<T>(&body)
-                .map_err(|e| anyhow::anyhow!("invalid JSON body: {} (first 200 bytes: {})",
-                    e, String::from_utf8_lossy(&body).chars().take(200).collect::<String>()))?;
+            let value = serde_json::from_slice::<T>(&body).map_err(|e| {
+                anyhow::anyhow!(
+                    "invalid JSON body: {} (first 200 bytes: {})",
+                    e,
+                    String::from_utf8_lossy(&body)
+                        .chars()
+                        .take(200)
+                        .collect::<String>()
+                )
+            })?;
             return Ok(value);
         }
         let body = resp.text().await.unwrap_or_default();

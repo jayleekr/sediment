@@ -47,7 +47,10 @@ fn run(args: &[&str], token: &str, base: &str) -> (i32, String, String) {
 
 #[test]
 fn e2e_whoami_returns_seeded_identity() {
-    let Some(base) = base_url() else { eprintln!("SKIP"); return; };
+    let Some(base) = base_url() else {
+        eprintln!("SKIP");
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
     let (code, out, _) = run(&["--format", "json", "whoami"], &token, &base);
     assert_eq!(code, 0, "{}", out);
@@ -57,24 +60,33 @@ fn e2e_whoami_returns_seeded_identity() {
 
 #[test]
 fn e2e_search_returns_items() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
     let (code, out, _) = run(
         &["--format", "json", "search", "research", "--limit", "3"],
-        &token, &base,
+        &token,
+        &base,
     );
     assert_eq!(code, 0, "{}", out);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert!(v["items"].as_array().unwrap().len() > 0, "expected at least 1 item");
+    assert!(
+        v["items"].as_array().unwrap().len() > 0,
+        "expected at least 1 item"
+    );
 }
 
 #[test]
 fn e2e_search_with_unicode_query() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
     let (code, out, stderr) = run(
         &["--format", "json", "search", "한국어", "--limit", "5"],
-        &token, &base,
+        &token,
+        &base,
     );
     assert_eq!(code, 0, "stdout={} stderr={}", out, stderr);
     let _: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -82,9 +94,15 @@ fn e2e_search_with_unicode_query() {
 
 #[test]
 fn e2e_read_returns_philosophy() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
-    let (code, out, _) = run(&["--format", "json", "read", "PHILOSOPHY.md"], &token, &base);
+    let (code, out, _) = run(
+        &["--format", "json", "read", "PHILOSOPHY.md"],
+        &token,
+        &base,
+    );
     assert_eq!(code, 0, "{}", out);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["ref"], "PHILOSOPHY.md");
@@ -93,11 +111,14 @@ fn e2e_read_returns_philosophy() {
 
 #[test]
 fn e2e_read_404_clean_envelope() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
     let (code, out, _) = run(
         &["--format", "json", "read", "definitely-not-a-real-file.md"],
-        &token, &base,
+        &token,
+        &base,
     );
     assert!(code != 0);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -106,11 +127,16 @@ fn e2e_read_404_clean_envelope() {
 
 #[test]
 fn e2e_recent_returns_items_for_last_year() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
     let (code, out, _) = run(
-        &["--format", "json", "recent", "--days", "365", "--limit", "5"],
-        &token, &base,
+        &[
+            "--format", "json", "recent", "--days", "365", "--limit", "5",
+        ],
+        &token,
+        &base,
     );
     assert_eq!(code, 0, "{}", out);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -119,11 +145,23 @@ fn e2e_recent_returns_items_for_last_year() {
 
 #[test]
 fn e2e_recent_page_all_emits_ndjson_lines() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
     let (code, out, _) = run(
-        &["--format", "ndjson", "recent", "--days", "365", "--limit", "20", "--page-all"],
-        &token, &base,
+        &[
+            "--format",
+            "ndjson",
+            "recent",
+            "--days",
+            "365",
+            "--limit",
+            "20",
+            "--page-all",
+        ],
+        &token,
+        &base,
     );
     assert_eq!(code, 0, "{}", out);
     let lines: Vec<&str> = out.lines().filter(|l| !l.is_empty()).collect();
@@ -137,7 +175,9 @@ fn e2e_recent_page_all_emits_ndjson_lines() {
 
 #[test]
 fn e2e_expired_token_clean_error() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     // Forge an HS256 token with bogus secret — fails signature verification.
     let bogus_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ4IiwiZXhwIjoxfQ.bogus";
     let (code, out, _) = run(&["--format", "json", "whoami"], bogus_token, &base);
@@ -153,7 +193,9 @@ fn e2e_expired_token_clean_error() {
 
 #[test]
 fn e2e_two_tenants_in_parallel_get_disjoint_results() {
-    let Some(base) = base_url() else { return; };
+    let Some(base) = base_url() else {
+        return;
+    };
     let t_hl = mint_token(&base, "jay.lee@sonatus.com").expect("mint hl");
     let t_acme = mint_token(&base, "admin@acme.test").expect("mint acme");
 
