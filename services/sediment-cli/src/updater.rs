@@ -28,16 +28,12 @@ pub struct Release {
     pub tag_name: String,
     pub html_url: String,
     pub assets: Vec<Asset>,
-    #[serde(default)]
-    pub prerelease: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Asset {
     pub name: String,
-    pub browser_download_url: String,
     pub url: String, // api.github.com URL — required for private-repo downloads
-    pub size: u64,
     /// GitHub sets this on every asset upload — "sha256:HEX". Saves us a
     /// separate sidecar fetch.
     #[serde(default)]
