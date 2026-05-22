@@ -303,29 +303,50 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
         .ok_or_else(|| anyhow!("conversations API did not return id"))?
         .to_string();
 
-    // Show a spinner on stderr while we wait for the first byte (only when
-    // not streaming — in stream mode the user gets [...thinking] heartbeats).
+    // Spinner state — the step label is updated by the SSE loop below as
+    // langgraph emits status pings (router, retrieving, synthesizing, ...).
     // Goes to stderr so stdout JSON parsers aren't affected. Skipped when
-    // stderr isn't a TTY (CI / scripts) — silence is correct there.
+    // stderr isn't a TTY (CI / scripts get silence, correctly).
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
     let spinner_active = {
         use std::io::IsTerminal;
         !stream && std::io::stderr().is_terminal()
     };
-    let spinner_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let spinner_stop = Arc::new(AtomicBool::new(false));
+    let spinner_label = Arc::new(Mutex::new(String::from("thinking")));
     let spinner_handle = if spinner_active {
         let stop = spinner_stop.clone();
+        let label = spinner_label.clone();
         Some(std::thread::spawn(move || {
             let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let start = std::time::Instant::now();
             let mut i = 0usize;
-            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            let mut hinted_30 = false;
+            let mut hinted_60 = false;
+            while !stop.load(Ordering::Relaxed) {
                 let secs = start.elapsed().as_secs();
-                eprint!("\r{} thinking… ({}s)", frames[i % frames.len()], secs);
+                let lbl = label.lock().unwrap().clone();
+                eprint!("\r\x1b[K{} {}… ({}s)", frames[i % frames.len()], lbl, secs);
                 let _ = std::io::Write::flush(&mut std::io::stderr());
+                // Long-wait hints on a dedicated line above the spinner — print
+                // them once, then keep the spinner line refreshing on its own.
+                if secs >= 30 && !hinted_30 {
+                    eprintln!(
+                        "\r\x1b[K  (still working — synthesis can take 30-90s for complex queries; Ctrl-C to cancel)"
+                    );
+                    hinted_30 = true;
+                }
+                if secs >= 60 && !hinted_60 {
+                    eprintln!(
+                        "\r\x1b[K  (over 60s — if this drops with 'error decoding response body', it's a backend SSE cut; try `--format json` or rerun)"
+                    );
+                    hinted_60 = true;
+                }
                 std::thread::sleep(std::time::Duration::from_millis(80));
                 i += 1;
             }
-            // Clear the spinner line.
+            // Clear the spinner line on exit.
             eprint!("\r\x1b[K");
             let _ = std::io::Write::flush(&mut std::io::stderr());
         }))
@@ -353,8 +374,30 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
     let mut cur_event = "message".to_string();
     let mut stream_iter = resp.bytes_stream();
 
+    let mut got_delta = false;
     while let Some(chunk) = stream_iter.next().await {
-        let bytes = chunk?;
+        let bytes = match chunk {
+            Ok(b) => b,
+            Err(e) => {
+                // Stop the spinner first so its line doesn't sit forever.
+                spinner_stop.store(true, Ordering::Relaxed);
+                // Give a more informative error than reqwest's bare
+                // "error decoding response body" — most often this means
+                // the upstream SSE got cut by Fly/Cloudflare idle (60s),
+                // which we'll fix backend-side separately.
+                let stage_label = spinner_label.lock().unwrap().clone();
+                return Err(anyhow!(
+                    "SSE stream cut while at stage '{}' (citations={}, answer_so_far={} chars). \
+                     This is typically a backend timeout during LLM synthesis — \
+                     retry with `--format json` or try a more specific query. \
+                     Underlying error: {}",
+                    stage_label,
+                    citations.len(),
+                    answer.len(),
+                    e
+                ));
+            }
+        };
         byte_buf.push_str(&String::from_utf8_lossy(&bytes));
         // SSE: frames separated by "\n\n"
         while let Some(idx) = byte_buf.find("\n\n") {
@@ -392,13 +435,34 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
                         citations.push(c.clone());
                     }
                 }
-                "message" if stream => {
-                    // LangGraph emits status pings here (e.g. {"v":"thinking"})
-                    // while it's working before the first answer token arrives.
-                    // Show them on STDERR in --stream mode so user sees progress
-                    // without polluting the JSON answer on stdout.
-                    if let Some(v) = value.get("v").and_then(|x| x.as_str()) {
-                        eprintln!("[…{}]", v);
+                "message" => {
+                    // LangGraph emits status pings like
+                    //   {"v":"thinking","metadata":{"tag":"status","step":"router","intent":"meta"}}
+                    // Extract step (+ intent if any) for a more informative
+                    // user-facing label. In stream mode → eprintln per ping;
+                    // in non-stream mode → update the spinner label in place
+                    // so the user sees what stage we're actually in.
+                    let step = value
+                        .get("metadata")
+                        .and_then(|m| m.get("step"))
+                        .and_then(|s| s.as_str());
+                    let intent = value
+                        .get("metadata")
+                        .and_then(|m| m.get("intent"))
+                        .and_then(|s| s.as_str());
+                    let label = match (step, intent) {
+                        (Some(s), Some(i)) => format!("{} → {}", s, i),
+                        (Some(s), None) => s.to_string(),
+                        _ => value
+                            .get("v")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("thinking")
+                            .to_string(),
+                    };
+                    if stream {
+                        eprintln!("[…{}]", label);
+                    } else if spinner_active {
+                        *spinner_label.lock().unwrap() = label;
                     }
                 }
                 _ => {}

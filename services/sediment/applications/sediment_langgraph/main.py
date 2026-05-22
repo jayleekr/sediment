@@ -9,6 +9,7 @@ SSE event protocol (mirrors AIT):
   event: message  data: {"v": "[DONE]"}
 """
 from __future__ import annotations
+import asyncio
 import json
 import time
 from typing import AsyncIterator
@@ -110,9 +111,28 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
         # Compose with hard citation gates. We buffer model output until it
         # passes validation, then emit deltas. This preserves the SSE contract
         # while preventing an uncited/fabricated answer from reaching users.
-        answer, grounding = await _compose_grounded_answer(
+        #
+        # Heartbeat during the LLM await: Anthropic synthesis can take
+        # 30-90s, during which no SSE events would otherwise emit and Fly/
+        # Cloudflare edge cuts the connection at ~60s idle. We yield a
+        # status ping every 15s so the connection stays alive AND the CLI
+        # can update its spinner label.
+        compose_task = asyncio.create_task(_compose_grounded_answer(
             state["query"], citations, intent, history=history,
-        )
+        ))
+        while not compose_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(compose_task), timeout=15.0)
+            except asyncio.TimeoutError:
+                yield _sse("message", {
+                    "v": "synthesizing",
+                    "metadata": {"tag": "status", "step": "synthesizing"},
+                })
+            except Exception:
+                # Real error — let it surface via the outer except below by
+                # awaiting the task one more time.
+                break
+        answer, grounding = await compose_task
         accumulator.append(answer)
         for token in _chunk_answer_for_sse(answer):
             yield _sse("delta", {"v": token, "metadata": {"tag": "answer_word"}})
