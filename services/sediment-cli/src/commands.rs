@@ -303,6 +303,36 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
         .ok_or_else(|| anyhow!("conversations API did not return id"))?
         .to_string();
 
+    // Show a spinner on stderr while we wait for the first byte (only when
+    // not streaming — in stream mode the user gets [...thinking] heartbeats).
+    // Goes to stderr so stdout JSON parsers aren't affected. Skipped when
+    // stderr isn't a TTY (CI / scripts) — silence is correct there.
+    let spinner_active = {
+        use std::io::IsTerminal;
+        !stream && std::io::stderr().is_terminal()
+    };
+    let spinner_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let spinner_handle = if spinner_active {
+        let stop = spinner_stop.clone();
+        Some(std::thread::spawn(move || {
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let start = std::time::Instant::now();
+            let mut i = 0usize;
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let secs = start.elapsed().as_secs();
+                eprint!("\r{} thinking… ({}s)", frames[i % frames.len()], secs);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                i += 1;
+            }
+            // Clear the spinner line.
+            eprint!("\r\x1b[K");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+        }))
+    } else {
+        None
+    };
+
     // 2. Open the SSE stream against the langgraph base — for now, derive it
     // from the platform base by swapping :10100 → :10020 (local dev). When
     // the API gateway fronts both behind one URL (production via nginx), the
@@ -376,6 +406,13 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
         }
     }
 
+    // Stop the spinner if it's running — request is done, we're about to
+    // print the final result.
+    spinner_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Some(h) = spinner_handle {
+        let _ = h.join();
+    }
+
     if stream {
         println!(); // close the streamed answer with a newline
     }
@@ -395,13 +432,126 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
         result["warning"] = json!(w);
     }
     if !stream {
-        output::render(&result, fmt)?;
+        // `ask` is special: a verbatim JSON dump is unreadable for humans
+        // when the answer is a paragraph and there are 5+ citations with
+        // 200-char excerpts each. So when the default format kicks in
+        // (table → TTY), render the human shape: answer block + numbered
+        // source list + conv_id. For explicit --format json/yaml/ndjson
+        // we still dump structured so scripts/LLMs get the full payload.
+        match fmt {
+            Format::Table => render_ask_human(&answer, &citations, &conv_id, warning)?,
+            _ => output::render(&result, fmt)?,
+        }
     } else if !citations.is_empty() {
         // After the streamed answer, emit citations as a final NDJSON line so
         // the user (or LLM) can pick them up.
         println!();
         output::render_ndjson_line(&json!({"citations": citations}))?;
     }
+    Ok(())
+}
+
+/// Human-readable renderer for `ask` results.
+///
+/// Layout:
+///   ⨠ {answer paragraph, wrapped naturally — empty if grounding refused}
+///   ⚠ {warning, if any}
+///
+///   Sources (N):
+///     [1] {ref}  {date}
+///     [2] {ref}  {date}
+///     …
+///
+///   (conversation 1924ea90 — sediment ask --conv 1924ea90 to continue)
+fn render_ask_human(
+    answer: &str,
+    citations: &[Value],
+    conv_id: &str,
+    warning: Option<&'static str>,
+) -> Result<()> {
+    use std::io::Write;
+    let stdout = std::io::stdout();
+    let mut o = stdout.lock();
+
+    let trimmed = answer.trim();
+    if trimmed.is_empty() {
+        // The reliability gate withheld the answer (no [N]-grounded paragraph
+        // was produced). Make it look like the explicit refusal it is, not an
+        // empty void the user has to scroll past.
+        writeln!(o, "⊘ No grounded answer.")?;
+        writeln!(
+            o,
+            "  The retrieval pipeline found related chunks but couldn't tie a"
+        )?;
+        writeln!(
+            o,
+            "  factual answer to specific [N] citations. The sources are listed"
+        )?;
+        writeln!(
+            o,
+            "  below — open them via `sediment read <ref>` to read directly."
+        )?;
+    } else {
+        // Prefix each line so the answer block is visually distinct.
+        for line in trimmed.lines() {
+            writeln!(o, "⨠ {}", line)?;
+        }
+    }
+    if let Some(w) = warning {
+        writeln!(o)?;
+        writeln!(o, "⚠ {}", w)?;
+    }
+    if !citations.is_empty() {
+        writeln!(o)?;
+        writeln!(o, "Sources ({}):", citations.len())?;
+        for (i, c) in citations.iter().enumerate() {
+            // Most citations are artifact-backed and have a `ref` + `date`.
+            // A few special types (`summary`, `provenance`) are synthesized
+            // from metadata and have no ref — render those with the type
+            // label and a brief summary instead of "?".
+            let ctype = c.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            let r = c.get("ref").and_then(|v| v.as_str());
+            let d = c
+                .get("date")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("  {}", s))
+                .unwrap_or_default();
+            let line = match (r, ctype) {
+                (Some(ref_path), _) => format!("{}{}", ref_path, d),
+                (None, "summary") => {
+                    // `by_type`: [{type, n}, ...] → "note=137, decision=27, ..."
+                    let parts = c
+                        .get("by_type")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| {
+                                    let t = x.get("type").and_then(|v| v.as_str())?;
+                                    let n = x.get("n").and_then(|v| v.as_i64())?;
+                                    Some(format!("{}={}", t, n))
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    if parts.is_empty() {
+                        "(vault summary)".to_string()
+                    } else {
+                        format!("(vault summary: {})", parts)
+                    }
+                }
+                (None, t) if !t.is_empty() => format!("({} metadata)", t),
+                (None, _) => "(unknown citation shape)".into(),
+            };
+            writeln!(o, "  [{}] {}", i + 1, line)?;
+        }
+    }
+    writeln!(o)?;
+    writeln!(
+        o,
+        "(conv {}  ·  re-run with --format json for the full payload)",
+        conv_id.chars().take(8).collect::<String>()
+    )?;
     Ok(())
 }
 

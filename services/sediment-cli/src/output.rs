@@ -23,7 +23,13 @@ pub enum Format {
 
 impl Format {
     pub fn default_for_tty() -> Self {
-        if atty::is(atty::Stream::Stdout) {
+        // std::io::IsTerminal (Rust 1.70+) is more reliable than the
+        // atty crate, especially for embedded IDE terminals (Antigravity,
+        // VS Code, ...). Honors NO_COLOR convention indirectly via the
+        // shell, and works through containerized terminals where atty
+        // misreports.
+        use std::io::IsTerminal;
+        if std::io::stdout().is_terminal() {
             Format::Table
         } else {
             Format::Json
@@ -76,8 +82,14 @@ fn render_table(out: &mut impl Write, value: &Value) -> anyhow::Result<()> {
         _ => None,
     };
     let Some(rows) = rows else {
-        serde_json::to_writer_pretty(&mut *out, value)?;
-        writeln!(out)?;
+        // Non-list object → render as a key: value block. Much friendlier
+        // than a raw JSON dump for commands like `whoami` or `schema`.
+        if let Value::Object(map) = value {
+            render_kv_block(out, map, 0)?;
+            return Ok(());
+        }
+        // Scalar at root — print it bare.
+        writeln!(out, "{}", value)?;
         return Ok(());
     };
     if rows.is_empty() {
@@ -135,6 +147,67 @@ fn render_table(out: &mut impl Write, value: &Value) -> anyhow::Result<()> {
             write!(out, "{:<width$}", truncated, width = widths[i])?;
         }
         writeln!(out)?;
+    }
+    Ok(())
+}
+
+// Render a serde_json::Map as a "key: value" block. Nested objects/arrays
+// indent two spaces and recurse. Used by render_table when the root isn't
+// a list (e.g. whoami, schema, auth status results).
+fn render_kv_block(
+    out: &mut impl Write,
+    map: &serde_json::Map<String, Value>,
+    indent: usize,
+) -> std::io::Result<()> {
+    let pad = " ".repeat(indent);
+    let key_width = map.keys().map(|k| k.len()).max().unwrap_or(0);
+    for (k, v) in map {
+        match v {
+            Value::Object(m) => {
+                writeln!(out, "{}{}:", pad, k)?;
+                render_kv_block(out, m, indent + 2)?;
+            }
+            Value::Array(arr) if !arr.is_empty() && arr[0].is_object() => {
+                writeln!(out, "{}{}:", pad, k)?;
+                for (i, item) in arr.iter().enumerate() {
+                    writeln!(out, "{}  - # [{}]", pad, i)?;
+                    if let Value::Object(im) = item {
+                        render_kv_block(out, im, indent + 4)?;
+                    } else {
+                        writeln!(out, "{}    {}", pad, stringify_cell(Some(item)))?;
+                    }
+                }
+            }
+            Value::Array(arr) => {
+                let inline: Vec<String> = arr
+                    .iter()
+                    .map(|x| stringify_cell(Some(x)))
+                    .take(8)
+                    .collect();
+                let more = if arr.len() > 8 {
+                    format!("  …(+{} more)", arr.len() - 8)
+                } else {
+                    String::new()
+                };
+                writeln!(
+                    out,
+                    "{}{:<width$}  [{}]{}",
+                    pad,
+                    k,
+                    inline.join(", "),
+                    more,
+                    width = key_width
+                )?;
+            }
+            _ => writeln!(
+                out,
+                "{}{:<width$}  {}",
+                pad,
+                k,
+                stringify_cell(Some(v)),
+                width = key_width
+            )?,
+        }
     }
     Ok(())
 }
