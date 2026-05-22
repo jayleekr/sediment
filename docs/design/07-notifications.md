@@ -61,7 +61,11 @@ hypeproof-harness/                          ← canonical
 ├── scripts/notify/
 │   ├── notify.py                            single-file CLI + Python API
 │   ├── transports/
-│   │   ├── discord_webhook.py
+│   │   ├── discord_webhook.py              outbound: notify alerts (one-way)
+│   │   ├── discord_thread.py               INTERACTIVE reply (bot token,
+│   │   │                                    POSTs to /channels/{id}/messages
+│   │   │                                    with message_reference for thread
+│   │   │                                    reply UI) — used by gateway runner
 │   │   ├── slack_webhook.py                (placeholder)
 │   │   └── email_smtp.py                   (placeholder)
 │   ├── templates/                           Jinja2 base templates

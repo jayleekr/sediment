@@ -151,6 +151,56 @@ def test_transcript_noise_channel_skipped():
 
 
 # ---------------------------------------------------------------------------
+# transcript reply action (sediment#16 → interactive reply)
+# ---------------------------------------------------------------------------
+
+def test_transcript_bot_author_skipped_to_prevent_loop():
+    """Bot's own messages MUST NOT trigger any action — otherwise the bot's
+    reply gets ingested → decided to reply again → infinite loop."""
+    d = decide(_ev("message", channel="sediment", is_bot=True,
+                   content="answer text"),
+               {"source_kind": "transcript"})
+    assert d.ingest is False
+    assert d.notify is False
+    assert d.reply is False
+    assert "bot_author_skip" in d.matched_rule
+
+
+def test_transcript_mention_triggers_reply():
+    """A message with is_bot_mention=True yields {ingest, reply} both true."""
+    d = decide(_ev("message", channel="sediment",
+                   is_bot_mention=True,
+                   content="<@123> AI Native 마인드 7종이 뭐야?"),
+               {"source_kind": "transcript"})
+    assert d.reply is True
+    assert d.ingest is True
+    assert d.reply_transport == "discord_thread"
+    # query stripped of the @mention
+    assert d.reply_query == "AI Native 마인드 7종이 뭐야?"
+
+
+def test_transcript_mention_in_noise_channel_blocked_by_order():
+    """Noise channel rule fires BEFORE mention rule in the default order.
+    A mention in #공지사항 should be skipped, not replied to."""
+    d = decide(_ev("message", channel="공지사항",
+                   is_bot_mention=True,
+                   content="<@123> hi"),
+               {"source_kind": "transcript"})
+    assert d.reply is False
+    assert d.ingest is False
+
+
+def test_transcript_normal_message_no_reply():
+    """Plain message without mention — ingest yes, reply no."""
+    d = decide(_ev("message", channel="ai-에이전트",
+                   content="just chatting here"),
+               {"source_kind": "transcript"})
+    assert d.ingest is True
+    assert d.reply is False
+    assert d.distill_strategy == "chat_thread"
+
+
+# ---------------------------------------------------------------------------
 # artifacts
 # ---------------------------------------------------------------------------
 

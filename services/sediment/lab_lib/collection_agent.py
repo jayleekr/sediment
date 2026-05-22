@@ -37,13 +37,32 @@ from .connectors.base import NormalizedEvent
 
 @dataclass
 class CollectionDecision:
-    """What to do with one NormalizedEvent. Empty = skip everything."""
+    """What to do with one NormalizedEvent. Empty = skip everything.
+
+    Three orthogonal action axes — an event can trigger any combination:
+      - ingest   = chunk + embed + store as artifact (passive memory)
+      - notify   = render a template + fire to outbound channel (one-way alert)
+      - reply    = compose a chat answer via /v1/sediment/stream + post BACK
+                   to the source (interactive — closes the loop because the
+                   reply itself is ingested next tick)
+    """
     ingest: bool = False
     notify: bool = False
     notify_event_type: str | None = None       # e.g. "new_decision"
     notify_channels: list[str] = field(default_factory=list)
     notify_template: str | None = None         # override default template
     distill_strategy: str | None = None        # for transcript events
+
+    # Interactive reply action (added 2026-05-22 per design-doc-04 §5 update).
+    # When True, the orchestrator extracts the query from the event payload,
+    # calls the chat composition endpoint, and dispatches the answer via the
+    # named transport (e.g. discord_thread, slack_thread). The event must
+    # carry enough context (channel_id, message_id) for the transport to
+    # post back as a thread/reply, not a top-level message.
+    reply: bool = False
+    reply_transport: str | None = None         # "discord_thread" | "slack_thread"
+    reply_query: str | None = None             # the question text extracted
+
     # Reason for the decision — for logs / debugging. Not consumed by callers.
     matched_rule: str = "default"
 
@@ -249,11 +268,40 @@ _DEFAULT_RULES: dict[str, list[dict]] = {
 
     "transcript": [
         {
+            # Skip messages from bots (including OUR OWN reply). Without this,
+            # the bot's reply gets ingested → next tick decides "reply again"
+            # → infinite loop. Caller MUST set payload.is_bot=True when bot
+            # author. See design-doc 04 §5 "anti-loop guard".
+            "name": "transcript.bot_author_skip",
+            "when": {"payload_eq": {"is_bot": True}},
+            "action": {"ingest": False, "notify": False, "reply": False},
+        },
+        {
             "name": "transcript.noise_channels",
             "when": {"channel_names": [
                 "공지사항", "rule", "온보딩-가이드", "hackathon", "잡담",
             ]},
             "action": {"ingest": False, "notify": False},
+        },
+        {
+            # Interactive reply rule — fires when the message mentions the
+            # bot OR contains a strong question pattern in an allowed channel.
+            # The orchestrator extracts the query from message content (less
+            # the @mention) and posts the answer as a thread reply.
+            #
+            # Why before meeting_notes / default: reply is the strongest
+            # signal — if someone @-mentions us in #meeting-notes, prefer
+            # reply over plain ingest (we'll still ingest separately below
+            # since reply doesn't preclude ingest — actions are additive in
+            # the rule evaluator).
+            "name": "transcript.mention_reply",
+            "when": {"payload_eq": {"is_bot_mention": True}},
+            "action": {
+                "ingest": True,
+                "reply": True,
+                "reply_transport": "discord_thread",
+                "distill_strategy": "chat_thread",
+            },
         },
         {
             "name": "transcript.meeting_notes",
@@ -302,8 +350,9 @@ _DEFAULT_RULES: dict[str, list[dict]] = {
 
 def _rule_matches(event: NormalizedEvent, when: dict) -> bool:
     """Return True if the event satisfies every clause in `when`."""
-    path = (event.payload or {}).get("path") or ""
-    channel = (event.payload or {}).get("channel") or ""
+    payload = event.payload or {}
+    path = payload.get("path") or ""
+    channel = payload.get("channel") or ""
 
     kinds = when.get("kinds")
     if kinds and event.kind not in kinds:
@@ -321,6 +370,16 @@ def _rule_matches(event: NormalizedEvent, when: dict) -> bool:
     if chans and channel not in chans:
         return False
 
+    # `payload_eq` — exact-equality check on flat payload fields. Used for
+    # bot-author skip (payload_eq: {is_bot: True}) and mention-reply
+    # (payload_eq: {is_bot_mention: True}). Boolean comparison — explicit
+    # `is` semantics, not just truthiness.
+    eqs = when.get("payload_eq")
+    if eqs:
+        for k, expected in eqs.items():
+            if payload.get(k) != expected:
+                return False
+
     return True
 
 
@@ -331,6 +390,8 @@ def _apply_action(decision: CollectionDecision, action: dict, rule_name: str) ->
         decision.ingest = bool(action["ingest"])
     if "notify" in action:
         decision.notify = bool(action["notify"])
+    if "reply" in action:
+        decision.reply = bool(action["reply"])
     if "notify_event_type" in action:
         decision.notify_event_type = action["notify_event_type"]
     if "notify_template" in action:
@@ -340,6 +401,8 @@ def _apply_action(decision: CollectionDecision, action: dict, rule_name: str) ->
         for ch in action["notify_channels"]:
             if ch not in decision.notify_channels:
                 decision.notify_channels.append(ch)
+    if "reply_transport" in action:
+        decision.reply_transport = action["reply_transport"]
     if "distill_strategy" in action:
         decision.distill_strategy = action["distill_strategy"]
     decision.matched_rule = rule_name
@@ -389,7 +452,23 @@ def decide(event: NormalizedEvent, integration_config: dict | None = None) -> Co
         defaults = cfg_notify.get("default_channels") or ["primary"]
         decision.notify_channels = list(defaults)
 
+    # Reply: extract the query text from the source event payload. We strip
+    # any leading bot @mention (Discord-style <@123456789012345678> tokens)
+    # so the LLM sees the natural question, not a markup-laden line.
+    if decision.reply:
+        raw = (event.payload or {}).get("content") or ""
+        decision.reply_query = _strip_mentions(raw).strip() or raw.strip()
+
     return decision
+
+
+# Discord mention format: `<@123456789>` or `<@!123456789>` (legacy nickname)
+_MENTION_RE = re.compile(r"<@!?(\d+)>")
+
+
+def _strip_mentions(s: str) -> str:
+    """Remove Discord-style @mention tokens from a message body."""
+    return _MENTION_RE.sub("", s)
 
 
 # ---------------------------------------------------------------------------

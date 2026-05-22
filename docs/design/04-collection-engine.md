@@ -137,15 +137,29 @@ See `12-source-kinds-catalog.md` for the source_kind → ingest/notify defaults 
 
 ## 5. The `decide()` function (Collection AI Agent)
 
-For each `NormalizedEvent`, the agent answers:
+For each `NormalizedEvent`, the agent answers across **three orthogonal axes** — an event can trigger any combination of (ingest, notify, reply):
 
 ```python
 @dataclass
 class CollectionDecision:
+    # Axis 1: passive memory
     ingest: bool                        # chunk + embed + store as artifact
-    notify: bool                        # render a template + send to channels
-    notify_event_type: str | None       # e.g. "decision_extracted"
+
+    # Axis 2: outbound alert (one-way push to a channel)
+    notify: bool
+    notify_event_type: str | None       # e.g. "new_decision"
     notify_channels: list[str]          # logical channel slugs
+    notify_template: str | None         # override default template
+
+    # Axis 3: INTERACTIVE reply (added 2026-05-22 — closes the
+    # "doing → knowing" loop by posting an answer back to the same
+    # source the question came from, where it gets re-ingested next tick)
+    reply: bool
+    reply_transport: str | None         # "discord_thread" | "slack_thread"
+    reply_query: str | None             # the question text (after mention strip)
+
+    distill_strategy: str | None
+    matched_rule: str                   # for debugging
 
 def decide(
     event: NormalizedEvent,
@@ -156,6 +170,21 @@ def decide(
     rules.merge(integration_config.get("event_rules", {}))
     return rules.apply(event)
 ```
+
+**The "reply" axis is what makes Sediment's loop close.** A question
+asked in Discord (or Slack, or — future — email) triggers a chat
+composition; the answer is posted back as a thread reply; the reply
+itself is ingested next tick (Phase 4 also extracts any decisions
+from the Q+A); next time someone asks a similar question, the prior
+Q+A is in the citable pool. Doing → knowing → doing → knowing.
+
+**Anti-loop guards** for `reply`:
+1. `decide()` skips events with `payload.is_bot == True` (rule
+   `transcript.bot_author_skip` runs first in the transcript ruleset)
+2. The orchestrator (`discord_gateway_runner.py`) additionally checks
+   `author_id == bot.user_id` before doing any DB work
+3. Re-ingest of the bot's own reply IS desired (so future queries can
+   find it), but `is_bot=True` prevents it from triggering ANOTHER reply
 
 Default rules per `source_kind`:
 
@@ -206,8 +235,16 @@ transcript:                # Discord/Slack message stream
     ingest: true
     notify: false          # already in the channel; no re-notify
   overrides:
+    # ORDERED first — bot's own messages skip everything (anti-loop)
+    - when: payload_eq: {is_bot: true}
+      action: []
     - when: channel_name in ["공지사항","rule","온보딩-가이드"]
       action: []           # noise channels
+    # Interactive reply — @mention of self triggers chat composition
+    - when: payload_eq: {is_bot_mention: true}
+      action: [ingest, reply]
+      reply_transport: discord_thread
+      distill_strategy: chat_thread
 
 artifacts:                 # binary release blobs
   defaults:
