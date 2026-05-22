@@ -111,11 +111,13 @@ async def _delete_artifact(tenant_slug: str, ref: str, dry_run: bool) -> bool:
                 WHERE t.slug = :slug AND a.ref = :ref
             )
         """), {"slug": tenant_slug, "ref": ref})
-        # audit row — service_session is BYPASSRLS so we can write to any tenant
+        # audit row — service_session is BYPASSRLS so we can write to any tenant.
+        # CAST(:slug AS text) needed: asyncpg can't infer jsonb_build_object param types.
         await s.execute(text("""
             INSERT INTO audit_log (action, payload)
             VALUES ('stale_artifact.deleted',
-                    jsonb_build_object('tenant_slug', :slug, 'ref', :ref))
+                    jsonb_build_object('tenant_slug', CAST(:slug AS text),
+                                        'ref', CAST(:ref AS text)))
         """), {"slug": tenant_slug, "ref": ref})
         await s.commit()
         return r.rowcount > 0
