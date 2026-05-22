@@ -209,7 +209,7 @@ The Studio $99 vs Glean $500 comparison is true math but wrong target. Reality c
 **Acquisition channel**
 - 컨설팅에서 만남 (Jay direct)
 - 1인 사장님 네트워크 (자영업자 / 소상공인 협회)
-- 안양 가상오피스 같은 공유오피스 (Jay 사업계획서 — [anyang-business-plan.md](memory/anyang-business-plan.md))
+- 안양 가상오피스 같은 공유오피스 (Jay 사업계획서 — `anyang-business-plan.md`, private memory note)
 - 가장 어려운 segment — 가장 절실하지만 가장 저렴
 
 **Sales motion**
@@ -238,9 +238,9 @@ The Studio $99 vs Glean $500 comparison is true math but wrong target. Reality c
 - 차이: 우리와 이미 신뢰 관계 + AI 가치 인지 + 실제 변화 의지
 
 **Memory 근거**
-- [SK바이오팜 Academy](memory/MEMORY.md) (2026-05-14, v0.3 approved, 8명 멤버)
-- [보아치과 Academy](memory/boah-dental-academy.md) (5/26 진행)
-- [HYROX Lineage](memory/hyrox-product-lineage.md) — 4개 케이스 누적
+- `MEMORY.md` / SK바이오팜 Academy (2026-05-14, v0.3 approved, 8명 멤버)
+- `boah-dental-academy.md` / 보아치과 Academy (5/26 진행)
+- `hyrox-product-lineage.md` / HYROX Lineage — 4개 케이스 누적
 - HypeProof Lab 자체가 ref customer
 
 **Data landscape**
@@ -524,11 +524,11 @@ SMB 영업 멘트:
 
 ## 9. Linked memos
 
-- [pricing-strategy-sediment](../../../../.claude/projects/-Users-jaylee-CodeWorkspace-hypeproof/memory/pricing-strategy-sediment.md) — 가격 5-tier 디테일
-- [boah-dental-academy](../../../../.claude/projects/-Users-jaylee-CodeWorkspace-hypeproof/memory/boah-dental-academy.md) — A archetype warm lead
-- [hyrox-product-lineage](../../../../.claude/projects/-Users-jaylee-CodeWorkspace-hypeproof/memory/hyrox-product-lineage.md) — D archetype funnel context
-- [anyang-business-plan](../../../../.claude/projects/-Users-jaylee-CodeWorkspace-hypeproof/memory/anyang-business-plan.md) — C archetype partnership channel
-- [collection-and-distillation.md v0.3](./collection-and-distillation.md) — current engine design (will be superseded by collection-engine-v1 after ICP lock)
+- `pricing-strategy-sediment.md` — 가격 5-tier 디테일 (private memory note)
+- `boah-dental-academy.md` — A archetype warm lead (private memory note)
+- `hyrox-product-lineage.md` — D archetype funnel context (private memory note)
+- `anyang-business-plan.md` — C archetype partnership channel (private memory note)
+- `collection-and-distillation.md v0.3` — historical engine design, now superseded by `04-collection-engine.md` and `05-distillation-pipeline.md`
 
 ---
 
