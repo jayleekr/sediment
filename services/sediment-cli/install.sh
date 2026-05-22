@@ -201,6 +201,8 @@ for a in r.get('assets', []):
         c_yellow "    add this to your shell rc:  export PATH=\"$dest_dir:\$PATH\""
     fi
 
+    install_shell_completion "$dest"
+
     header "Next steps"
     cat <<EOF
   1. Make sure GITHUB_TOKEN is in your shell rc so 'sediment update' works:
@@ -220,7 +222,114 @@ for a in r.get('assets', []):
 
   Future upgrades:
        sediment update
+
+  Tab completion is now installed for your shell — restart your terminal
+  (or 'source ~/.zshrc') and try: sediment <TAB>
 EOF
+}
+
+# ---------- shell completion auto-install ----------
+#
+# Installs completion for EVERY shell detected on PATH (not just $SHELL).
+# Rationale: a user may have zsh as default but also use pwsh for scripts —
+# wiring all at once means tab-completion just works wherever they end up.
+install_shell_completion() {
+    local bin="$1"
+    # If the freshly-installed binary doesn't have the completion subcommand
+    # (older release), bail with a hint.
+    if ! "$bin" completion --help >/dev/null 2>&1; then
+        c_yellow "  shell completion: skipped (this version doesn't ship 'sediment completion'; run 'sediment update' first)"
+        return
+    fi
+    header "Installing shell completion"
+    install_completion_zsh "$bin"
+    install_completion_bash "$bin"
+    install_completion_fish "$bin"
+    install_completion_pwsh "$bin"
+    install_completion_elvish "$bin"
+}
+
+install_completion_zsh() {
+    command -v zsh >/dev/null 2>&1 || return
+    local dest
+    if [[ -d "$HOME/.oh-my-zsh/custom/completions" ]]; then
+        dest="$HOME/.oh-my-zsh/custom/completions/_sediment"
+    elif [[ -d "$HOME/.zsh/completions" ]]; then
+        dest="$HOME/.zsh/completions/_sediment"
+    else
+        mkdir -p "$HOME/.zsh/completions"
+        dest="$HOME/.zsh/completions/_sediment"
+        # Make sure fpath includes it.
+        if [[ -f "$HOME/.zshrc" ]] && ! grep -qE 'fpath=\(.*\.zsh/completions' "$HOME/.zshrc" 2>/dev/null; then
+            cat >> "$HOME/.zshrc" <<'EOF'
+
+# Sediment CLI tab completion
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+EOF
+        fi
+    fi
+    "$1" completion zsh > "$dest" 2>/dev/null && c_blue "  zsh    → $dest"
+    rm -f "$HOME/.zcompdump" 2>/dev/null  # bust cache
+}
+
+install_completion_bash() {
+    command -v bash >/dev/null 2>&1 || return
+    local dest
+    for d in /usr/local/etc/bash_completion.d /etc/bash_completion.d "$HOME/.local/share/bash-completion/completions"; do
+        if [[ -d "$d" && -w "$d" ]]; then
+            dest="$d/sediment"
+            break
+        fi
+    done
+    if [[ -z "${dest:-}" ]]; then
+        mkdir -p "$HOME/.local/share/bash-completion/completions"
+        dest="$HOME/.local/share/bash-completion/completions/sediment"
+    fi
+    "$1" completion bash > "$dest" 2>/dev/null && c_blue "  bash   → $dest"
+}
+
+install_completion_fish() {
+    command -v fish >/dev/null 2>&1 || return
+    mkdir -p "$HOME/.config/fish/completions"
+    local dest="$HOME/.config/fish/completions/sediment.fish"
+    "$1" completion fish > "$dest" 2>/dev/null && c_blue "  fish   → $dest"
+}
+
+install_completion_pwsh() {
+    # PowerShell Core (cross-platform) installs as `pwsh`. Windows PowerShell
+    # is `powershell` (rarely on macOS/Linux). The install script runs from
+    # bash so we only handle pwsh here — PowerShell users on Windows can run
+    # `sediment completion powershell | Out-String | Invoke-Expression` once.
+    command -v pwsh >/dev/null 2>&1 || return
+    # Get $PROFILE path from pwsh itself
+    local profile_dir
+    profile_dir=$(pwsh -NoProfile -Command 'Split-Path -Parent $PROFILE.CurrentUserAllHosts' 2>/dev/null | tr -d '\r')
+    if [[ -z "$profile_dir" ]]; then
+        c_yellow "  pwsh   → couldn't resolve \$PROFILE; manual: pwsh -c 'sediment completion powershell > \$PROFILE/sediment.ps1'"
+        return
+    fi
+    mkdir -p "$profile_dir"
+    local dest="$profile_dir/sediment_completion.ps1"
+    "$1" completion powershell > "$dest" 2>/dev/null && c_blue "  pwsh   → $dest"
+    # Wire it in by appending to the AllHosts profile if not already there.
+    local profile_file="$profile_dir/profile.ps1"
+    touch "$profile_file"
+    if ! grep -q "sediment_completion.ps1" "$profile_file" 2>/dev/null; then
+        echo ". '$dest'" >> "$profile_file"
+    fi
+}
+
+install_completion_elvish() {
+    command -v elvish >/dev/null 2>&1 || return
+    mkdir -p "$HOME/.config/elvish/lib"
+    local dest="$HOME/.config/elvish/lib/sediment.elv"
+    "$1" completion elvish > "$dest" 2>/dev/null && c_blue "  elvish → $dest"
+    local rc="$HOME/.config/elvish/rc.elv"
+    touch "$rc"
+    if ! grep -q "use sediment" "$rc" 2>/dev/null; then
+        echo "use sediment" >> "$rc"
+    fi
 }
 
 main "$@"

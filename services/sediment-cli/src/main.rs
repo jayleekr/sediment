@@ -4,7 +4,8 @@
 // JSON-first output, env-overridable token, multi-account via --account.
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::generate;
 
 mod auth_flow;
 mod commands;
@@ -93,6 +94,12 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
+    /// Print a shell completion script (zsh / bash / fish / powershell / elvish).
+    /// Run `sediment completion --help` for install instructions per shell.
+    Completion {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -165,5 +172,14 @@ async fn run() -> Result<()> {
         } => commands::recent(&cfg, days, r#type.as_deref(), limit, page_all, fmt).await,
         Cmd::Schema { tool } => commands::schema(&cfg, &tool, fmt).await,
         Cmd::Update { check, force } => commands::update(check, force, fmt).await,
+        Cmd::Completion { shell } => {
+            // Emit the completion script for the requested shell on stdout.
+            // No JSON envelope here — these scripts are sourced directly by
+            // the shell, so they have to be raw text.
+            let mut cmd = Cli::command();
+            let bin_name = cmd.get_name().to_string();
+            generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
+            Ok(())
+        }
     }
 }

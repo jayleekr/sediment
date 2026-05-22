@@ -204,8 +204,11 @@ async def oauth_device_start(req: DeviceStartReq):
     if last_err is not None:
         raise HTTPException(status_code=503, detail=f"device code generation failed: {last_err}")
 
+    # Frontend pages live under /sediment/* (Next.js App Router). The device
+    # approval page is at /sediment/device. Backend constructs the full URL
+    # so the CLI's RFC 8628 verification_uri is paste-able into any browser.
     base = settings.public_base_url.rstrip("/") if hasattr(settings, "public_base_url") else ""
-    verification_uri = f"{base}/device" if base else "/device"
+    verification_uri = f"{base}/sediment/device" if base else "/sediment/device"
     return DeviceStartResp(
         device_code=device_code,
         user_code=user_code,
