@@ -101,3 +101,51 @@ cost_monitor:
   schedule: "30 21 * * *"  # 06:30 KST
   daily_budget_usd: 5.00
   alert_channel_name: "sediment"
+
+# ===== Self-improving RAG (sediment#15 Phases 2-5) =====
+
+# Signal derivation — re_ask + dwell + session_end every 15 min.
+# Idempotent; sources='cron' to avoid double-write with FE signals.
+signal_derivation:
+  enabled: true
+  schedule: "*/15 * * * *"
+  window: "30m"
+
+# LLM-as-judge — nightly faithfulness scoring of yesterday's answers.
+# Cost capped at max_n=200/run (~$1.00). Drift alert if 7-day median
+# drops > 0.5.
+judge_daily:
+  enabled: true
+  schedule: "0 21 * * *"  # 06:00 KST = 21:00 UTC previous day
+  hours: 24
+  max_n: 200
+
+# Hard negative mining — weekly Monday morning. Appends to
+# output/hard_negatives.jsonl from low-faithfulness / thumbs-down /
+# grounding-fail answers. Read by future embedding refresh runs.
+hard_negative_mining:
+  enabled: true
+  schedule: "0 18 * * 0"  # 03:00 KST Monday = 18:00 UTC Sunday
+  window_hours: 168
+
+# Chunking ablation — weekly Tuesday morning. Pareto-frontier
+# proposal, NOT auto-applied. Output: output/ablation/<date>.json.
+chunking_ablation:
+  enabled: true
+  schedule: "0 18 * * 1"  # 03:00 KST Tuesday = 18:00 UTC Monday
+  corpus_n: 50
+  queries_n: 20
+
+# A/B variant comparison — weekly Wednesday. Reads last 7d of
+# task_tag='variant:A/B' partitioned signals + judge scores.
+ab_compare:
+  enabled: true
+  schedule: "0 18 * * 2"  # 03:00 KST Wednesday = 18:00 UTC Tuesday
+  days: 7
+
+# DSPy bootstrap — opt-in via SEDIMENT_DSPY_ENABLED=1. Skipped without
+# it (avoids 200MB+ deps in default CI image). Weekly Thursday.
+dspy_bootstrap:
+  enabled: false   # gate by env var separately
+  schedule: "0 18 * * 3"
+  max_iters: 6

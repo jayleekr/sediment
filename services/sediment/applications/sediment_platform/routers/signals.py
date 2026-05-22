@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from lab_lib.db import app_session
-from lab_lib.tenant_middleware import require_identity, Identity
+from lab_lib.auth import Identity, require_identity
 
 
 router = APIRouter(prefix="/api/v1/signals", tags=["signals"])

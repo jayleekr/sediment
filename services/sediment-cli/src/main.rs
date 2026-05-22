@@ -100,6 +100,30 @@ enum Cmd {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+    /// Promote a bad answer in a past conversation to a permanent golden-set case.
+    ///
+    /// Loads the most recent assistant message from `conv_id` and submits a
+    /// promotion proposal to /api/v1/feedback/promote-to-golden, which the
+    /// admin reviews and merges to golden_queries.yaml via PR.
+    Learn {
+        #[command(subcommand)]
+        action: LearnCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum LearnCmd {
+    /// Submit a bad answer as a golden-case proposal.
+    Add {
+        /// Conversation id (returned by `sediment ask` as conv_id).
+        conv_id: String,
+        /// One-line description of what's wrong with the answer.
+        #[arg(long, short)]
+        reason: String,
+        /// Expected router intent (library / meta / freshness / member / decision).
+        #[arg(long)]
+        expected_intent: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -181,5 +205,11 @@ async fn run() -> Result<()> {
             generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
             Ok(())
         }
+        Cmd::Learn { action } => match action {
+            LearnCmd::Add { conv_id, reason, expected_intent } => {
+                commands::learn_add(&cfg, &conv_id, &reason, expected_intent.as_deref(), fmt)
+                    .await
+            }
+        },
     }
 }
