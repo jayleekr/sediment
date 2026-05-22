@@ -1,0 +1,47 @@
+# Homebrew formula template for the Sediment CLI.
+#
+# Lives in `hypeprooflab/homebrew-tap` (separate repo). The release workflow
+# in `.github/workflows/sediment-cli-release.yml` produces three tarballs +
+# sha256 sidecars; this formula consumes them.
+#
+# To bootstrap the tap:
+#   gh repo create hypeprooflab/homebrew-tap --public --description "Homebrew tap for HypeProof Lab tools"
+#   cd homebrew-tap && mkdir -p Formula
+#   # Drop a rendered copy of this file as Formula/sediment.rb after each release.
+#
+# Users then install with:
+#   brew install hypeprooflab/tap/sediment
+
+class Sediment < Formula
+  desc "Sediment CLI — evidence-grounded memory on the command line"
+  homepage "https://github.com/hypeprooflab/sediment"
+  version "0.1.0"
+  license "Apache-2.0"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/hypeprooflab/sediment/releases/download/sediment-cli-v#{version}/sediment-aarch64-apple-darwin.tar.gz"
+      sha256 "REPLACE_WITH_AARCH64_DARWIN_SHA256"
+    end
+    on_intel do
+      url "https://github.com/hypeprooflab/sediment/releases/download/sediment-cli-v#{version}/sediment-x86_64-apple-darwin.tar.gz"
+      sha256 "REPLACE_WITH_X86_64_DARWIN_SHA256"
+    end
+  end
+
+  on_linux do
+    url "https://github.com/hypeprooflab/sediment/releases/download/sediment-cli-v#{version}/sediment-x86_64-unknown-linux-gnu.tar.gz"
+    sha256 "REPLACE_WITH_X86_64_LINUX_SHA256"
+  end
+
+  def install
+    bin.install "sediment"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/sediment --version")
+    # Schema command is fully offline — exercises argv parsing + JSON serialization.
+    out = shell_output("#{bin}/sediment --format json schema search")
+    assert_match "\"name\": \"search\"", out
+  end
+end

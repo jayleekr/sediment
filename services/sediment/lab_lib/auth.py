@@ -58,7 +58,43 @@ async def require_identity(authorization: str = Header(default="")) -> Identity:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     token = authorization.removeprefix("Bearer ").strip()
-    return decode_token(token)
+    identity = decode_token(token)
+    await _ensure_not_revoked(identity)
+    return identity
+
+
+# ---- revocation check (members.revoked_at kill-switch) ----
+#
+# JWTs are stateless — to revoke before exp we check the DB. Hot path,
+# so the lookup is cached in-process with a 30s TTL. Trade-off: a revoked
+# member can keep calling for ≤30s after revocation. Acceptable for the
+# kill-switch's purpose (incident response on the order of minutes).
+import time as _time
+
+_REVOKED_CACHE: dict[str, tuple[float, bool]] = {}  # member_id → (expires_at, revoked)
+_REVOKED_TTL = 30.0
+
+
+async def _ensure_not_revoked(identity: Identity) -> None:
+    now = _time.monotonic()
+    cached = _REVOKED_CACHE.get(identity.member_id)
+    if cached and cached[0] > now:
+        if cached[1]:
+            raise HTTPException(status_code=401, detail="member revoked")
+        return
+    # Cache miss — query DB. Import inside the function to avoid an import
+    # cycle (lab_lib.db imports lab_lib.settings imports lab_lib.auth).
+    from .db import service_session  # type: ignore
+    from sqlalchemy import text
+    async with service_session() as s:
+        r = await s.execute(text(
+            "SELECT revoked_at IS NOT NULL FROM members WHERE id = :id"
+        ), {"id": identity.member_id})
+        row = r.first()
+    revoked = bool(row and row[0])
+    _REVOKED_CACHE[identity.member_id] = (now + _REVOKED_TTL, revoked)
+    if revoked:
+        raise HTTPException(status_code=401, detail="member revoked")
 
 
 async def optional_identity(authorization: str = Header(default="")) -> Optional[Identity]:

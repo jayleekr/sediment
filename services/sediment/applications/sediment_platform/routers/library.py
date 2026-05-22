@@ -172,6 +172,7 @@ async def browse(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     limit: int = Query(default=50, le=500),
+    offset: int = Query(default=0, ge=0),
     include_test: bool = Query(default=False, alias="include_test"),
     identity: Identity = Depends(require_identity),
 ):
@@ -181,7 +182,7 @@ async def browse(
         FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
         WHERE 1=1
     """
-    params: dict = {"limit": limit}
+    params: dict = {"limit": limit, "offset": offset}
     if not include_test:
         sql += " AND NOT (a.ref ~ '^validator/(idem|sample)-')"
     if type:
@@ -190,11 +191,25 @@ async def browse(
         sql += " AND m.external_id = :eid"; params["eid"] = author_external_id
     if lens:
         sql += " AND a.frontmatter -> 'lens' ? :lens"; params["lens"] = lens
+    # asyncpg infers a.date's column type as DATE and refuses raw strings —
+    # parse to datetime.date here so the bind is type-correct.
     if date_from:
-        sql += " AND a.date >= :df"; params["df"] = date_from
+        from datetime import date as _date
+        try:
+            params["df"] = _date.fromisoformat(date_from)
+        except ValueError:
+            raise HTTPException(status_code=400,
+                                detail=f"date_from must be YYYY-MM-DD, got {date_from!r}")
+        sql += " AND a.date >= :df"
     if date_to:
-        sql += " AND a.date <= :dt"; params["dt"] = date_to
-    sql += " ORDER BY a.date DESC NULLS LAST LIMIT :limit"
+        from datetime import date as _date
+        try:
+            params["dt"] = _date.fromisoformat(date_to)
+        except ValueError:
+            raise HTTPException(status_code=400,
+                                detail=f"date_to must be YYYY-MM-DD, got {date_to!r}")
+        sql += " AND a.date <= :dt"
+    sql += " ORDER BY a.date DESC NULLS LAST, a.id LIMIT :limit OFFSET :offset"
 
     async with app_session(identity.tenant_id) as s:
         r = await s.execute(text(sql), params)

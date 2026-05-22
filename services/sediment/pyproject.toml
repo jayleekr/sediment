@@ -52,6 +52,13 @@ include = ["lab_lib*", "lab_platform*", "applications*", "scripts*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# DB-touching tests share module-level SQLAlchemy async engines that bind to
+# whichever event loop first uses them. Per-test loops (pytest-asyncio default)
+# cause "Event loop is closed" + cross-loop Future errors mid-suite. Session-
+# scoped loops keep all async tests on the same loop, matching how the engine
+# pool is reused across requests in a running uvicorn process.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 # Put services/sediment (this rootdir) on sys.path so `from scripts.* import`
 # / `from lab_lib.* import` resolve regardless of the invocation directory

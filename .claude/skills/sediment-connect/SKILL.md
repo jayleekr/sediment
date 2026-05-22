@@ -1,6 +1,6 @@
 ---
 name: sediment-connect
-description: Connect this Claude Code session to Sediment (HypeProof Lab's evidence-grounded memory layer — "where doing becomes knowing") via MCP. Mints a JWT, writes MCP config, verifies the connection. Run once per machine (and again whenever the token expires).
+description: Connect this Claude Code session to Sediment (HypeProof Lab's evidence-grounded memory layer — "where doing becomes knowing") via MCP. Two paths: (1) preferred — `sediment` CLI + `sediment-mcp` shim (one Homebrew install, browser OAuth); (2) legacy — local venv + dev-token (engineers in the repo only).
 user_invocable: true
 triggers:
   - "/sediment-connect"
@@ -12,111 +12,136 @@ triggers:
 ---
 
 > **Brand**: Sediment. **Internal codename**: curator. Module paths
-> (`services/sediment/`, `applications/sediment_mcp/`) and env vars
-> (`SEDIMENT_TOKEN`, `SEDIMENT_BASE_URL`) retain the codename to avoid a
-> larger refactor — only user-visible surfaces (MCP tool names, web UI,
-> skill name) carry the brand name.
+> (`services/sediment/`, `applications/sediment_mcp/`) and some env vars
+> retain the codename — only user-visible surfaces (MCP tool names, web
+> UI, skill name, the new `sediment` CLI) carry the brand.
 
-## What this does
+## Two paths
 
-1. Mints a JWT against the Curator dev-token endpoint (Phase 5: Discord OAuth).
-2. Writes `~/.claude/mcp_servers/curator.json` so Claude Code spawns the
-   `curator_mcp` stdio server with the token in env.
-3. Calls `sediment__whoami` to verify the connection and prints the bound
-   identity.
+| Path | Audience | Setup |
+|---|---|---|
+| **A. CLI + shim** *(preferred)* | Any teammate, any machine | `brew install hypeprooflab/tap/sediment` + `pipx install sediment-mcp-shim` |
+| **B. Local venv** *(legacy)* | Engineers with the repo cloned | `services/sediment/.venv` + dev-token |
 
-After running this, the following MCP tools are available in *any* Claude
-Code session on this machine (any worktree):
+The agent must detect which path applies and configure accordingly.
 
-| Tool | Use for |
-|---|---|
-| `sediment__ask`     | natural-language Q&A with citations |
-| `sediment__search`  | hybrid retrieval, ranked refs+excerpts |
-| `sediment__read`    | fetch one artifact body by ref |
-| `sediment__recent`  | what's new in the vault (last N days) |
-| `sediment__whoami`  | verify the token still works |
+## Path A — CLI + MCP shim (preferred)
 
-## Arguments
+### What this does
 
-```
-/curator-connect [email]
-
-email  : seeded member email (default: jay.lee@sonatus.com)
-```
-
-## How the agent should run this
-
-1. **Pre-flight**:
-   - Resolve `SEDIMENT_BASE_URL` — default `http://localhost:10100`. If the
-     user sets a remote URL (e.g. `https://curator.hypeproof-ai.xyz`), use
-     that and skip dev-token (use Discord OAuth instead — Phase 5).
-   - Resolve `SEDIMENT_LG_BASE` — default `http://localhost:10020`.
-   - Pick the email — argument override OR ask the user.
-
-2. **Mint token** (local dev only):
-   ```bash
-   TOKEN=$(curl -s -X POST "$SEDIMENT_BASE_URL/api/v1/auth/dev-token" \
-     -H "Content-Type: application/json" \
-     -d "{\"email\":\"$EMAIL\"}" \
-     | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
-   ```
-   If response is missing the token, fail with the API error body.
-
-3. **Resolve `curator_mcp` entry point**:
-   - `services/sediment/.venv/bin/python` (absolute path)
-   - `-m applications.sediment_mcp.server`
-   - cwd: `products/sediment/services/sediment`
-   - All paths must be absolute in the MCP config so CC can spawn from any cwd.
-
-4. **Write MCP config** to `~/.claude/mcp_servers/curator.json`:
+1. **Detect** `sediment` on PATH (`which sediment`). If missing, give the
+   user the install command and stop.
+2. **Detect** `sediment-mcp` on PATH (the `pipx`-installed shim). If
+   missing, give the install command and stop.
+3. **Check auth**: `sediment auth status --format json`. If `logged_in`
+   is false, prompt the user to run `sediment auth login` (which opens
+   a browser via RFC 8628 Device Authorization Grant).
+4. **Write MCP config** to `~/.claude/mcp_servers/sediment.json`:
    ```json
    {
      "mcpServers": {
-       "curator": {
-         "command": "<absolute path to .venv/bin/python>",
-         "args": ["-m", "applications.sediment_mcp.server"],
-         "cwd": "<absolute path to services/sediment>",
-         "env": {
-           "SEDIMENT_BASE_URL": "<resolved URL>",
-           "SEDIMENT_LG_BASE": "<resolved URL>",
-           "SEDIMENT_TOKEN": "<minted JWT>"
-         }
+       "sediment": {
+         "command": "sediment-mcp",
+         "args": []
        }
      }
    }
    ```
-   Merge with existing config — do NOT clobber other MCP servers the user
-   may have configured.
+   Merge with existing config — do NOT clobber other MCP servers.
+5. **Verify**: invoke the shim with `--list-tools` (or run a stub
+   `sediment__whoami` via stdio) and report the bound identity.
 
-5. **Verify**:
-   ```bash
-   SEDIMENT_TOKEN="$TOKEN" \
-   <python> -c "
-   import asyncio
-   from applications.sediment_mcp.server import sediment__whoami
-   print(asyncio.run(sediment__whoami()))
-   "
-   ```
-   Expected: dict with `member_id`, `tenant_id`, `display_name`.
+### Install commands the agent should print verbatim
 
-6. **Report to user**:
-   - Identity bound (display_name + tenant_id)
-   - Tool list (5 tools)
-   - Restart hint — Claude Code picks up MCP changes on next session start.
+```bash
+# 1. CLI (Rust static binary)
+brew install hypeprooflab/tap/sediment
 
-## Notes
+# 2. MCP shim (Python via pipx)
+pipx install sediment-mcp-shim
 
-- The dev-token endpoint is local-dev-only. In production, Discord OAuth
-  flow mints the JWT.
-- Token expiry is 24h by default. Re-run this skill to refresh.
-- One token per machine — switching emails replaces the bound identity for
-  ALL Claude Code sessions on this machine.
+# 3. Log in (opens browser)
+sediment auth login
+```
+
+### Tools available after connect
+
+| Tool | Use for |
+|---|---|
+| `sediment__whoami` | verify the token still works |
+| `sediment__search` | hybrid retrieval, ranked refs + excerpts |
+| `sediment__read`   | fetch one artifact body by ref |
+| `sediment__recent` | what's new in the vault (last N days) |
+| `sediment__ask`    | natural-language Q&A with citations |
+
+### Multi-account
+
+Users with multiple emails can:
+```bash
+sediment auth login --account a@x.com
+sediment auth login --account b@y.com
+sediment auth list                # show both
+sediment auth default --account b@y.com   # set default
+```
+The MCP shim uses whichever account is the CLI default. To pin a
+specific account for THIS Claude Code instance, set `SEDIMENT_ACCOUNT`
+in the shim's env section of `sediment.json`.
+
+## Path B — Local venv (legacy / repo contributors only)
+
+Identical to the previous version of this skill. Triggered when the user
+has the repo cloned at `~/CodeWorkspace/sediment` (or similar) AND has
+not installed the `sediment` CLI binary.
+
+1. Resolve `SEDIMENT_BASE_URL` (default `http://localhost:10100`).
+2. Mint a token via `/api/v1/auth/dev-token`.
+3. Write `~/.claude/mcp_servers/sediment.json` pointing at
+   `services/sediment/.venv/bin/python -m applications.sediment_mcp.server`
+   with the JWT in env.
+
+This path is documented for completeness; new teammates should use Path A.
+
+## How the agent decides
+
+Pseudocode for `/sediment-connect`:
+
+```python
+cli_present = shell_exit("which sediment") == 0
+shim_present = shell_exit("which sediment-mcp") == 0
+repo_present = file_exists("services/sediment/applications/sediment_mcp/server.py")
+
+if cli_present:
+    # Always prefer Path A when the CLI exists.
+    if not shim_present:
+        prompt_install_shim()
+        return
+    if shell_exit("sediment auth status --format json | jq -e .logged_in") != 0:
+        prompt_login()
+        return
+    write_mcp_config_path_a()
+    verify_via_whoami()
+elif repo_present:
+    print("CLI not installed — falling back to legacy venv path (recommended: install CLI)")
+    do_path_b()
+else:
+    print("Install the CLI: `brew install hypeprooflab/tap/sediment`")
+```
 
 ## Failure modes
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `curl: connection refused` | Curator services not running | `make services-up` in `products/sediment/` |
-| `404 member not found` | DB not seeded for this email | `make seed` |
-| `sediment__whoami returns error` | Token written wrong / wrong tenant | Re-run skill |
-| `MCP server not visible in CC` | Need to restart Claude Code | Cmd+Q, reopen |
+| `which sediment` empty | CLI not installed | `brew install hypeprooflab/tap/sediment` |
+| `which sediment-mcp` empty | shim not installed | `pipx install sediment-mcp-shim` |
+| `sediment auth status` shows `logged_in: false` | token missing / expired | `sediment auth login` |
+| MCP server not visible in CC after connect | CC needs restart to pick up new MCP servers | Cmd+Q, reopen |
+| Wrong account bound | multiple emails on this machine | `sediment auth default --account <email>` |
+
+## Notes
+
+- The CLI binary is the source of truth for credentials. The MCP shim
+  owns no state.
+- Token lifetime is 24h. The CLI does not auto-refresh — re-run
+  `sediment auth login` when it expires.
+- For CI / headless: set `SEDIMENT_TOKEN` env var directly (highest
+  priority override).

@@ -12,8 +12,12 @@ SHELL := /bin/bash
 SVC_DIR := services/sediment
 INFRA_DIR := infra
 PYTHON := python3
-PIP := $(SVC_DIR)/.venv/bin/pip
-PY := $(SVC_DIR)/.venv/bin/python
+# In a git worktree, services/sediment/.venv doesn't exist; fall back to the
+# main repo's venv via the common git dir.
+VENV_DIR := $(if $(wildcard $(SVC_DIR)/.venv),$(SVC_DIR)/.venv,$(shell git rev-parse --git-common-dir 2>/dev/null | xargs dirname)/services/sediment/.venv)
+PIP := $(VENV_DIR)/bin/pip
+PY := $(VENV_DIR)/bin/python
+PYTEST := $(VENV_DIR)/bin/pytest
 
 help:
 	@echo "AI Curator — local dev"
@@ -90,6 +94,45 @@ verify-rls:
 
 test:
 	cd $(SVC_DIR) && .venv/bin/pytest -v
+
+# ================ migrations ================
+migrate:
+	cd $(SVC_DIR) && PYTHONPATH=. .venv/bin/python -m scripts.apply_migrations
+
+migrate-dry:
+	cd $(SVC_DIR) && PYTHONPATH=. .venv/bin/python -m scripts.apply_migrations --dry-run
+
+# ================ CLI multi-user access test matrix ================
+# Runs every test in docs/design/cli-test-requirements.md that doesn't need
+# external services beyond Docker Postgres + a running platform on :10101.
+
+test-cli-py:
+	cd $(SVC_DIR) && PYTHONPATH=. $(abspath $(PYTEST)) \
+	  tests/test_auth.py \
+	  tests/test_oauth_device.py \
+	  tests/test_oauth_device_edges.py \
+	  tests/test_rate_limit.py tests/test_rate_limit_edges.py \
+	  tests/test_audit.py \
+	  tests/test_security.py \
+	  tests/test_rls.py \
+	  tests/test_rls_cross_tenant_via_api.py \
+	  tests/test_cross_tenant_full.py \
+	  -v
+
+test-cli-shim:
+	cd services/sediment-mcp && PYTHONPATH=src $(abspath $(PYTEST)) tests/test_shim.py tests/test_shim_edges.py -v
+
+test-cli-rust:
+	cd services/sediment-cli && cargo test --test unit --test edges
+
+test-cli-all: test-cli-py test-cli-shim test-cli-rust
+	@echo "✅ All non-E2E CLI tests passed"
+
+# E2E — requires a running platform on :10101 with SEDIMENT_DEV_MODE=1
+test-cli-e2e:
+	cd services/sediment-cli && SEDIMENT_E2E_BASE_URL=http://localhost:10101 cargo test --test e2e_login --test e2e_full -- --nocapture
+	@TOK=$$(curl -s -X POST http://localhost:10101/api/v1/auth/dev-token -H 'Content-Type: application/json' -d '{"email":"jay.lee@sonatus.com"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])"); \
+	  cd services/sediment-mcp && SEDIMENT_E2E_BASE_URL=http://localhost:10101 SEDIMENT_E2E_TOKEN="$$TOK" PYTHONPATH=src $(abspath $(PYTEST)) tests/test_shim_e2e.py tests/test_shim_e2e_full.py -v
 
 # ================ services ================
 platform:

@@ -1,0 +1,98 @@
+name: cli-tests
+
+# Runs every PR / push to main. Gates merge on:
+#   - Rust UT + edges
+#   - Python UT (backend + shim + rate-limit + security)
+#   - Cross-tenant RLS suite (load-bearing)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: .
+
+jobs:
+  rust-unit:
+    name: Rust CLI unit + edges
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo fmt
+        run: cd services/sediment-cli && cargo fmt --check
+      - name: Cargo clippy
+        run: cd services/sediment-cli && cargo clippy --all-targets -- -D warnings
+      - name: Cargo test (no E2E)
+        run: cd services/sediment-cli && cargo test --test unit --test edges
+      - name: Cargo audit
+        run: |
+          cargo install --locked cargo-audit
+          cd services/sediment-cli && cargo audit
+
+  python-unit:
+    name: Backend + shim + rate-limit UT
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: curator
+          POSTGRES_PASSWORD: curator_local_dev
+          POSTGRES_DB: curator
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U curator -d curator"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install uv + deps
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          cd services/sediment
+          ~/.local/bin/uv venv --python 3.11
+          ~/.local/bin/uv pip install -e ".[dev]"
+      - name: Apply schema + migrations
+        run: |
+          cd services/sediment
+          PGPASSWORD=curator_local_dev psql -h localhost -p 5433 -U curator -d curator -f ../../infra/init.sql
+          PYTHONPATH=. .venv/bin/python -m scripts.apply_migrations
+      - name: Seed
+        run: |
+          cd services/sediment
+          PYTHONPATH=. .venv/bin/python -m scripts.seed_local || true
+      - name: Backend UT
+        run: |
+          cd services/sediment
+          PYTHONPATH=. .venv/bin/pytest \
+            tests/test_auth.py \
+            tests/test_oauth_device.py \
+            tests/test_oauth_device_edges.py \
+            tests/test_rate_limit.py \
+            tests/test_rate_limit_edges.py \
+            tests/test_audit.py \
+            tests/test_security.py \
+            tests/test_rls.py \
+            tests/test_rls_cross_tenant_via_api.py \
+            tests/test_cross_tenant_full.py \
+            -v
+      - name: MCP shim UT
+        run: |
+          cd services/sediment-mcp
+          /home/runner/.local/bin/uv pip install --python ../sediment/.venv/bin/python -e .
+          PYTHONPATH=src ../sediment/.venv/bin/pytest tests/test_shim.py tests/test_shim_edges.py -v
+
+  cross-tenant-rls-gate:
+    name: 🚨 Cross-tenant RLS gate (blocks merge)
+    needs: python-unit
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo "Cross-tenant RLS tests pass — safe to ship"

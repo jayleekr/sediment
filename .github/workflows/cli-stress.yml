@@ -1,0 +1,100 @@
+name: cli-stress
+
+# Weekly k6 stress run against staging.
+# Posts results to Discord; non-blocking (warns, doesn't gate merges).
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"   # Sundays 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  stress:
+    runs-on: ubuntu-22.04
+    env:
+      BASE_URL: ${{ secrets.STAGING_BASE_URL || 'http://localhost:10101' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg ca-certificates
+          curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Mint tokens
+        id: mint
+        run: |
+          TOK=$(curl -s -X POST "$BASE_URL/api/v1/auth/dev-token" \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"jay.lee@sonatus.com"}' | jq -r .token)
+          TOK_ACME=$(curl -s -X POST "$BASE_URL/api/v1/auth/dev-token" \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@acme.test"}' | jq -r .token)
+          echo "::add-mask::$TOK"
+          echo "::add-mask::$TOK_ACME"
+          echo "tok=$TOK" >> $GITHUB_OUTPUT
+          echo "tok_acme=$TOK_ACME" >> $GITHUB_OUTPUT
+
+      - name: Steady state (30 min)
+        env:
+          JWT: ${{ steps.mint.outputs.tok }}
+        run: |
+          cd services/sediment-cli/stress
+          DURATION=5m k6 run --quiet --out json=/tmp/steady.json steady_state.js
+
+      - name: Tenant fairness (3 min)
+        env:
+          JWT: ${{ steps.mint.outputs.tok }}
+          JWT_ACME: ${{ steps.mint.outputs.tok_acme }}
+        run: |
+          cd services/sediment-cli/stress
+          k6 run --quiet --out json=/tmp/fairness.json tenant_fairness.js
+
+      - name: Search QPS ramp
+        env:
+          JWT: ${{ steps.mint.outputs.tok }}
+        run: |
+          cd services/sediment-cli/stress
+          k6 run --quiet --out json=/tmp/ramp.json search_ramp.js
+
+      - name: Reconnect storm
+        env:
+          JWT: ${{ steps.mint.outputs.tok }}
+        run: |
+          cd services/sediment-cli/stress
+          k6 run --quiet --out json=/tmp/storm.json reconnect_storm.js
+
+      - name: Summarize + post to Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_STRESS_WEBHOOK }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, glob
+          rows = []
+          for path in sorted(glob.glob("/tmp/*.json")):
+              name = os.path.basename(path).replace(".json","")
+              with open(path) as f:
+                  metrics = {}
+                  for line in f:
+                      try:
+                          m = json.loads(line)
+                          if m.get("type") == "Point" and "metric" in m:
+                              metrics.setdefault(m["metric"], []).append(m["data"].get("value", 0))
+                      except: pass
+              search_p50 = sorted(metrics.get("sediment_search_latency_ms", []))
+              p50 = search_p50[len(search_p50)//2] if search_p50 else None
+              rows.append(f"  {name}: search_p50={p50}")
+          body = "Sediment CLI stress (weekly):\n" + "\n".join(rows)
+          print(body)
+          if os.environ.get("DISCORD_WEBHOOK"):
+              urllib.request.urlopen(urllib.request.Request(
+                  os.environ["DISCORD_WEBHOOK"],
+                  data=json.dumps({"content": body}).encode(),
+                  headers={"Content-Type": "application/json"},
+              ))
+          PY

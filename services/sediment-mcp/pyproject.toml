@@ -1,0 +1,31 @@
+[project]
+name = "sediment-mcp-shim"
+version = "0.1.0"
+description = "MCP shim that exposes the `sediment` CLI as Claude Code tools."
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "HypeProof Lab" }]
+dependencies = [
+  "fastmcp>=2.0",
+]
+
+[project.scripts]
+sediment-mcp = "sediment_mcp_shim.server:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]

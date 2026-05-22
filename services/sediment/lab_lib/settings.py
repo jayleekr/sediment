@@ -43,13 +43,20 @@ class Settings(BaseSettings):
     default_tenant_slug: str = "hypeproof-lab"
     default_tenant_name: str = "HypeProof Lab"
 
+    # Public base URL — used by the device-flow user-facing approval page.
+    # In dev: http://localhost:3000 (next dev server). In prod: the Vercel URL.
+    public_base_url: str = "http://localhost:3000"
+
     # Vault paths (relative to services/sediment/)
     vault_repo_root: str = "../../.."
     vault_ingest_paths: str = "research/daily,web/src/content/columns,web/src/content/novels,web/src/content/research,novels,products,docs,PHILOSOPHY.md,AGENTS.md"
 
     # Cost guardrails
     cost_budget_monthly_usd: int = 200
-    query_ratelimit_per_min: int = 20
+    # 200/min per member (≈3.3 req/s). 20 was the v0 estimate; the actual
+    # mix (page-all NDJSON, repeated whoami from MCP shim, dev iteration)
+    # demands more headroom. Override via QUERY_RATELIMIT_PER_MIN env.
+    query_ratelimit_per_min: int = 200
 
     # Logging
     log_level: str = "INFO"
