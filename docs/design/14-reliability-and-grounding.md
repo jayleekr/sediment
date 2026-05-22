@@ -80,13 +80,19 @@ The first reliability slice is deterministic:
 
 - `test_grounding_runtime.py` covers citation index parsing and deterministic
   fail-closed answers.
+- `test_claim_grounding.py` evaluates sentence-level factual claims against the
+  specific cited snippets.
 - `test_vault_freshness_contract.py` locks the source-level freshness axes and
   the cron `vault.sync` breadcrumb.
 - Existing `P2-GROUND-01` continues to run live SSE grounding probes.
+- `P2-GROUND-03` is a provider-free claim-grounding contract. It reports
+  per-claim JSON with `supported`, `partially_supported`, `unsupported`, and
+  `not_factual` verdicts. The optional LLM judge path is opt-in via
+  `SEDIMENT_CLAIM_LLM_JUDGE=1`; offline runs skip it explicitly instead of
+  pretending a model judge ran.
 
 Future work under Epic #22:
 
-- Claim-level support scoring.
 - Decision artifact provenance back to source events.
 - Daily reliability report and notification route.
 
