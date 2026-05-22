@@ -374,7 +374,6 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
     let mut cur_event = "message".to_string();
     let mut stream_iter = resp.bytes_stream();
 
-    let mut got_delta = false;
     while let Some(chunk) = stream_iter.next().await {
         let bytes = match chunk {
             Ok(b) => b,
