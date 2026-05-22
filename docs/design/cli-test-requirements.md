@@ -5,7 +5,7 @@
 > changes that support them (`/oauth-device`, `members.revoked_at`, rate
 > limit, `mcp_call_log`).
 > Parent doc: [cli-multi-user-access.md](cli-multi-user-access.md)
-> Parent project test framework: [../../TEST_REQUIREMENTS.md](../../TEST_REQUIREMENTS.md)
+> Parent project test framework: `TEST_REQUIREMENTS.md` (historical parent project reference)
 
 Lists every test, every edge case, every assertion. Tests are tagged
 **done** / **todo** / **deferred**. CI uses these tags to gate merges:
