@@ -6,7 +6,8 @@
         validate-loop validate-lint-e2e e2e-install \
         permissions ralph ralph-resume ralph-reset \
         monitor monitor-tail monitor-dashboard \
-        bounce-services lint-sql p3-cron-install p3-cron-status p3-cron-uninstall
+        bounce-services lint-sql p3-cron-install p3-cron-status p3-cron-uninstall \
+        push prod-run
 
 SHELL := /bin/bash
 SVC_DIR := services/sediment
@@ -47,6 +48,11 @@ help:
 	@echo "  make validate-all         — P0 → P3 sequential"
 	@echo "  make validate-loop PHASE=p1  — 50-iter self-improving loop"
 	@echo "  make validate-lint-e2e    — lint e2e_spec.yaml against meta-spec"
+	@echo ""
+	@echo " session DRY pack (sediment#46):"
+	@echo "  make push                                            — push w/ auto-rebase on conflict"
+	@echo "  make prod-run SCRIPT=cleanup_test_conversations      — run scripts/X on the fly VM"
+	@echo "  make prod-run SCRIPT=retention_sweep ARGS=--dry-run  — with args"
 
 # ================ infra ================
 up:
@@ -262,3 +268,55 @@ p3-cron-status:
 
 p3-cron-uninstall:
 	bash harness/scripts/install-p3-cron.sh uninstall
+
+# ---------------------------------------------------------------------------
+# DRY pack (sediment#46) — one-shot helpers for repeating session patterns
+# ---------------------------------------------------------------------------
+
+# `make push` — push current branch with auto-rebase-on-conflict.
+#
+# Plain fast-forward push is the happy path. When the remote has new commits
+# (concurrent worktree pushing in parallel — common in this repo), the
+# default `git push` fails with `non-fast-forward`. This target handles that
+# by stashing unstaged work, doing a non-rebase pull (preserves the local
+# commit by creating a merge commit), pushing again, and restoring stashed
+# changes. If the merge has conflicts, they stay in the worktree for human
+# resolution — the target does NOT silently auto-resolve.
+push:
+	@branch=$$(git symbolic-ref --short HEAD); \
+	if git push origin "$$branch" 2>&1 | tee /tmp/sediment-push.log; then \
+	  if ! grep -q "non-fast-forward\|fetch first\|rejected" /tmp/sediment-push.log; then \
+	    echo "✓ pushed $$branch ($$(git rev-parse --short HEAD))"; \
+	    exit 0; \
+	  fi; \
+	fi; \
+	echo "↻ remote ahead — stash + pull --no-rebase + push + pop"; \
+	stash_ref=$$(git stash create -u 2>/dev/null); \
+	if [ -n "$$stash_ref" ]; then git stash store -m "make-push autosave" "$$stash_ref" && git reset --hard HEAD >/dev/null 2>&1; fi; \
+	if ! git pull --no-rebase origin "$$branch" --no-edit; then \
+	  echo "✗ pull failed (likely merge conflict). Resolve manually then re-run \`make push\`."; \
+	  [ -n "$$stash_ref" ] && echo "  (your stashed changes are in stash@{0})"; \
+	  exit 1; \
+	fi; \
+	git push origin "$$branch" || { echo "✗ post-merge push failed"; exit 1; }; \
+	if [ -n "$$stash_ref" ]; then git stash pop --quiet || echo "  (stash pop had conflicts — resolve in worktree)"; fi; \
+	echo "✓ pushed $$branch with merge ($$(git rev-parse --short HEAD))"
+
+# `make prod-run SCRIPT=X [ARGS=...]` — run a Python module on the fly VM.
+#
+# Wraps the verbose `fly ssh console -C "/bin/sh -c 'cd /app/services/sediment
+# && /run-with-db.sh python -m scripts.X ARGS'"` invocation that was hit 5+
+# times in one session. The /run-with-db.sh wrapper massages DATABASE_URL
+# into asyncpg form so the script's `service_session()` works.
+#
+# Examples:
+#   make prod-run SCRIPT=cleanup_test_conversations ARGS=--dry-run
+#   make prod-run SCRIPT=retention_sweep ARGS=--dry-run
+#   make prod-run SCRIPT=reembed_all ARGS=--tenant=kids-edu
+prod-run:
+	@if [ -z "$(SCRIPT)" ]; then \
+	  echo "usage: make prod-run SCRIPT=<module> [ARGS='--flag']"; \
+	  echo "       (module is the dotted path after \`scripts.\` — e.g. cleanup_test_conversations)"; \
+	  exit 1; \
+	fi
+	fly ssh console -a hypeproof-sediment -C "/bin/sh -c 'cd /app/services/sediment && /run-with-db.sh python -m scripts.$(SCRIPT) $(ARGS)'"

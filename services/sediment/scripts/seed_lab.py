@@ -40,6 +40,7 @@ sys.path.insert(0, str(SCRIPT.parents[1]))  # services/sediment/
 
 from lab_lib.db import service_session  # noqa: E402
 from lab_lib.logging import configure_logging, get_logger  # noqa: E402
+from lab_lib.migrations import add_columns_safely, add_column_safely  # noqa: E402
 from lab_lib.settings import settings  # noqa: E402
 
 configure_logging()
@@ -86,82 +87,45 @@ async def add_github_login_column_as_owner() -> None:
 async def ensure_retention_columns(s) -> None:
     """Per design doc 15. Idempotent — safe to re-run on every deploy.
 
-    Adds: pinned, archived_at, temporary, purge_after to conversations.
-
-    Implementation note: we DO NOT try the service-role session first
-    (unlike ensure_github_login_column). `conversations` is owned by the
-    superuser in prod, and the service role lacks ALTER privilege; the
-    failing-then-rollback path leaves the session in an inconsistent
-    state and aborts the whole seed run. Going straight to the owner
-    connection is simpler and always works.
-
-    If the owner connection itself fails (e.g. SEDIMENT_MIGRATIONS_DB_URL
-    not configured for a fresh deploy), we log + continue — schema is
-    almost certainly already in place from a prior deploy/manual run,
-    and we'd rather boot than block release.
+    Uses the generic add_columns_safely helper (sediment#46) which handles
+    the try-session → owner-fallback → tolerate-already-exists dance that
+    was previously inlined here.
     """
-    ddls = [
-        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE",
-        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
-        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS temporary BOOLEAN NOT NULL DEFAULT FALSE",
-        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS purge_after TIMESTAMPTZ",
-        "CREATE INDEX IF NOT EXISTS conversations_archived_at_idx ON conversations (archived_at)",
-        "CREATE INDEX IF NOT EXISTS conversations_purge_after_idx ON conversations (purge_after)",
-    ]
-    for ddl in ddls:
-        try:
-            await s.execute(text(ddl))
-            # DDL in the async session is transactional. Commit each step so a
-            # later permission failure cannot roll back columns needed by
-            # owner-connection fallback indexes.
-            await s.commit()
-        except SQLAlchemyError as exc:
-            await s.rollback()
-            log.info("seed.schema.retention.fallback_owner",
-                     ddl=ddl[:80], err=str(exc)[:120])
-            try:
-                owner_conn = await asyncpg.connect(migrations_db_url())
-            except Exception as e:
-                log.warning("seed.schema.retention.owner_conn_unavailable",
-                            ddl=ddl[:80], err=str(e)[:200],
-                            hint="schema likely already applied; if not, run ALTERs manually")
-                continue
-            try:
-                await owner_conn.execute(ddl)
-            except Exception as e:
-                # Per-DDL tolerance — column might already exist if a prior
-                # manual migration ran; index errors are also benign
-                log.info("seed.schema.retention.ddl_warning",
-                         ddl=ddl[:80], err=str(e)[:120])
-            finally:
-                await owner_conn.close()
+    await add_columns_safely(s, table="conversations", owner_url_fn=migrations_db_url, columns=[
+        {"column": "pinned",
+         "ddl": "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE"},
+        {"column": "archived_at",
+         "ddl": "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ"},
+        {"column": "temporary",
+         "ddl": "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS temporary BOOLEAN NOT NULL DEFAULT FALSE"},
+        {"column": "purge_after",
+         "ddl": "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS purge_after TIMESTAMPTZ"},
+        {"column": "archived_at_idx",
+         "ddl": "CREATE INDEX IF NOT EXISTS conversations_archived_at_idx ON conversations (archived_at)"},
+        {"column": "purge_after_idx",
+         "ddl": "CREATE INDEX IF NOT EXISTS conversations_purge_after_idx ON conversations (purge_after)"},
+    ])
 
 
 async def ensure_github_login_column(s) -> None:
-    """Keep old single-owner deploys migratable without breaking service roles."""
-    try:
-        await s.execute(text(
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS github_login TEXT"
-        ))
-    except SQLAlchemyError as exc:
-        await s.rollback()
-        if await has_member_column(s, "github_login"):
-            log.info("seed.schema.github_login_present", ddl_skipped=True)
-            return
-        try:
-            await add_github_login_column_as_owner()
-            log.info("seed.schema.github_login_added", via="owner_connection")
-            return
-        except Exception as owner_exc:
-            if await has_member_column(s, "github_login"):
-                log.info("seed.schema.github_login_present", ddl_skipped=True)
-                return
-            exc.add_note(f"owner DDL fallback failed: {owner_exc!r}")
+    """Keep old single-owner deploys migratable without breaking service roles.
+
+    Unlike retention columns, github_login is REQUIRED for new dev tokens —
+    if both add paths fail AND the column is still missing, we raise hard
+    rather than silently continuing. add_column_safely tolerates failures
+    by default; we layer the existence check on top.
+    """
+    result = await add_column_safely(
+        s, table="members", column="github_login",
+        ddl="ALTER TABLE members ADD COLUMN IF NOT EXISTS github_login TEXT",
+        owner_url_fn=migrations_db_url,
+    )
+    if result == "skipped" and not await has_member_column(s, "github_login"):
         raise RuntimeError(
             "members.github_login is missing and the current DB role cannot add it; "
             "set SEDIMENT_MIGRATIONS_DB_URL or apply infra/init.sql/migrations "
             "with owner credentials before seed_lab"
-        ) from exc
+        )
 
 
 async def upsert_tenant(s, slug: str, name: str) -> str:
