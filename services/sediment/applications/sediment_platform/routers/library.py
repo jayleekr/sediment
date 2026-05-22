@@ -217,7 +217,8 @@ async def browse(
 
 
 @router.get("/search")
-async def search(q: str, limit: int = 8, identity: Identity = Depends(require_identity)):
+async def search(q: str, limit: int = 8, type: Optional[str] = None,
+                 identity: Identity = Depends(require_identity)):
     """Hybrid BM25 + vector search. Convenience wrapper for the UI.
 
     Offline-mode fallback: when the embedding API is unavailable (no
@@ -284,12 +285,19 @@ async def search(q: str, limit: int = 8, identity: Identity = Depends(require_id
             )
             SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug
             FROM deduped
+            {type_filter}
             ORDER BY score DESC LIMIT :limit;
-            """
-            r = await s.execute(text(sql_bm25), {
+            """.replace(
+                "{type_filter}",
+                "WHERE type = :type_strict" if type else ""
+            )
+            params_bm25 = {
                 "tsq": ts_or, "limit": limit, "type_hint": type_hint,
                 "project_hint": project_hint, "slug_re": slug_re,
-            })
+            }
+            if type:
+                params_bm25["type_strict"] = type
+            r = await s.execute(text(sql_bm25), params_bm25)
             return {"q": q, "items": [dict(row._mapping) for row in r]}
 
         # Online path: hybrid BM25 + vector with RRF rerank (unchanged).
@@ -315,9 +323,16 @@ async def search(q: str, limit: int = 8, identity: Identity = Depends(require_id
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content, f.score,
                a.ref, a.type, a.date, a.slug
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        {type_filter}
         ORDER BY f.score DESC LIMIT :limit;
-        """
-        r = await s.execute(text(sql), {"q": q, "qvec": qvec_str, "limit": limit})
+        """.replace(
+            "{type_filter}",
+            "WHERE a.type = :type_strict" if type else ""
+        )
+        params_hyb = {"q": q, "qvec": qvec_str, "limit": limit}
+        if type:
+            params_hyb["type_strict"] = type
+        r = await s.execute(text(sql), params_hyb)
         return {"q": q, "items": [dict(row._mapping) for row in r]}
 
 

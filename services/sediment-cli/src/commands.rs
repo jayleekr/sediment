@@ -358,6 +358,17 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
                         citations.push(c.clone());
                     }
                 }
+                "message" => {
+                    // LangGraph emits status pings here (e.g. {"v":"thinking"})
+                    // while it's working before the first answer token arrives.
+                    // Show them on STDERR in --stream mode so user sees progress
+                    // without polluting the JSON answer on stdout.
+                    if stream {
+                        if let Some(v) = value.get("v").and_then(|x| x.as_str()) {
+                            eprintln!("[…{}]", v);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
