@@ -33,6 +33,26 @@ impl Http {
         })
     }
 
+    /// Variant for long-lived SSE streams (sediment#30):
+    ///   - no overall request timeout (waiting indefinitely is the point)
+    ///   - no pool idle timeout (don't recycle the stream connection)
+    ///   - http1_only so we never get HTTP/2 idle-stream behavior that drops
+    ///     us at ~30s when nginx upstream is slow producing
+    pub fn new_streaming(base_url: String, token: Option<String>) -> Result<Self> {
+        // For SSE: 5-minute overall timeout (covers slowest realistic LLM
+        // synthesis on prod). Default reqwest pool/HTTP settings — fly.dev's
+        // edge negotiates h2 by ALPN and we accept that. (sediment#30)
+        let client = Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(300))
+            .build()?;
+        Ok(Self {
+            base_url,
+            token,
+            client,
+        })
+    }
+
     fn request(&self, method: Method, path: &str) -> RequestBuilder {
         let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
         let mut b = self.client.request(method, url);

@@ -13,6 +13,7 @@ mod error;
 mod http;
 mod output;
 mod token;
+mod updater;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -83,6 +84,15 @@ enum Cmd {
     },
     /// Introspect the JSON schema of a tool (search, ask, read, recent, whoami).
     Schema { tool: String },
+    /// Check for a newer release on GitHub and replace this binary in place.
+    Update {
+        /// Only check the latest version; don't download or replace.
+        #[arg(long)]
+        check: bool,
+        /// Replace even when the installed version is already latest.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -154,5 +164,6 @@ async fn run() -> Result<()> {
             page_all,
         } => commands::recent(&cfg, days, r#type.as_deref(), limit, page_all, fmt).await,
         Cmd::Schema { tool } => commands::schema(&cfg, &tool, fmt).await,
+        Cmd::Update { check, force } => commands::update(check, force, fmt).await,
     }
 }

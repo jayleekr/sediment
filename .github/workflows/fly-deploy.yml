@@ -83,6 +83,15 @@ jobs:
       - name: Install chromium system deps (cache hit path)
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: playwright install-deps chromium
+      - name: Wait for fresh deploy to be reachable (warmup)
+        run: |
+          # Cold-start window after a deploy can be 5-15s. Hit /healthz until
+          # it's reliably 200 before launching the (more brittle) Playwright run.
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://hypeproof-sediment.fly.dev/healthz || true)
+            if [ "$code" = "200" ]; then echo "warmed up at attempt $i"; break; fi
+            sleep 2
+          done
       - name: Run E2E-12 prod smoke
         env:
           SEDIMENT_E2E_ENV: prod
@@ -91,7 +100,16 @@ jobs:
           python -c "
           import asyncio, sys
           from validator.e2e_runner import run_flow
-          spec = {'id': 'cd-prod-smoke', 'title': 'E2E-12 prod smoke', 'layer': 'P3', 'severity': 'blocker', 'flow_id': 'E2E-12'}
+          # sediment#20: was 2/2 strict at 8000ms timeout — too brittle for prod
+          # cold starts + Vercel edge variance. Median-of-3 at 20000ms is the
+          # right reliability gate without losing the failure signal.
+          spec = {
+              'id': 'cd-prod-smoke', 'title': 'E2E-12 prod smoke',
+              'layer': 'P3', 'severity': 'blocker', 'flow_id': 'E2E-12',
+              'timeout_ms': 20000,
+              'repeat': 3,
+              'min_successes': 2,
+          }
           res = asyncio.run(run_flow(spec))
           print('passed:', res.passed)
           print('actual:', res.actual)

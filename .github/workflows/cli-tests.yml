@@ -64,6 +64,16 @@ jobs:
         run: |
           cd services/sediment
           PGPASSWORD=curator_local_dev psql -h localhost -p 5433 -U curator -d curator -f ../../infra/init.sql
+          # seed_lab uses ALTER TABLE on members for triggers/constraints, which
+          # requires *ownership* not just GRANT ALL. The init.sql owner is the
+          # superuser; transfer ownership to curator_service so seed_lab can
+          # operate (sediment#17). Idempotent.
+          PGPASSWORD=curator_local_dev psql -h localhost -p 5433 -U curator -d curator -c "
+            DO \$\$ BEGIN
+              EXECUTE (SELECT string_agg(format('ALTER TABLE public.%I OWNER TO curator_service;', tablename), ' ')
+                       FROM pg_tables WHERE schemaname='public');
+            END \$\$;
+          "
           PYTHONPATH=. .venv/bin/python -m scripts.apply_migrations
       - name: Seed tenants + members + RLS marker artifacts
         run: |

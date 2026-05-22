@@ -37,6 +37,15 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
+        # NUL byte (0x00) is not valid in Postgres TEXT columns and any query
+        # param carrying it would crash a downstream SQL bind with
+        # CharacterNotInRepertoireError (sediment#18). Strip NULs from query
+        # params before they reach any handler. Cheap O(N) check.
+        if "%00" in (request.url.query or "") or "\x00" in str(request.url):
+            return JSONResponse(
+                {"error": "request contains NUL byte"}, status_code=400
+            )
+
         path = request.url.path
         if path in self.PUBLIC_PATHS or any(path.startswith(p) for p in self.PUBLIC_PREFIXES):
             return await call_next(request)

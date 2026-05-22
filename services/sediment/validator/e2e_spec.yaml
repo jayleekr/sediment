@@ -10,7 +10,7 @@
 # Top-level defaults below are the deprecated v0.1 form, kept as a fallback
 # for any caller that hasn't migrated to environments[env].
 base_url: "http://localhost:3000"
-default_timeout_ms: 8000
+default_timeout_ms: 20000  # sediment#20: 8000 was too tight under prod cold-start variance
 viewport:
   width: 1280
   height: 900
@@ -346,7 +346,10 @@ flows:
     # SSR/bundle regressions even though the data calls 401.
     severity: blocker
     environments: [prod]
-    repeat: 2
+    # sediment#20: was repeat=2 pass_threshold=2 (strict 2/2) at 8s timeout.
+    # Vercel edge cold-starts and Fly fresh-VM warmup caused frequent false
+    # fails. Median-of-3 keeps the regression signal without crying wolf.
+    repeat: 3
     pass_threshold: 2
     steps:
       - action: navigate

@@ -1,110 +1,184 @@
-// OS keychain storage for per-account JWTs.
+// Per-account JWT storage.
 //
-// Service name: "sediment-cli"
-// Username (keyring key): the account email
+// **Storage backend**: file at `<config_dir>/credentials.json` with mode 0600.
 //
-// On macOS this lands in Login Keychain; on Linux in Secret Service
-// (gnome-keyring / kwallet); on Windows in Credential Manager.
+// Why not OS keychain? macOS Keychain enforces a per-binary ACL that prompts
+// "sediment wants to use your confidential information" on every read from a
+// binary that wasn't on the ACL trust list — and that ACL list resets on
+// every binary rebuild (path or codesign change). For a 24h dev JWT, the UX
+// cost is severe. `gh`, `aws-cli`, and most peer tools use plain config-dir
+// files with restrictive permissions. We do the same.
 //
-// Tests run against an in-memory mock — see token_tests.rs.
-#![allow(clippy::items_after_test_module)]
+// **Layout**:
+//   {
+//     "accounts": {
+//       "jay.lee@example.com": "eyJhbGciOiJI...",
+//       "admin@example.com":   "eyJhbGciOiJI..."
+//     }
+//   }
+//
+// **Migration**: on first read with no file but with a legacy macOS keyring
+// entry, we silently lift it over. Then we never touch the keychain again.
+//
+// **Security model**: 0600 file in user's home dir is equivalent to ~/.ssh
+// keys, ~/.aws/credentials, ~/.config/gh/hosts.yml. The threat model assumes
+// the user's home dir is private to them. Use `SEDIMENT_TOKEN` env override
+// for ephemeral / CI runs that shouldn't touch disk.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::PathBuf;
 
 #[allow(dead_code)]
 const SERVICE: &str = "sediment-cli";
-#[allow(dead_code)]
-const ACCOUNT_INDEX_KEY: &str = "_index";
 
-#[cfg(not(test))]
-mod backend {
-    use anyhow::{Context, Result};
-    use keyring::Entry;
-
-    pub fn entry(account: &str) -> Result<Entry> {
-        Entry::new(super::SERVICE, account).context("opening keychain entry")
-    }
-
-    pub fn get(account: &str) -> Result<Option<String>> {
-        match entry(account)?.get_password() {
-            Ok(t) => Ok(Some(t)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    pub fn set(account: &str, token: &str) -> Result<()> {
-        entry(account)?
-            .set_password(token)
-            .context("writing keychain entry")
-    }
-
-    pub fn delete(account: &str) -> Result<()> {
-        match entry(account)?.delete_credential() {
-            Ok(()) => Ok(()),
-            Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
-    }
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Creds {
+    #[serde(default)]
+    accounts: BTreeMap<String, String>,
 }
 
-#[cfg(test)]
-mod backend {
-    use anyhow::Result;
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
+fn creds_path() -> Result<PathBuf> {
+    Ok(crate::config::config_dir()?.join("credentials.json"))
+}
 
-    fn store() -> &'static Mutex<HashMap<String, String>> {
-        static S: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
-        S.get_or_init(|| Mutex::new(HashMap::new()))
+fn load() -> Result<Creds> {
+    let path = creds_path()?;
+    if !path.exists() {
+        return Ok(Creds::default());
     }
+    let body = fs::read_to_string(&path)
+        .with_context(|| format!("reading {}", path.display()))?;
+    let creds: Creds = serde_json::from_str(&body).with_context(|| {
+        format!("parsing {} (corrupted? back it up and re-login)", path.display())
+    })?;
+    Ok(creds)
+}
 
-    pub fn get(account: &str) -> Result<Option<String>> {
-        Ok(store().lock().unwrap().get(account).cloned())
+fn save(creds: &Creds) -> Result<()> {
+    let path = creds_path()?;
+    let body = serde_json::to_string_pretty(creds)?;
+    // Write to a temp file in the same dir, then atomic rename. Set perms
+    // BEFORE rename so the live file never appears world-readable.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, body).with_context(|| format!("writing {}", tmp.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
     }
-    pub fn set(account: &str, token: &str) -> Result<()> {
-        store().lock().unwrap().insert(account.into(), token.into());
-        Ok(())
-    }
-    pub fn delete(account: &str) -> Result<()> {
-        store().lock().unwrap().remove(account);
-        Ok(())
-    }
+    fs::rename(&tmp, &path)
+        .with_context(|| format!("renaming {} → {}", tmp.display(), path.display()))?;
+    Ok(())
 }
 
 pub fn get(account: &str) -> Result<Option<String>> {
-    backend::get(account)
+    let mut creds = load()?;
+    if let Some(v) = creds.accounts.get(account) {
+        return Ok(Some(v.clone()));
+    }
+    // Migration: if a legacy keyring entry exists, lift it over silently.
+    if let Some(legacy) = legacy_keychain_get(account)? {
+        creds.accounts.insert(account.into(), legacy.clone());
+        save(&creds)?;
+        // Also try to clear the legacy entry so it doesn't keep prompting.
+        let _ = legacy_keychain_delete(account);
+        return Ok(Some(legacy));
+    }
+    Ok(None)
 }
 
 pub fn set(account: &str, token: &str) -> Result<()> {
-    backend::set(account, token)?;
-    // Maintain a sidecar account-index so `auth list` is fast and doesn't
-    // require scanning the keychain (which most backends don't allow).
+    let mut creds = load()?;
+    creds.accounts.insert(account.into(), token.into());
+    save(&creds)?;
     add_to_index(account)
 }
 
 pub fn delete(account: &str) -> Result<()> {
-    backend::delete(account)?;
+    let mut creds = load()?;
+    creds.accounts.remove(account);
+    save(&creds)?;
+    let _ = legacy_keychain_delete(account);
     remove_from_index(account)
 }
 
-// ---- account index sidecar ----
-//
-// The OS keychain has no portable "list all entries for service X" call.
-// We keep a newline-delimited list in the config dir to enumerate accounts.
+pub fn list_accounts() -> Result<Vec<String>> {
+    let creds = load()?;
+    let mut out: Vec<String> = creds.accounts.keys().cloned().collect();
+    out.sort();
+    Ok(out)
+}
 
-fn index_path() -> Result<std::path::PathBuf> {
-    let dir = crate::config::config_dir()?;
-    Ok(dir.join("accounts"))
+// ============================================================
+// Legacy keychain migration (read-once on first request after upgrade)
+// ============================================================
+
+#[cfg(target_os = "macos")]
+fn legacy_keychain_get(account: &str) -> Result<Option<String>> {
+    // Shell out to `security` rather than depend on the keyring crate just
+    // for migration. We still get a prompt the first time because the
+    // ACL trust list doesn't include this binary path — but the user only
+    // sees it ONCE, on first read after upgrade. The token migrates and
+    // future reads come from the file.
+    let out = std::process::Command::new("security")
+        .args([
+            "find-generic-password", "-s", SERVICE, "-a", account, "-w",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(s))
+            }
+        }
+        _ => Ok(None),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn legacy_keychain_delete(account: &str) -> Result<()> {
+    let _ = std::process::Command::new("security")
+        .args(["delete-generic-password", "-s", SERVICE, "-a", account])
+        .output();
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn legacy_keychain_get(_account: &str) -> Result<Option<String>> {
+    Ok(None)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn legacy_keychain_delete(_account: &str) -> Result<()> {
+    Ok(())
+}
+
+// ============================================================
+// Account-name index sidecar
+// ============================================================
+//
+// Strictly, accounts are already keys in credentials.json — we could derive
+// the list directly from there. The sidecar is kept for compatibility with
+// the config::read_default_account fallback ("if exactly one account, use
+// it as the default") which reads this file as cheap input.
+
+fn index_path() -> Result<PathBuf> {
+    Ok(crate::config::config_dir()?.join("accounts"))
 }
 
 fn read_index() -> Result<Vec<String>> {
     let path = index_path()?;
     if !path.exists() {
-        return Ok(Vec::new());
+        return list_accounts();
     }
-    let body =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let body = fs::read_to_string(&path)
+        .with_context(|| format!("reading {}", path.display()))?;
     Ok(body
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -114,7 +188,8 @@ fn read_index() -> Result<Vec<String>> {
 
 fn write_index(items: &[String]) -> Result<()> {
     let path = index_path()?;
-    std::fs::write(&path, items.join("\n")).with_context(|| format!("writing {}", path.display()))
+    fs::write(&path, items.join("\n"))
+        .with_context(|| format!("writing {}", path.display()))
 }
 
 fn add_to_index(account: &str) -> Result<()> {
@@ -137,10 +212,7 @@ fn remove_from_index(account: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list_accounts() -> Result<Vec<String>> {
-    read_index()
-}
-
 pub fn _ignore_unused() {
-    let _ = ACCOUNT_INDEX_KEY;
+    let _ = anyhow!("");
+    let _ = SERVICE;
 }

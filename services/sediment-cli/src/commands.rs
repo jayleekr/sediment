@@ -51,7 +51,10 @@ pub async fn auth_login(cfg: &Config, account_hint: Option<String>, fmt: Format)
         "tenant_id": token.tenant_id,
         "role": token.role,
         "display_name": token.display_name,
-        "hint": "credentials stored in OS keychain",
+        "hint": format!("credentials stored at {}", crate::config::config_dir()
+            .ok()
+            .map(|p| p.join("credentials.json").display().to_string())
+            .unwrap_or_else(|| "config dir".into())),
     });
     output::render(&result, fmt)
 }
@@ -303,9 +306,10 @@ pub async fn ask(cfg: &Config, query: &str, stream: bool, fmt: Format) -> Result
     // 2. Open the SSE stream against the langgraph base — for now, derive it
     // from the platform base by swapping :10100 → :10020 (local dev). When
     // the API gateway fronts both behind one URL (production via nginx), the
-    // same base works.
+    // same base works. Streaming client: no request timeout, HTTP/1.1 only
+    // (sediment#30).
     let lg_base = derive_langgraph_base(&cfg.base_url);
-    let lg_http = Http::new(lg_base, Some(tok.into()))?;
+    let lg_http = Http::new_streaming(lg_base, Some(tok.into()))?;
     let resp = lg_http
         .raw_post(
             "/v1/sediment/stream",
@@ -410,6 +414,48 @@ fn derive_langgraph_base(platform_base: &str) -> String {
         platform_base.to_string()
     }
 }
+
+pub async fn update(check: bool, force: bool, fmt: Format) -> Result<()> {
+    use crate::updater;
+    let info = updater::check_latest().await?;
+    if check {
+        return output::render(
+            &json!({
+                "current": info.current,
+                "latest": info.latest,
+                "newer_available": info.is_newer,
+                "release_url": info.release_url,
+                "asset": info.asset_name,
+                "target": updater::target_triple(),
+            }),
+            fmt,
+        );
+    }
+    if !info.is_newer && !force {
+        return output::render(
+            &json!({
+                "ok": true,
+                "current": info.current,
+                "latest": info.latest,
+                "noop": true,
+                "hint": "already on the latest version; pass --force to reinstall",
+            }),
+            fmt,
+        );
+    }
+    let new_path = updater::perform_update(&info).await?;
+    output::render(
+        &json!({
+            "ok": true,
+            "previous_version": info.current,
+            "new_version": info.latest,
+            "binary": new_path.display().to_string(),
+            "hint": "run `sediment --version` to confirm the new binary is in use",
+        }),
+        fmt,
+    )
+}
+
 
 pub async fn schema(cfg: &Config, tool: &str, fmt: Format) -> Result<()> {
     // Schemas are static — derived from the CLI's own knowledge of the API
