@@ -151,11 +151,16 @@ class CollectionDecision:
     notify_channels: list[str]          # logical channel slugs
     notify_template: str | None         # override default template
 
-    # Axis 3: INTERACTIVE reply (added 2026-05-22 — closes the
-    # "doing → knowing" loop by posting an answer back to the same
-    # source the question came from, where it gets re-ingested next tick)
-    reply: bool
-    reply_transport: str | None         # "discord_thread" | "slack_thread"
+    # Axis 3: INTERACTIVE reply HINT (added 2026-05-22)
+    # When True, decide() is telling the CALLER (not Sediment itself)
+    # that this event looks like a question worth answering. The caller
+    # (OpenClaw's Discord bot, a Slack bot, an editor plugin, ...)
+    # decides whether to POST a reply and via what channel. Sediment
+    # never posts back to the source — that would violate the layer
+    # boundary (Sediment = memory; the calling system owns the
+    # interface where the question came from).
+    reply: bool                         # hint: "this is a question"
+    reply_transport: str | None         # hint: suggested transport
     reply_query: str | None             # the question text (after mention strip)
 
     distill_strategy: str | None
@@ -171,20 +176,34 @@ def decide(
     return rules.apply(event)
 ```
 
-**The "reply" axis is what makes Sediment's loop close.** A question
-asked in Discord (or Slack, or — future — email) triggers a chat
-composition; the answer is posted back as a thread reply; the reply
-itself is ingested next tick (Phase 4 also extracts any decisions
-from the Q+A); next time someone asks a similar question, the prior
-Q+A is in the citable pool. Doing → knowing → doing → knowing.
+**Why `reply` is a HINT, not an action Sediment performs.**
 
-**Anti-loop guards** for `reply`:
-1. `decide()` skips events with `payload.is_bot == True` (rule
-   `transcript.bot_author_skip` runs first in the transcript ruleset)
-2. The orchestrator (`discord_gateway_runner.py`) additionally checks
-   `author_id == bot.user_id` before doing any DB work
-3. Re-ingest of the bot's own reply IS desired (so future queries can
-   find it), but `is_bot=True` prevents it from triggering ANOTHER reply
+Earlier draft of this doc had Sediment running its own Discord Gateway
+listener that would post replies directly. That was layering wrong:
+Sediment is the memory layer; Discord is a client surface. A separate
+process (OpenClaw's bot, or any client that already has Discord/Slack
+auth) is the right place to decide whether to actually reply and how.
+
+`reply: true` in the decision is a *signal* — the caller asked
+"what should I do with this event?" and Sediment said "this looks
+like a question; consider answering it." The caller then chooses to:
+- Call `/v1/sediment/stream` to get an answer
+- Post it back via whatever transport it owns
+- (Or ignore the hint — the caller decides)
+
+This keeps Sediment composable. Any client (CLI, MCP, OpenClaw, future
+Slack tenant) reuses `decide()` for the classification logic without
+inheriting our own bot identity / channel-posting code.
+
+**Anti-loop guards** still apply at the rule level:
+1. `decide()` returns `reply: false` for events with `payload.is_bot == True`
+   (rule `transcript.bot_author_skip` runs first in the transcript ruleset).
+   Callers that re-ingest their own replies won't re-trigger a reply hint.
+2. Callers SHOULD additionally check that the asker isn't the caller's
+   own bot identity (belt + suspenders).
+
+See `docs/integration/from-openclaw.md` for the recommended consumer
+pattern.
 
 Default rules per `source_kind`:
 
