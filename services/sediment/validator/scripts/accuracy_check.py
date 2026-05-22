@@ -49,82 +49,11 @@ from typing import Any
 
 import httpx
 
-# parents[2] is services/sediment/ — same trick as chat_smoke_kids_edu
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from scripts._test_helpers import smoke_conv_title  # noqa: E402
+from scripts._test_helpers import ask_question  # noqa: E402
 
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
 TIMEOUT_S = 30.0
-
-
-# ---------------------------------------------------------------------------
-# Public chat API helpers (mirrors chat_smoke_kids_edu)
-# ---------------------------------------------------------------------------
-
-async def _mint(client: httpx.AsyncClient, email: str) -> str:
-    r = await client.post(f"{API}/api/v1/auth/dev-token", json={"email": email})
-    r.raise_for_status()
-    return r.json()["token"]
-
-
-async def _new_conv(client: httpx.AsyncClient, token: str, title: str) -> str:
-    r = await client.post(
-        f"{API}/api/v1/conversations",
-        json={"title": title},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    r.raise_for_status()
-    return r.json()["id"]
-
-
-async def _ask(
-    client: httpx.AsyncClient, token: str, conv_id: str, q: str,
-) -> dict:
-    """Save + stream — return {citations, answer, events}."""
-    # Save user turn
-    r = await client.post(
-        f"{API}/api/v1/conversations/{conv_id}/messages",
-        json={"content": q, "role": "user"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    r.raise_for_status()
-
-    citations: list[dict] = []
-    answer_chunks: list[str] = []
-    events = 0
-    async with client.stream(
-        "POST", f"{API}/v1/sediment/stream",
-        json={"conv_id": conv_id, "query": q},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=httpx.Timeout(TIMEOUT_S, connect=10.0),
-    ) as r:
-        r.raise_for_status()
-        buf = ""
-        async for chunk in r.aiter_text():
-            buf += chunk
-            while "\n\n" in buf:
-                frame, buf = buf.split("\n\n", 1)
-                events += 1
-                evt = "message"
-                data_lines: list[str] = []
-                for line in frame.split("\n"):
-                    if line.startswith("event: "):
-                        evt = line[7:].strip()
-                    elif line.startswith("data: "):
-                        data_lines.append(line[6:])
-                data = "\n".join(data_lines)
-                if not data or data == "[DONE]":
-                    continue
-                try:
-                    j = json.loads(data)
-                except Exception:
-                    continue
-                payload = j.get("v") if isinstance(j, dict) else j
-                if evt == "citation" and isinstance(payload, dict):
-                    citations.append(payload)
-                elif evt == "delta" and isinstance(payload, str):
-                    answer_chunks.append(payload)
-    return {"citations": citations, "answer": "".join(answer_chunks), "events": events}
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +71,14 @@ async def check_freshness_accuracy(
     relies on the freshness intent's deterministic SQL — if the returned
     citation has a `date` field, we can verify ordering by parsing the
     date out of the ref filename pattern YYYY-MM-DD-*.md as fallback."""
-    token = await _mint(client, email)
     results = []
     for t in FRESHNESS_TYPES:
-        conv = await _new_conv(client, token, smoke_conv_title(f"freshness-accuracy-{t}"))
         query = f"가장 최신 {t} 가 언제꺼야"
-        r = await _ask(client, token, conv, query)
+        r = await ask_question(
+            api=API, email=email, query=query,
+            title_base=f"freshness-accuracy-{t}",
+            timeout_s=TIMEOUT_S, client=client,
+        )
         if not r["citations"]:
             results.append({"type": t, "status": "no_citations", "query": query})
             continue
@@ -189,11 +120,13 @@ async def check_citation_precision(
 ) -> dict:
     """For a representative library query, ensure every [N] in the answer
     corresponds to a returned citation (LLM didn't fabricate)."""
-    token = await _mint(client, email)
-    conv = await _new_conv(client, token, smoke_conv_title("citation-precision"))
     # Pick a query likely to have substantive citations
     query = "최근 결정 사항 요약해줘"
-    r = await _ask(client, token, conv, query)
+    r = await ask_question(
+        api=API, email=email, query=query,
+        title_base="citation-precision",
+        timeout_s=TIMEOUT_S, client=client,
+    )
     cits = r["citations"]
     answer = r["answer"]
 
@@ -238,10 +171,12 @@ async def check_cross_tenant_isolation(
 ) -> dict:
     """Sign in as `tenant_slug`, ask a query, assert NO citations have refs
     that match any OTHER tenant's path fingerprint."""
-    token = await _mint(client, email)
-    conv = await _new_conv(client, token, smoke_conv_title("cross-tenant-iso"))
     # A query that could match content in any tenant — generic "latest" works
-    r = await _ask(client, token, conv, "가장 최신 자료가 뭐야")
+    r = await ask_question(
+        api=API, email=email, query="가장 최신 자료가 뭐야",
+        title_base="cross-tenant-iso",
+        timeout_s=TIMEOUT_S, client=client,
+    )
     cits = r["citations"]
 
     leaks = []
