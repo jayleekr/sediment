@@ -19,6 +19,32 @@ Sediment는 HypeProof의 팀 메모리, 검색, 근거 기반 답변, 세션 보
 
    specs/chat-session-requirements
 
+개발 문서 계약
+--------------
+
+.. toctree::
+   :maxdepth: 1
+
+   DOCS-CONTRACT.ko
+   dev/00-overview
+   dev/01-architecture
+   dev/02-directory-structure
+   dev/03-runtime-flows
+   dev/04-requirements
+   dev/05-testing-requirements
+   dev/06-release-process
+   dev/07-operations
+   dev/08-ux-evidence
+
+아키텍처 결정 기록
+------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   adr/README
+   adr/0001-source-owned-dev-docs
+
 리서치
 ------
 
