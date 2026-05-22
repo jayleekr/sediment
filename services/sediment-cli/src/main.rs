@@ -206,9 +206,12 @@ async fn run() -> Result<()> {
             Ok(())
         }
         Cmd::Learn { action } => match action {
-            LearnCmd::Add { conv_id, reason, expected_intent } => {
-                commands::learn_add(&cfg, &conv_id, &reason, expected_intent.as_deref(), fmt)
-                    .await
+            LearnCmd::Add {
+                conv_id,
+                reason,
+                expected_intent,
+            } => {
+                commands::learn_add(&cfg, &conv_id, &reason, expected_intent.as_deref(), fmt).await
             }
         },
     }

@@ -49,6 +49,10 @@ from typing import Any
 
 import httpx
 
+# parents[2] is services/sediment/ — same trick as chat_smoke_kids_edu
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._test_helpers import smoke_conv_title  # noqa: E402
+
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
 TIMEOUT_S = 30.0
 
@@ -141,7 +145,7 @@ async def check_freshness_accuracy(
     token = await _mint(client, email)
     results = []
     for t in FRESHNESS_TYPES:
-        conv = await _new_conv(client, token, f"freshness-accuracy-{t}")
+        conv = await _new_conv(client, token, smoke_conv_title(f"freshness-accuracy-{t}"))
         query = f"가장 최신 {t} 가 언제꺼야"
         r = await _ask(client, token, conv, query)
         if not r["citations"]:
@@ -186,7 +190,7 @@ async def check_citation_precision(
     """For a representative library query, ensure every [N] in the answer
     corresponds to a returned citation (LLM didn't fabricate)."""
     token = await _mint(client, email)
-    conv = await _new_conv(client, token, "citation-precision")
+    conv = await _new_conv(client, token, smoke_conv_title("citation-precision"))
     # Pick a query likely to have substantive citations
     query = "최근 결정 사항 요약해줘"
     r = await _ask(client, token, conv, query)
@@ -235,7 +239,7 @@ async def check_cross_tenant_isolation(
     """Sign in as `tenant_slug`, ask a query, assert NO citations have refs
     that match any OTHER tenant's path fingerprint."""
     token = await _mint(client, email)
-    conv = await _new_conv(client, token, "cross-tenant-iso")
+    conv = await _new_conv(client, token, smoke_conv_title("cross-tenant-iso"))
     # A query that could match content in any tenant — generic "latest" works
     r = await _ask(client, token, conv, "가장 최신 자료가 뭐야")
     cits = r["citations"]

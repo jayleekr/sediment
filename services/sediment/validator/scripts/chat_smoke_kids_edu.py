@@ -22,8 +22,14 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 
 import httpx
+
+# Reach into services/sediment/scripts/_test_helpers (we live in
+# services/sediment/validator/scripts/ — parents[2] is services/sediment/)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts._test_helpers import smoke_conv_title  # noqa: E402
 
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
 EMAIL = os.environ.get("KIDS_EDU_EMAIL", "jayleekr0125@gmail.com")
@@ -41,7 +47,7 @@ async def _mint(client: httpx.AsyncClient) -> str:
 async def _new_conv(client: httpx.AsyncClient, token: str) -> str:
     r = await client.post(
         f"{API}/api/v1/conversations",
-        json={"title": "kids-edu-smoke"},
+        json={"title": smoke_conv_title("kids-edu-smoke")},
         headers={"Authorization": f"Bearer {token}"},
     )
     r.raise_for_status()
