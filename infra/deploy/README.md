@@ -48,7 +48,9 @@ fly secrets set --app hypeproof-sediment \
 fly deploy --config infra/deploy/fly.toml --dockerfile Dockerfile
 
 # 6. Run migrations + seed (one-time)
-fly ssh console --app hypeproof-sediment -C \
+# fly-exec.sh wraps `fly machine exec` (doesn't hang like `fly ssh console -C`,
+# see sediment#54).
+bash harness/scripts/fly-exec.sh \
   "cd /app/services/sediment && python -m scripts.migrate_lab && python -m scripts.seed_lab"
 
 # 7. Verify

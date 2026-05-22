@@ -304,10 +304,11 @@ push:
 
 # `make prod-run SCRIPT=X [ARGS=...]` — run a Python module on the fly VM.
 #
-# Wraps the verbose `fly ssh console -C "/bin/sh -c 'cd /app/services/sediment
-# && /run-with-db.sh python -m scripts.X ARGS'"` invocation that was hit 5+
-# times in one session. The /run-with-db.sh wrapper massages DATABASE_URL
-# into asyncpg form so the script's `service_session()` works.
+# Uses harness/scripts/fly-exec.sh (which calls `fly machine exec`) instead of
+# `fly ssh console -C`, because the latter hangs the client process indefinitely
+# after the remote command exits when invoked non-interactively (sediment#54).
+# The /run-with-db.sh wrapper massages DATABASE_URL into asyncpg form so the
+# script's `service_session()` works.
 #
 # Examples:
 #   make prod-run SCRIPT=cleanup_test_conversations ARGS=--dry-run
@@ -319,4 +320,4 @@ prod-run:
 	  echo "       (module is the dotted path after \`scripts.\` — e.g. cleanup_test_conversations)"; \
 	  exit 1; \
 	fi
-	fly ssh console -a hypeproof-sediment -C "/bin/sh -c 'cd /app/services/sediment && /run-with-db.sh python -m scripts.$(SCRIPT) $(ARGS)'"
+	bash harness/scripts/fly-exec.sh "cd /app/services/sediment && /run-with-db.sh python -m scripts.$(SCRIPT) $(ARGS)"

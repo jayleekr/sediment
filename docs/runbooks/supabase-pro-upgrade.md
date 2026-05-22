@@ -29,7 +29,9 @@ deceiving way. Pro removes the variable entirely.
 
 ```bash
 # 1. Verify current DB size — should be << 8 GB
-fly ssh console -a hypeproof-sediment -C "/run-with-db.sh python -c \"
+# Use fly-exec.sh (wraps `fly machine exec`) — `fly ssh console -C` hangs
+# non-interactively, see sediment#54.
+bash harness/scripts/fly-exec.sh "/run-with-db.sh python -c \"
 import asyncio
 from sqlalchemy import text
 from lab_lib.db import service_session
@@ -58,7 +60,7 @@ grep DATABASE_URL ~/.env | grep -oE 'pooler|aws-1-' && echo "✓ pooler" || echo
 
 ```bash
 # Connection should keep working unchanged
-fly ssh console -a hypeproof-sediment -C "/run-with-db.sh python -c \"
+bash harness/scripts/fly-exec.sh "/run-with-db.sh python -c \"
 import asyncio
 from sqlalchemy import text
 from lab_lib.db import service_session

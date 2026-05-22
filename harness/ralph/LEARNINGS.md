@@ -5,6 +5,11 @@
 
 ---
 
+[2026-05-22T21:30:00Z] iter=zombie-fly-ssh pattern=fly_ssh_console_C_hangs detail=fly_ssh_console_-C_leaves_client_alive_after_remote_exit_when_non_interactive
+  cause: flyctl 0.4.53 `fly ssh console -C "<cmd>"` doesn't propagate the remote exit status when invoked non-interactively (claude tool call / backgrounded shell / CI). Process keeps ESTABLISHED TCP indefinitely — observed 6h 48m hang on two reembed sessions, same command pattern recurred twice in one session.
+  fix: harness/scripts/fly-exec.sh wraps `fly machine exec <machine-id>` instead — returns in ~1s, has --timeout flag, no PTY. Makefile prod-run + supabase-pro-upgrade.md + infra/deploy/README.md migrated.
+  prevent: never use `fly ssh console -C` in scripts/docs/Make targets/cron — always go through fly-exec.sh. Pattern flagged in CLAUDE.md gotchas table.
+
 [2026-05-05T14:05:00Z] iter=test-run-01 pattern=initial_test detail=8_real_bugs_found_during_first_e2e
   cause: design-only, never tested → multiple latent bugs only surfaced when actually run
   fix: live-test from this Claude session, fix bugs as they appear
