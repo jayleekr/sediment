@@ -5,6 +5,10 @@ import Link from "next/link";
 import { signIn as githubSignIn } from "next-auth/react";
 import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } from "./lib/api";
 
+const ENABLE_DEV_AUTH =
+  process.env.NODE_ENV === "development" ||
+  process.env.NEXT_PUBLIC_SEDIMENT_DEV_AUTH === "1";
+
 export default function CuratorHome() {
   const [mounted, setMounted] = useState(false);
   const [convs, setConvs] = useState<Conversation[]>([]);
@@ -99,24 +103,28 @@ export default function CuratorHome() {
           </svg>
           Sign in with GitHub
         </button>
-        <div className="mb-4 flex items-center gap-2 text-xs text-neutral-400">
-          <span className="h-px flex-1 bg-neutral-200" />
-          local dev fallback
-          <span className="h-px flex-1 bg-neutral-200" />
-        </div>
-        <input
-          className="mb-3 w-full rounded border px-3 py-2"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="member email"
-        />
-        <button
-          onClick={signIn}
-          disabled={loading}
-          className="w-full rounded border border-neutral-300 px-4 py-2 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-        >
-          {loading ? "..." : "Mint dev token (seeded email)"}
-        </button>
+        {ENABLE_DEV_AUTH && (
+          <>
+            <div className="mb-4 flex items-center gap-2 text-xs text-neutral-400">
+              <span className="h-px flex-1 bg-neutral-200" />
+              local dev fallback
+              <span className="h-px flex-1 bg-neutral-200" />
+            </div>
+            <input
+              className="mb-3 w-full rounded border px-3 py-2"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="member email"
+            />
+            <button
+              onClick={signIn}
+              disabled={loading}
+              className="w-full rounded border border-neutral-300 px-4 py-2 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              {loading ? "..." : "Mint dev token (seeded email)"}
+            </button>
+          </>
+        )}
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
     );
