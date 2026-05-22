@@ -1,0 +1,10 @@
+🚢 **Release published** · `{{ product or "?" }}` · `{{ version }}`
+
+{% if changelog %}
+**What's new:**
+```
+{{ changelog | truncate(800) }}
+```
+{% endif %}
+{% if asset_count %}{{ asset_count }} asset{{ "s" if asset_count != 1 else "" }} attached{% endif %}
+{% if url %}[Release page]({{ url }}){% endif %}{% if download_url %} · [Download]({{ download_url }}){% endif %}

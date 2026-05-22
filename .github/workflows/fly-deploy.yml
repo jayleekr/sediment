@@ -108,3 +108,42 @@ jobs:
           path: output/validation/screenshots/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Discord notification — fires on both deploy success AND failure of the
+  # deploy job. prod_smoke result is separately wired below via a follow-on
+  # condition. Uses the vendored scripts/notify/ from hypeproof-harness.
+  notify_deploy:
+    needs: deploy
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install --quiet httpx jinja2 pyyaml
+      - name: Notify on deploy success
+        if: needs.deploy.result == 'success'
+        env:
+          DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
+        run: |
+          python scripts/notify/notify.py send deploy.success \
+            --routes services/sediment/config/notify_routes.yaml \
+            --data sha=${{ github.sha }} \
+            --data branch=${{ github.ref_name }} \
+            --data product=sediment \
+            --data "author=${{ github.actor }}" \
+            --data "commit_message=$(git log -1 --pretty=%s)" \
+            --data url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Notify on deploy failure
+        if: needs.deploy.result == 'failure'
+        env:
+          DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
+        run: |
+          python scripts/notify/notify.py send deploy.failure \
+            --routes services/sediment/config/notify_routes.yaml \
+            --data sha=${{ github.sha }} \
+            --data branch=${{ github.ref_name }} \
+            --data product=sediment \
+            --data failed_step=deploy \
+            --data url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -1,0 +1,11 @@
+✅ **Deploy succeeded** · `{{ product or "sediment" }}`
+
+Commit `{{ sha[:7] }}` on `{{ branch or "main" }}`
+{% if commit_message %}
+> {{ commit_message | replace('\n', ' ') | truncate(120) }}
+{% endif %}
+{% if author %}Author: **{{ author }}**{% endif %}
+{% if changed_files %}Files: {{ changed_files }} changed{% endif %}
+{% if duration_s %}Pipeline: {{ duration_s }}s{% endif %}
+
+{% if url %}[Pipeline run]({{ url }}){% endif %}{% if compare_url %} · [Diff]({{ compare_url }}){% endif %}

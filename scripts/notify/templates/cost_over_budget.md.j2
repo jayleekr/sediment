@@ -1,0 +1,21 @@
+💸 **Cost over budget** · `{{ tenant_slug or "system" }}`
+
+Today's spend: **${{ "%.2f" | format(total_cost_usd) }}** (budget ${{ "%.2f" | format(daily_budget_usd) }})
+
+{% if by_agent %}
+By agent:
+{% for agent, cost in by_agent.items() %}
+- `{{ agent }}`: ${{ "%.2f" | format(cost) }}
+{% endfor %}
+{% endif %}
+{% if by_model %}
+
+By model:
+{% for model, cost in by_model.items() %}
+- `{{ model }}`: ${{ "%.2f" | format(cost) }}
+{% endfor %}
+{% endif %}
+{% if unpriced_calls %}
+
+⚠️ {{ unpriced_calls }} calls had no priced model — likely a new model that needs adding to `cost_tracker._PRICING_USD_PER_M_TOKENS`.
+{% endif %}

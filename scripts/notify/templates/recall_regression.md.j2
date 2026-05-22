@@ -1,0 +1,16 @@
+📉 **Recall regression detected** · `{{ tenant_slug or "?" }}`
+
+| | Previous | Current | Δ |
+|---|---:|---:|---:|
+| PASS | {{ prev_pass or "?" }} | {{ current_pass or "?" }} | {% if delta_pass is defined %}{{ delta_pass }}{% endif %} |
+| Avg recall | {{ prev_avg or "?" }}% | {{ current_avg or "?" }}% | {% if delta_avg is defined %}{{ delta_avg }}%{% endif %} |
+
+Threshold: ≥ {{ threshold or "?" }} PASS
+
+{% if regressed_queries %}
+Regressed queries (top 5):
+{% for q in regressed_queries[:5] %}
+- `{{ q.id }}` — {{ q.text | default(q.id) | truncate(60) }}
+{% endfor %}
+{% endif %}
+{% if url %}[Pipeline run]({{ url }}){% endif %}

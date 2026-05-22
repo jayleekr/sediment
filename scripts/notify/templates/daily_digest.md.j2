@@ -1,0 +1,21 @@
+☀️ **Daily digest — {{ date }}** · `{{ tenant_slug or "hypeproof-lab" }}`
+
+**Yesterday:**
+- 💬 {{ chat_count or 0 }} chat queries{% if unique_askers %} ({{ unique_askers }} people){% endif %}
+- 📝 {{ new_decisions or 0 }} new decisions extracted{% if new_actions %} · {{ new_actions }} actions{% endif %}
+- 📥 {{ ingested_artifacts or 0 }} new artifacts ingested
+{% if cost_usd is defined %}- 💰 ${{ "%.2f" | format(cost_usd) }} LLM spend{% if budget_usd %} ({{ "%.0f" | format(cost_usd / budget_usd * 100) }}% of daily budget){% endif %}{% endif %}
+
+{% if top_sources %}
+**Top sources cited:**
+{% for s in top_sources[:3] %}
+- `{{ s.ref }}` ({{ s.cite_count }} cites)
+{% endfor %}
+{% endif %}
+
+{% if new_decisions_list %}
+**Decisions:**
+{% for d in new_decisions_list[:3] %}
+> {{ d.summary | truncate(120) }}{% if d.ref %} — `{{ d.ref }}`{% endif %}
+{% endfor %}
+{% endif %}

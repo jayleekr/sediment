@@ -1,0 +1,76 @@
+# Sediment notification routes.
+#
+# Loaded by scripts/notify/notify.py (vendored from hypeproof-harness).
+# Channels reference fly secrets (DISCORD_WEBHOOK_*) — never put the URL itself
+# in this file.
+#
+# Per-tenant overrides go under routes.<slug>. The "*" key applies unless a
+# tenant-specific entry exists for the same event_type.
+
+version: 1
+
+channels:
+  sediment:
+    transport: discord_webhook
+    secret_env: DISCORD_WEBHOOK_SEDIMENT
+  hypeproof-studio:
+    transport: discord_webhook
+    secret_env: DISCORD_WEBHOOK_HYPEPROOF_STUDIO
+  hypeprooflab-page:
+    transport: discord_webhook
+    secret_env: DISCORD_WEBHOOK_HYPEPROOFLAB_PAGE
+  meeting-notes:
+    transport: discord_webhook
+    secret_env: DISCORD_WEBHOOK_MEETING_NOTES
+  manager-notices:
+    transport: discord_webhook
+    secret_env: DISCORD_WEBHOOK_MANAGER_NOTICES
+
+routes:
+  # Default routes — apply to any tenant unless overridden.
+  "*":
+    deploy.success:
+      channels: [sediment]
+      template: deploy_success
+    deploy.failure:
+      channels: [sediment]
+      template: deploy_failure
+      severity: critical
+    recall.regression:
+      channels: [sediment]
+      template: recall_regression
+      severity: major
+    cost.over_budget:
+      channels: [sediment]
+      template: cost_over_budget
+      severity: minor
+    daily.digest:
+      channels: [sediment]
+      template: daily_digest
+    new_decision:
+      channels: [sediment]
+      template: new_decision
+
+  # hypeproof-lab specific — new decisions also broadcast to #meeting-notes
+  # (the historical decisions live there; this keeps signal local).
+  hypeproof-lab:
+    new_decision:
+      channels: [sediment, meeting-notes]
+      template: new_decision
+
+  # kids-edu specific — Jinyong's team doesn't have a dedicated Discord channel
+  # in HypeProof HQ yet. All notifications route to #sediment temporarily.
+  # When they create #kids-edu, add channel here + change channels: [kids-edu].
+  kids-edu:
+    daily.digest:
+      channels: [sediment]
+      template: daily_digest
+    new_decision:
+      channels: [sediment]
+      template: new_decision
+
+defaults:
+  cooldown_min: 30
+  rate_limit:
+    per_tenant_per_hour: 200
+    per_channel_per_minute: 30

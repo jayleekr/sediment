@@ -1,0 +1,9 @@
+🎯 **New decision recorded** · `{{ tenant_slug or "?" }}`
+
+> {{ summary }}
+
+{% if rationale %}**Why:** {{ rationale | truncate(200) }}{% endif %}
+{% if deciders %}Decided by: {{ deciders | join(", ") }}{% endif %}
+{% if source_label %}Source: {{ source_label }}{% endif %}
+
+{% if ref %}`{{ ref }}`{% if vault_url %} → [open]({{ vault_url }}/{{ ref }}){% endif %}{% endif %}

@@ -1,0 +1,8 @@
+🛠️ **New skill published** · `{{ skill }}`{% if version %} · `{{ version }}`{% endif %}
+
+{% if description %}> {{ description | truncate(200) }}{% endif %}
+{% if added_files %}Files added: {{ added_files | length }}{% endif %}
+
+{% if url %}[Skill source]({{ url }}){% endif %}
+
+To pull: `bash hypeproof-harness/scripts/sync.sh --commit`

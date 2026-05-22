@@ -1,0 +1,12 @@
+🚨 **Deploy FAILED** · `{{ product or "sediment" }}` · **{{ severity | upper }}**
+
+Commit `{{ sha[:7] }}` on `{{ branch or "main" }}`
+{% if commit_message %}> {{ commit_message | replace('\n', ' ') | truncate(120) }}{% endif %}
+{% if failed_step %}Failed step: **{{ failed_step }}**{% endif %}
+{% if error_summary %}
+```
+{{ error_summary | truncate(400) }}
+```
+{% endif %}
+
+{% if url %}[Pipeline run]({{ url }}){% endif %}{% if logs_url %} · [Logs]({{ logs_url }}){% endif %}

@@ -68,6 +68,16 @@ health_check:
   schedule: "0 21 * * *"   # 06:00 KST = 21:00 UTC (KST = UTC+9)
   alert_channel_name: "sediment"
 
+# Daily digest — per-tenant 09:00 KST summary of yesterday's activity.
+# Fires `daily.digest` notification through notify_routes.yaml routing.
+# Skipped if the tenant had zero activity yesterday.
+daily_digest:
+  enabled: true
+  schedule: "0 0 * * *"   # 00:00 UTC = 09:00 KST
+  tenants:
+    - hypeproof-lab
+    - kids-edu
+
 # Cost monitor — daily token rollup; alerts if exceeds budget.
 cost_monitor:
   schedule: "30 21 * * *"  # 06:30 KST

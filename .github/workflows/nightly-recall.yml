@@ -52,3 +52,24 @@ jobs:
           path: recall.json
           if-no-files-found: ignore
           retention-days: 30
+      - name: Notify on regression
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
+        run: |
+          pip install --quiet jinja2
+          # Try to read the JSON summary if it was written; otherwise just
+          # fire a minimal payload pointing at the run.
+          if [ -f recall.json ]; then
+            PREV=$(python -c "import json; d=json.load(open('recall.json')); print(d.get('threshold',20))")
+            CURR=$(python -c "import json; d=json.load(open('recall.json')); print(d.get('pass_n',0))")
+          else
+            PREV=20; CURR=0
+          fi
+          python scripts/notify/notify.py send recall.regression \
+            --routes services/sediment/config/notify_routes.yaml \
+            --tenant hypeproof-lab \
+            --data "prev_pass=${PREV}" \
+            --data "current_pass=${CURR}" \
+            --data "threshold=${PREV}" \
+            --data "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -173,9 +173,9 @@ async def _run_health_check(alert_channel_name: str) -> None:
 async def _run_cost_monitor(daily_budget_usd: float, alert_channel_name: str) -> None:
     """Daily LLM cost rollup from the llm_calls table (real token counts).
 
-    Logs a structured summary; the structured logger will surface this in
-    `fly logs` and any log aggregator. Future: post to Discord alert_channel
-    when total_cost_usd > daily_budget_usd.
+    Logs a structured summary and, when total_cost_usd > daily_budget_usd,
+    fires a `cost.over_budget` notification through the vendored notify
+    module (Discord webhook via routes.yaml).
     """
     from lab_lib.cost_tracker import daily_summary
     summary = await daily_summary(days=1)
@@ -193,6 +193,114 @@ async def _run_cost_monitor(daily_budget_usd: float, alert_channel_name: str) ->
         by_model=summary["by_model"],
         alert_channel=alert_channel_name if over else None,
     )
+    if over:
+        await _send_notify("cost.over_budget", tenant_slug="hypeproof-lab", payload={
+            "total_cost_usd": summary["total_cost_usd"],
+            "daily_budget_usd": daily_budget_usd,
+            "by_agent": summary.get("by_agent") or {},
+            "by_model": summary.get("by_model") or {},
+            "unpriced_calls": summary.get("unpriced_calls") or 0,
+        })
+
+
+async def _run_daily_digest(tenant_slug: str = "hypeproof-lab") -> None:
+    """Per-tenant 09:00 KST digest of yesterday's activity → primary channel.
+
+    Pulls counts from the DB (chat queries, new decisions/actions, ingested
+    artifacts) and the cost summary, renders via daily_digest template,
+    fires through notify. Idempotent — same data twice = same render.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import text
+    from lab_lib.db import service_session
+    from lab_lib.cost_tracker import daily_summary
+
+    yesterday = (datetime.now(tz=timezone.utc) - timedelta(days=1)).date()
+    async with service_session() as s:
+        tid_row = await s.execute(text(
+            "SELECT id::text FROM tenants WHERE slug = :s"), {"s": tenant_slug})
+        tid = (tid_row.first() or [None])[0]
+        if not tid:
+            log.warning("scheduler.digest.skip", reason="tenant not found", slug=tenant_slug)
+            return
+
+        # Counts for yesterday
+        async def _scalar(q: str) -> int:
+            r = await s.execute(text(q), {"t": tid, "since": yesterday})
+            return int((r.scalar() or 0))
+
+        chat_count = await _scalar(
+            "SELECT count(*) FROM events WHERE tenant_id=CAST(:t AS uuid) "
+            "AND kind='query' AND ts::date = :since"
+        )
+        new_decisions = await _scalar(
+            "SELECT count(*) FROM decisions WHERE tenant_id=CAST(:t AS uuid) "
+            "AND created_at::date = :since"
+        )
+        new_actions = await _scalar(
+            "SELECT count(*) FROM actions WHERE tenant_id=CAST(:t AS uuid) "
+            "AND created_at::date = :since"
+        )
+        ingested = await _scalar(
+            "SELECT count(*) FROM artifacts WHERE tenant_id=CAST(:t AS uuid) "
+            "AND updated_at::date = :since"
+        )
+
+    cost = await daily_summary(days=1)
+    payload = {
+        "date": yesterday.isoformat(),
+        "chat_count": chat_count,
+        "new_decisions": new_decisions,
+        "new_actions": new_actions,
+        "ingested_artifacts": ingested,
+        "cost_usd": cost.get("total_cost_usd") or 0.0,
+        "budget_usd": 5.0,
+    }
+    if chat_count == 0 and new_decisions == 0 and ingested == 0:
+        log.info("scheduler.digest.skip", reason="no activity", slug=tenant_slug)
+        return
+    await _send_notify("daily.digest", tenant_slug=tenant_slug, payload=payload)
+
+
+async def _send_notify(event_type: str, tenant_slug: str, payload: dict) -> None:
+    """Thin wrapper around the vendored notify CLI. Never raises — logs and
+    swallows because notification failure must not break the cron job.
+
+    Uses the CLI (not the Python API) so we don't have to import the
+    vendored module — `scripts/notify/` lives one level up from this file
+    and isn't on sys.path. Subprocess avoids that gymnastics.
+    """
+    import asyncio as _asyncio
+    import json as _json
+    import os as _os
+    import shlex as _shlex
+    from pathlib import Path as _Path
+
+    notify_py = _Path(__file__).resolve().parents[3] / "scripts" / "notify" / "notify.py"
+    routes = _Path(__file__).resolve().parents[1] / "config" / "notify_routes.yaml"
+    if not notify_py.is_file() or not routes.is_file():
+        log.warning("notify.skip", reason="notify.py or routes.yaml missing",
+                    notify=str(notify_py), routes=str(routes))
+        return
+
+    cmd = ["python3", str(notify_py), "send", event_type,
+           "--routes", str(routes), "--tenant", tenant_slug]
+    for k, v in (payload or {}).items():
+        # JSON-encode complex values via the `key:=value` form the CLI supports.
+        if isinstance(v, (dict, list)):
+            cmd += ["--data", f"{k}:={_json.dumps(v)}"]
+        else:
+            cmd += ["--data", f"{k}={v}"]
+    try:
+        proc = await _asyncio.create_subprocess_exec(
+            *cmd, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE,
+        )
+        out, err = await _asyncio.wait_for(proc.communicate(), timeout=20.0)
+        log.info("notify.sent", event=event_type, slug=tenant_slug,
+                 rc=proc.returncode, out=(out or b"").decode()[:200])
+    except Exception as e:
+        log.warning("notify.failed", event=event_type, slug=tenant_slug,
+                    err=str(e)[:200])
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +365,18 @@ async def main_async() -> int:
     _add_cron(scheduler, "cost_monitor", cm.get("schedule", "30 21 * * *"),
               _run_cost_monitor, float(cm.get("daily_budget_usd", 5.0)),
               cm.get("alert_channel_name", "sediment"))
+
+    # Daily digest — 09:00 KST = 00:00 UTC. Per-tenant; v1 loops over a
+    # static list in cron.yaml. Move to DB-driven `tenants WHERE
+    # feature_flags.digest_enabled = true` when > 5 tenants.
+    dg = cfg.get("daily_digest") or {}
+    if dg.get("enabled", True):
+        for tenant in (dg.get("tenants") or ["hypeproof-lab"]):
+            _add_cron(
+                scheduler, f"daily_digest_{tenant}",
+                dg.get("schedule", "0 0 * * *"),
+                _run_daily_digest, tenant,
+            )
 
     # Boot the scheduler BEFORE introspecting next_run_time — APScheduler
     # only populates next_run_time once the scheduler is running.
