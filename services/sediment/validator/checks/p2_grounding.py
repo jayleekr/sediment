@@ -22,7 +22,7 @@ from validator.checks.p2_chat import _consume_sse, _admin_token, _platform_base,
 
 import httpx
 
-from lab_lib.grounding import validate_citation_refs
+from lab_lib.grounding import evaluate_claim_grounding, validate_citation_refs
 
 
 # Test query → expected grounding signals. The query is chosen to retrieve a
@@ -159,4 +159,85 @@ def check_citation_hard_gate_contract(spec: dict, **_) -> dict:
         "actual": {"cases": detail},
         "expected": "valid refs pass; missing/invalid/zero-citation refs fail",
         "message": "" if ok else "citation hard gate contract failed",
+    }
+
+
+def check_claim_grounding_contract(spec: dict, **_) -> dict:
+    """Provider-free claim support contract for cited answers."""
+    threshold = float(spec.get("threshold", 0.75))
+    cases = [
+        {
+            "case": "fully_supported",
+            "answer": "Sediment enforces valid inline citations before streaming an answer [1].",
+            "citations": [{
+                "ref": "docs/design/14-reliability-and-grounding.md",
+                "content": "Sediment enforces valid inline citations before streaming an answer.",
+            }],
+            "expected": {"unsupported": 0, "min_score": 1.0},
+        },
+        {
+            "case": "partially_supported",
+            "answer": (
+                "Sediment validates citations before streaming [1]. "
+                "It also guarantees every answer is reviewed by humans [1]."
+            ),
+            "citations": [{
+                "content": "Sediment validates citations before streaming assistant answer deltas.",
+            }],
+            "expected": {"unsupported": 1, "min_score": 0.25},
+        },
+        {
+            "case": "unsupported",
+            "answer": "Mars orbits Venus in production [1].",
+            "citations": [{"content": "Sediment stores citations with assistant messages."}],
+            "expected": {"unsupported": 1, "max_score": 0.5},
+        },
+    ]
+    detail = []
+    for case in cases:
+        report = evaluate_claim_grounding(case["answer"], case["citations"])
+        detail.append({
+            "case": case["case"],
+            "support_score": report.support_score,
+            "factual_claims": report.factual_claims,
+            "supported": report.supported_claims,
+            "partially_supported": report.partially_supported_claims,
+            "unsupported": report.unsupported_claims,
+            "llm_judge": report.llm_judge,
+            "claims": [
+                {
+                    "text": claim.text,
+                    "verdict": claim.verdict,
+                    "refs": list(claim.refs),
+                    "valid_refs": list(claim.valid_refs),
+                    "invalid_refs": list(claim.invalid_refs),
+                    "support_score": claim.support_score,
+                    "reason": claim.reason,
+                }
+                for claim in report.claims
+            ],
+        })
+
+    ok = True
+    for case, actual in zip(cases, detail, strict=True):
+        expected = case["expected"]
+        ok = ok and actual["unsupported"] == expected["unsupported"]
+        if "min_score" in expected:
+            ok = ok and actual["support_score"] >= expected["min_score"]
+        if "max_score" in expected:
+            ok = ok and actual["support_score"] <= expected["max_score"]
+
+    supported_case_score = next(
+        d["support_score"] for d in detail if d["case"] == "fully_supported"
+    )
+    passed = ok and supported_case_score >= threshold
+    return {
+        "passed": passed,
+        "actual": {
+            "threshold": threshold,
+            "supported_case_score": supported_case_score,
+            "cases": detail,
+        },
+        "expected": "fully supported passes; partial/unsupported cases are identified",
+        "message": "" if passed else "claim grounding contract below threshold",
     }

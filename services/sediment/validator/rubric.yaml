@@ -970,6 +970,15 @@ phases:
         module: validator.checks.p2_grounding
         function: check_citation_hard_gate_contract
 
+      - id: P2-GROUND-03
+        title: "Claim-level grounding identifies supported and unsupported claims"
+        layer: L11
+        severity: major
+        type: python
+        module: validator.checks.p2_grounding
+        function: check_claim_grounding_contract
+        threshold: 0.75
+
 
   # ════════════════════════════════════════════════════════════════
   # PHASE 3 — Ingest Automation
