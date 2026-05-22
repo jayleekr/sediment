@@ -36,20 +36,37 @@ brew tap hypeprooflab/tap
 brew install sediment
 ```
 
-### From release archive
-Grab the right tarball for your OS from the [latest release][releases]:
+### One-liner (recommended — auto detects OS/arch, handles auth)
 
 ```bash
-# Apple Silicon
-curl -L https://github.com/hypeprooflab/sediment/releases/latest/download/sediment-aarch64-apple-darwin.tar.gz | tar xz
-mv sediment /usr/local/bin/
-
-# Linux x86_64
-curl -L https://github.com/hypeprooflab/sediment/releases/latest/download/sediment-x86_64-unknown-linux-gnu.tar.gz | tar xz
-mv sediment /usr/local/bin/
+curl -fsSL -H "Authorization: token $(gh auth token)" \
+  https://raw.githubusercontent.com/jayleekr/sediment/main/services/sediment-cli/install.sh \
+  | bash
 ```
 
-[releases]: https://github.com/hypeprooflab/sediment/releases
+The script:
+- Detects your OS + arch
+- Resolves a token via `gh auth token` or `$GITHUB_TOKEN`
+- Downloads the right tarball from the latest GH Release (private repo, so token is required)
+- Verifies sha256 against GitHub's asset metadata
+- Installs to the first writable path among `/usr/local/bin`, `/opt/homebrew/bin`, `~/.local/bin`
+- Prints next-step commands
+
+To pin a specific version, set `SEDIMENT_VERSION=v0.1.3`. To force install dir, set `SEDIMENT_INSTALL_DIR=/some/path`.
+
+### Manual (if you can't use the script)
+
+Grab the right tarball for your OS from the latest release.
+**The Sediment repo is private** — you need a token:
+
+```bash
+GITHUB_TOKEN=$(gh auth token)
+ASSET_URL=$(gh release view sediment-cli-v0.1.3 --json assets \
+  --jq '.assets[]|select(.name=="sediment-aarch64-apple-darwin.tar.gz")|.apiUrl')
+curl -sL -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/octet-stream" \
+  "$ASSET_URL" | tar xz
+mv sediment /usr/local/bin/
+```
 
 ### From source
 ```bash

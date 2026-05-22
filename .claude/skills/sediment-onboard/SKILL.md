@@ -66,8 +66,11 @@ which claude          # optional — proves Claude Code CLI is installed
 if command -v sediment >/dev/null 2>&1; then
   echo "sediment already installed: $(sediment --version)"
 else
-  brew tap hypeprooflab/tap
-  brew install sediment
+  # One-liner installer — auto-detects platform, uses gh auth token,
+  # downloads from the private repo, verifies sha256, installs.
+  curl -fsSL -H "Authorization: token $(gh auth token)" \
+    https://raw.githubusercontent.com/jayleekr/sediment/main/services/sediment-cli/install.sh \
+    | bash
 fi
 
 # Verify
@@ -75,12 +78,10 @@ sediment --version
 ```
 
 **Failure modes**:
-- `tap not found` → tap doesn't exist yet (Homebrew Tap publish is gated).
-  Fallback: download tarball from
-  https://github.com/hypeprooflab/sediment/releases/latest and `mv
-  sediment /usr/local/bin/`.
-- `Permission denied` on `/usr/local/bin` → suggest `sudo mv` or use
-  `~/.local/bin` and update PATH.
+- `gh: command not found` → `brew install gh && gh auth login`
+- `No GitHub token available` → user not logged in to gh; run `gh auth login`
+- `Permission denied` writing /usr/local/bin → script auto-falls-back to ~/.local/bin
+- `tar: error` → asset download failed (network or 404); check `gh release view sediment-cli-v0.1.3`
 
 ### Stage 3 — Login
 
