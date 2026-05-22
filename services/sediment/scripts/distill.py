@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 
 import httpx
+import yaml
 from sqlalchemy import text
 
 from lab_lib.db import service_session
@@ -103,17 +104,26 @@ async def _conversation_sources(tid: str, since: _dt.datetime) -> list[dict]:
         out = []
         for cid, title in convs:
             mr = await s.execute(text("""
-                SELECT role, content FROM messages
-                WHERE conv_id = :cid AND role IN ('user','assistant')
-                ORDER BY ts ASC
-            """), {"cid": cid})
-            msgs = [{"role": m[0], "content": m[1]} for m in mr]
+            SELECT id::text, role, content, ts FROM messages
+            WHERE conv_id = :cid AND role IN ('user','assistant')
+            ORDER BY ts ASC
+        """), {"cid": cid})
+            rows = list(mr)
+            msgs = [{"role": m[1], "content": m[2]} for m in rows]
             if msgs:
                 out.append({
                     "src": f"conv/{cid}",
                     "title": title,
                     "strategy": "chat_thread",  # Web/Cline chat — same noise profile
                     "messages": msgs,
+                    "provenance": {
+                        "kind": "conversation",
+                        "conversation_id": cid,
+                        "source_message_ids": [m[0] for m in rows],
+                        "source_message_count": len(rows),
+                        "source_started_at": rows[0][3].isoformat() if rows and hasattr(rows[0][3], "isoformat") else None,
+                        "source_ended_at": rows[-1][3].isoformat() if rows and hasattr(rows[-1][3], "isoformat") else None,
+                    },
                 })
         return out
 
@@ -125,13 +135,13 @@ async def _event_sources(tid: str, since: _dt.datetime) -> list[dict]:
     """
     async with service_session() as s:
         r = await s.execute(text("""
-            SELECT payload, ts FROM events
+            SELECT id::text, payload, ts FROM events
             WHERE tenant_id = :tid AND source = 'discord' AND ts >= :since
             ORDER BY ts ASC
         """), {"tid": tid, "since": since})
-        rows = [(row[0], row[1]) for row in r]
-    groups: dict[tuple[str, str], list[str]] = {}
-    for payload, ts in rows:
+        rows = [(row[0], row[1], row[2]) for row in r]
+    groups: dict[tuple[str, str], dict] = {}
+    for event_id, payload, ts in rows:
         p = payload if isinstance(payload, dict) else json.loads(payload or "{}")
         ch = str(p.get("channel") or p.get("channel_name") or "").lstrip("#")
         if not ch:
@@ -141,26 +151,52 @@ async def _event_sources(tid: str, since: _dt.datetime) -> list[dict]:
         who = p.get("author") or p.get("user") or p.get("author_name") or "?"
         content = (p.get("content") or p.get("text") or "").strip()
         if content:
-            groups.setdefault((ch, day), []).append(f"[{who}] {content}")
+            group = groups.setdefault((ch, day), {"lines": [], "events": []})
+            group["lines"].append(f"[{who}] {content}")
+            group["events"].append({
+                "event_id": event_id,
+                "ts": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                "author": who,
+                "message_id": p.get("message_id") or p.get("id"),
+            })
     out = []
-    for (ch, day), lines in groups.items():
+    for (ch, day), group in groups.items():
+        events = group["events"]
         out.append({
             "src": f"discord/{ch}/{day}",
             "title": f"#{ch} {day}",
             "channel": ch,
             "strategy": _strategy_for_discord_channel(ch),
-            "messages": [{"role": "user", "content": "\n".join(lines)}],
+            "messages": [{"role": "user", "content": "\n".join(group["lines"])}],
+            "provenance": {
+                "kind": "discord_events",
+                "source": "discord",
+                "channel": ch,
+                "source_date": day,
+                "source_event_ids": [e["event_id"] for e in events],
+                "source_message_ids": [e["message_id"] for e in events if e.get("message_id")],
+                "source_event_count": len(events),
+                "source_started_at": events[0]["ts"] if events else None,
+                "source_ended_at": events[-1]["ts"] if events else None,
+            },
         })
     return out
 
 
-def _decision_markdown(d: dict, src: str, title: str) -> tuple[str, str]:
+def _decision_markdown(d: dict, src: str, title: str, provenance: dict | None = None) -> tuple[str, str]:
     """Build a citable vault artifact for one decision. ref is topic-slugged
     so re-distilling the same decision UPDATES (vault-differ: known/update),
     never duplicates."""
     topic = (d.get("topic") or "decision").strip()
     ref = f"decision/{_slug(topic)}"
     today = _dt.date.today().isoformat()
+    provenance = {
+        "kind": "unknown",
+        "source": src,
+        **(provenance or {}),
+        "source_ref": src,
+        "source_title": title,
+    }
     fm = {
         "type": "decision",
         "topic": topic,
@@ -169,13 +205,19 @@ def _decision_markdown(d: dict, src: str, title: str) -> tuple[str, str]:
         "slug": _slug(topic),
         "source": src,
         "source_title": title,
+        "provenance": provenance,
     }
-    fm_block = "\n".join(f'{k}: "{v}"' for k, v in fm.items())
+    fm_block = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).strip()
+    source_note = provenance.get("source_ref") or src
+    if provenance.get("source_event_count"):
+        source_note += f" · events={provenance['source_event_count']}"
+    if provenance.get("source_message_count"):
+        source_note += f" · messages={provenance['source_message_count']}"
     body = (
         f"---\n{fm_block}\n---\n\n"
         f"# {topic}\n\n"
         f"**결정(왜):** {d.get('body','').strip()}\n\n"
-        f"_출처: {title} ({src})_\n"
+        f"_출처: {title} ({source_note})_\n"
     )
     return ref, body
 
@@ -310,7 +352,7 @@ async def run(since_hours: int, dry_run: bool) -> dict:
             summary["by_strategy"][chosen_name]["actions"] += len(actions)
             topic_to_did: dict[str, str] = {}
             for d in decisions:
-                ref, md = _decision_markdown(d, s["src"], s["title"])
+                ref, md = _decision_markdown(d, s["src"], s["title"], s.get("provenance"))
                 summary["decisions"] += 1
                 # conv_id only when the source is a conversation (events → NULL,
                 # _insert_decision handles the IS NULL dedup).

@@ -200,6 +200,17 @@ async def collect_db_snapshot(tenant_slug: str, since_hours: int = 24) -> dict[s
                 """,
                 params,
             ) or 0)
+            decision_artifacts_with_provenance = int(await _scalar(
+                session,
+                """
+                SELECT count(*) FROM artifacts
+                WHERE tenant_id = CAST(:tenant_id AS uuid)
+                  AND type = 'decision'
+                  AND updated_at >= now() - make_interval(hours => :since_hours)
+                  AND frontmatter ? 'provenance'
+                """,
+                params,
+            ) or 0)
             decisions_with_source_artifact = int(await _scalar(
                 session,
                 """
@@ -230,6 +241,7 @@ async def collect_db_snapshot(tenant_slug: str, since_hours: int = 24) -> dict[s
                     "decisions_extracted": decisions_extracted,
                     "actions_extracted": actions_extracted,
                     "decision_artifacts_created": decision_artifacts_created,
+                    "decision_artifacts_with_provenance": decision_artifacts_with_provenance,
                     "decisions_with_source_artifact": decisions_with_source_artifact,
                 },
             }
@@ -409,6 +421,13 @@ def summarize_distill(snapshot: dict[str, Any]) -> tuple[dict[str, Any], list[di
             "major",
             "Decisions were extracted but no decision artifacts were created",
             decisions_extracted=distill["decisions_extracted"],
+        ))
+    if distill["decision_artifacts_created"] > 0 and distill.get("decision_artifacts_with_provenance", 0) == 0:
+        warnings.append(warning(
+            "decision_artifact_provenance_missing",
+            "major",
+            "Decision artifacts were created but none carry source provenance",
+            decision_artifacts_created=distill["decision_artifacts_created"],
         ))
 
     return {

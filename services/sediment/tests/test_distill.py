@@ -34,12 +34,36 @@ def test_decision_markdown_frontmatter_and_why_body():
     ref, md = _decision_markdown(d, "discord/weekly/2026-05-19",
                                  "#weekly 2026-05-19")
     assert md.startswith("---\n")            # frontmatter block present
-    assert 'type: "decision"' in md
-    assert 'status: "made"' in md
+    assert "type: decision" in md
+    assert "status: made" in md
     assert "강의용 Studio는 해자가 아님" in md   # topic in heading
     assert "Cursor류 도구" in md              # the "왜" / rationale body
     assert "#weekly 2026-05-19" in md        # provenance / source title
     assert "출처:" in md
+
+
+def test_decision_markdown_frontmatter_has_machine_readable_provenance():
+    d = {"topic": "Provenance chain", "body": "source context matters"}
+    _, md = _decision_markdown(
+        d,
+        "discord/sediment/2026-05-22",
+        "#sediment 2026-05-22",
+        {
+            "kind": "discord_events",
+            "channel": "sediment",
+            "source_date": "2026-05-22",
+            "source_event_ids": ["evt-1", "evt-2"],
+            "source_message_ids": ["msg-1"],
+            "source_event_count": 2,
+        },
+    )
+
+    assert "provenance:" in md
+    assert "kind: discord_events" in md
+    assert "source_event_ids:" in md
+    assert "- evt-1" in md
+    assert "source_message_ids:" in md
+    assert "source_ref: discord/sediment/2026-05-22" in md
 
 
 def test_two_distinct_topics_get_distinct_refs():
@@ -50,4 +74,4 @@ def test_two_distinct_topics_get_distinct_refs():
 
 def test_missing_status_defaults_to_made():
     _, md = _decision_markdown({"topic": "no status", "body": "z"}, "s", "t")
-    assert 'status: "made"' in md
+    assert "status: made" in md

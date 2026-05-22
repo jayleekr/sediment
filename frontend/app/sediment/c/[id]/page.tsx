@@ -212,6 +212,20 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
   const [copied, setCopied] = useState(false);
 
   const hasRef = Boolean(citation.ref);
+  const decisionProvenance =
+    citation.decision_provenance || (citation.type === "decision" ? citation.provenance : null);
+  const provenanceMissing = Boolean(decisionProvenance?.missing);
+  const provenanceLabel = decisionProvenance
+    ? provenanceMissing
+      ? "provenance missing"
+      : [
+          decisionProvenance.source_title || decisionProvenance.source_ref,
+          decisionProvenance.channel ? `#${decisionProvenance.channel}` : null,
+          decisionProvenance.source_date,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+    : "";
   const citeText = `[${citation.ref || citation.display_name || "ref"}]${
     citation.content ? " " + citation.content : ""
   }`;
@@ -278,6 +292,15 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
             <div className="text-xs text-neutral-600">
               {citation.type}
               {citation.date ? ` · ${citation.date}` : ""}
+            </div>
+          )}
+          {citation.type === "decision" && (
+            <div
+              className={`mt-1 text-xs ${
+                provenanceMissing ? "text-amber-700" : "text-emerald-700"
+              }`}
+            >
+              {provenanceLabel || "provenance missing"}
             </div>
           )}
           {citation.content && (
