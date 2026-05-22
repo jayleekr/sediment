@@ -13,7 +13,6 @@ This is a coarse measure — a smart LLM can still hallucinate around weak
 citations — but it catches the worst regression: completely unrelated answers.
 """
 from __future__ import annotations
-import asyncio
 import re
 import sys
 from pathlib import Path
@@ -22,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from validator.checks.p2_chat import _consume_sse, _admin_token, _platform_base, _langgraph_base  # noqa: E402
 
 import httpx
+
+from lab_lib.grounding import validate_citation_refs
 
 
 # Test query → expected grounding signals. The query is chosen to retrieve a
@@ -48,7 +49,7 @@ async def _grounding_round(query: str, signals: list[str], token: str) -> dict:
     async with httpx.AsyncClient() as client:
         cr = await client.post(
             f"{_platform_base()}/api/v1/conversations",
-            json={"title": f"validator-grounding"}, headers=headers, timeout=10,
+            json={"title": "validator-grounding"}, headers=headers, timeout=10,
         )
         cr.raise_for_status()
         cid = cr.json()["id"]
@@ -131,4 +132,31 @@ async def check_answer_grounding(spec: dict, **_) -> dict:
         },
         "message": "" if passed
                    else f"only {grounded_count}/{total} probes grounded",
+    }
+
+
+def check_citation_hard_gate_contract(spec: dict, **_) -> dict:
+    """Deterministic contract for runtime citation validation."""
+    cases = [
+        ("valid", "uses [1]", 2, True),
+        ("missing", "uses no bracket", 2, False),
+        ("invalid", "uses [3]", 2, False),
+        ("zero_citations", "uses [1]", 0, False),
+    ]
+    detail = []
+    for name, answer, n, expected in cases:
+        result = validate_citation_refs(answer, n)
+        detail.append({
+            "case": name,
+            "passed": result.passed,
+            "expected": expected,
+            "valid_refs": list(result.valid_refs),
+            "invalid_refs": list(result.invalid_refs),
+        })
+    ok = all(d["passed"] == d["expected"] for d in detail)
+    return {
+        "passed": ok,
+        "actual": {"cases": detail},
+        "expected": "valid refs pass; missing/invalid/zero-citation refs fail",
+        "message": "" if ok else "citation hard gate contract failed",
     }

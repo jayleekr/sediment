@@ -118,6 +118,24 @@ async def _insert_event(tenant_id: str, ev: NormalizedEvent) -> bool:
         return True
 
 
+async def _record_vault_sync(tenant_id: str, payload: dict[str, Any]) -> None:
+    """Record a canonical freshness breadcrumb for repo-sync driven ingest.
+
+    `/webhook/ingest` already writes `kind='vault.ingest'`. The scheduled
+    GitHub connector used to update artifacts/chunks without writing that
+    breadcrumb, so the UI could report a stale vault after a healthy cron run.
+    """
+    async with service_session() as s:
+        await s.execute(text("""
+            INSERT INTO events (tenant_id, source, kind, payload)
+            VALUES (CAST(:tid AS uuid), 'github', 'vault.sync', CAST(:payload AS jsonb))
+        """), {
+            "tid": tenant_id,
+            "payload": json.dumps(payload, default=str),
+        })
+        await s.commit()
+
+
 async def _delete_artifact_chunks(tenant_id: str, ref: str) -> int:
     """Hard-delete chunks for a removed file (and the artifact)."""
     async with service_session() as s:
@@ -341,6 +359,26 @@ async def _process_integration(
             except Exception as e:
                 log.warning("github.watermark.update_failed", err=str(e)[:200])
                 summary["watermark_error"] = str(e)[:200]
+
+            # Freshness telemetry is useful even for no-op syncs: it proves the
+            # connector ran and distinguishes "no changes" from "cron broken".
+            try:
+                await _record_vault_sync(integration["tenant_id"], {
+                    "integration_id": integration["id"],
+                    "tenant": integration["slug"],
+                    "repos": repos,
+                    "prev_head": prev_head,
+                    "new_head": summary.get("new_head"),
+                    "events_inserted": summary["events_inserted"],
+                    "events_skipped_dup": summary["events_skipped_dup"],
+                    "files_ingested": summary["files_ingested"],
+                    "files_deleted": summary["files_deleted"],
+                    "ingest_failures": len(summary["ingest_failures"]),
+                    "fetch_errors": len(summary.get("fetch_errors") or []),
+                })
+            except Exception as e:
+                log.warning("github.vault_sync_event.failed", err=str(e)[:200])
+                summary["vault_sync_event_error"] = str(e)[:200]
     finally:
         await http.aclose()
         await conn.aclose()

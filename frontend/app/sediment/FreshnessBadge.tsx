@@ -30,6 +30,7 @@ export default function FreshnessBadge() {
   if (!f) return null;
 
   const s = f.seconds_ago;
+  const issueCount = f.violations?.length ?? 0;
   const label =
     f.last_ingest_ts == null
       ? "vault: never"
@@ -43,7 +44,11 @@ export default function FreshnessBadge() {
 
   return (
     <span
-      title={f.last_ingest_ts ?? f.note ?? ""}
+      title={
+        issueCount
+          ? `violations: ${f.violations?.join(", ")}`
+          : f.last_ingest_ts ?? f.note ?? ""
+      }
       className={`rounded-full px-2 py-0.5 text-xs font-medium ${
         f.stale
           ? "bg-amber-100 text-amber-800"
@@ -52,6 +57,7 @@ export default function FreshnessBadge() {
     >
       {f.stale ? "⚠ " : "● "}
       {label}
+      {issueCount ? ` · ${issueCount}` : ""}
     </span>
   );
 }

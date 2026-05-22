@@ -1,7 +1,6 @@
 """Phase 1 custom Python checks."""
 from __future__ import annotations
-import asyncio
-import time
+import inspect
 import uuid
 from sqlalchemy import text
 
@@ -209,3 +208,35 @@ async def check_hybrid_search_works(spec: dict, **_) -> dict:
 
 async def check_library_search_http(spec: dict, **_) -> dict:
     return await check_hybrid_search_works(spec)
+
+
+def check_freshness_telemetry_contract(spec: dict, **_) -> dict:
+    """Source-level guard for the pipeline freshness contract.
+
+    This intentionally avoids DB/service dependencies so the validator can
+    catch accidental removal of freshness axes before integration tests run.
+    """
+    import applications.sediment_platform.routers.vault as vault
+    import scripts.github_repo_fetch as gh
+
+    vault_src = inspect.getsource(vault.freshness)
+    gh_src = inspect.getsource(gh)
+    required = [
+        "vault.ingest",
+        "vault.sync",
+        "source = 'github'",
+        "source = 'discord'",
+        "max(a.updated_at)",
+        "max(c.created_at)",
+        "max(d.created_at)",
+        "a.type = 'decision'",
+        "current_tenant_id()",
+    ]
+    missing = [token for token in required if token not in vault_src]
+    gh_ok = "_record_vault_sync" in gh_src and "vault.sync" in gh_src
+    return {
+        "passed": not missing and gh_ok,
+        "actual": {"missing": missing, "github_sync_event": gh_ok},
+        "expected": {"freshness_axes": "all present", "github_sync_event": True},
+        "message": "" if not missing and gh_ok else "freshness telemetry contract incomplete",
+    }
