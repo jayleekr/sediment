@@ -49,10 +49,12 @@ fn load() -> Result<Creds> {
     if !path.exists() {
         return Ok(Creds::default());
     }
-    let body = fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let body = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     let creds: Creds = serde_json::from_str(&body).with_context(|| {
-        format!("parsing {} (corrupted? back it up and re-login)", path.display())
+        format!(
+            "parsing {} (corrupted? back it up and re-login)",
+            path.display()
+        )
     })?;
     Ok(creds)
 }
@@ -124,9 +126,7 @@ fn legacy_keychain_get(account: &str) -> Result<Option<String>> {
     // sees it ONCE, on first read after upgrade. The token migrates and
     // future reads come from the file.
     let out = std::process::Command::new("security")
-        .args([
-            "find-generic-password", "-s", SERVICE, "-a", account, "-w",
-        ])
+        .args(["find-generic-password", "-s", SERVICE, "-a", account, "-w"])
         .output();
     match out {
         Ok(o) if o.status.success() => {
@@ -177,8 +177,7 @@ fn read_index() -> Result<Vec<String>> {
     if !path.exists() {
         return list_accounts();
     }
-    let body = fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let body = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     Ok(body
         .lines()
         .filter(|l| !l.trim().is_empty())
@@ -188,8 +187,7 @@ fn read_index() -> Result<Vec<String>> {
 
 fn write_index(items: &[String]) -> Result<()> {
     let path = index_path()?;
-    fs::write(&path, items.join("\n"))
-        .with_context(|| format!("writing {}", path.display()))
+    fs::write(&path, items.join("\n")).with_context(|| format!("writing {}", path.display()))
 }
 
 fn add_to_index(account: &str) -> Result<()> {

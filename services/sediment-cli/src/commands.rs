@@ -456,7 +456,6 @@ pub async fn update(check: bool, force: bool, fmt: Format) -> Result<()> {
     )
 }
 
-
 pub async fn schema(cfg: &Config, tool: &str, fmt: Format) -> Result<()> {
     // Schemas are static — derived from the CLI's own knowledge of the API
     // surface. This matches the shape MCP shim expects so the shim can

@@ -28,16 +28,12 @@ pub struct Release {
     pub tag_name: String,
     pub html_url: String,
     pub assets: Vec<Asset>,
-    #[serde(default)]
-    pub prerelease: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Asset {
     pub name: String,
-    pub browser_download_url: String,
     pub url: String, // api.github.com URL — required for private-repo downloads
-    pub size: u64,
     /// GitHub sets this on every asset upload — "sha256:HEX". Saves us a
     /// separate sidecar fetch.
     #[serde(default)]
@@ -49,7 +45,7 @@ pub struct UpdateInfo {
     pub current: String,
     pub latest: String,
     pub release_url: String,
-    pub asset_url: Option<String>,  // api.github.com URL for download (private-repo safe)
+    pub asset_url: Option<String>, // api.github.com URL for download (private-repo safe)
     pub asset_name: Option<String>,
     pub asset_digest: Option<String>, // "sha256:HEX" from GitHub's asset metadata
     pub is_newer: bool,
@@ -75,7 +71,10 @@ pub async fn check_latest() -> Result<UpdateInfo> {
         .user_agent(USER_AGENT)
         .timeout(std::time::Duration::from_secs(20))
         .build()?;
-    let url = format!("https://api.github.com/repos/{}/{}/releases/latest", OWNER, REPO);
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        OWNER, REPO
+    );
     let mut req = client
         .get(&url)
         .header("Accept", "application/vnd.github+json");
@@ -88,10 +87,7 @@ pub async fn check_latest() -> Result<UpdateInfo> {
             req = req.bearer_auth(tok);
         }
     }
-    let resp = req
-        .send()
-        .await
-        .with_context(|| format!("GET {}", url))?;
+    let resp = req.send().await.with_context(|| format!("GET {}", url))?;
     if resp.status().as_u16() == 404 {
         return Err(anyhow!(
             "GitHub API returned 404 for releases/latest. \
@@ -103,10 +99,7 @@ pub async fn check_latest() -> Result<UpdateInfo> {
     let r: Release = resp.error_for_status()?.json().await?;
 
     // Parse "sediment-cli-vX.Y.Z" → X.Y.Z
-    let latest = r
-        .tag_name
-        .trim_start_matches("sediment-cli-v")
-        .to_string();
+    let latest = r.tag_name.trim_start_matches("sediment-cli-v").to_string();
     let current = env!("CARGO_PKG_VERSION").to_string();
     let is_newer = compare_semver(&latest, &current) > 0;
 
@@ -145,7 +138,9 @@ pub async fn perform_update(info: &UpdateInfo) -> Result<PathBuf> {
 
     // Download tarball into tempdir
     let tmpdir = tempfile::tempdir().context("creating tempdir for update")?;
-    let tarball_path = tmpdir.path().join(info.asset_name.as_deref().unwrap_or("sediment.tar.gz"));
+    let tarball_path = tmpdir
+        .path()
+        .join(info.asset_name.as_deref().unwrap_or("sediment.tar.gz"));
     let mut req = client
         .get(asset_url)
         // For api.github.com asset URL, this header tells GitHub to serve
@@ -176,7 +171,8 @@ pub async fn perform_update(info: &UpdateInfo) -> Result<PathBuf> {
         if !expected.eq_ignore_ascii_case(&actual) {
             return Err(anyhow!(
                 "sha256 mismatch: expected={} actual={}",
-                expected, actual
+                expected,
+                actual
             ));
         }
     }

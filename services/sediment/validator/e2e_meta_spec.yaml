@@ -35,6 +35,7 @@ allowed_actions:
 
 allowed_assertion_types:
   - text_contains
+  - text_matches_regex
   - url_contains
   - selector_visible
   - localStorage_has

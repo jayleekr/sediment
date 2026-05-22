@@ -483,6 +483,14 @@ phases:
         module: validator.checks.p1_index
         function: check_freshness_telemetry_contract
 
+      - id: P1-FRESH-02
+        title: "Vault freshness flags artifact/chunk mismatch"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_artifact_chunk_freshness_mismatch_contract
+
 
   # ════════════════════════════════════════════════════════════════
   # PHASE 2 — Chat MVP
@@ -979,6 +987,28 @@ phases:
         function: check_claim_grounding_contract
         threshold: 0.75
 
+      - id: P2-GROUND-04
+        title: "Zero-citation retrieval returns deterministic no-evidence answer"
+        layer: L11
+        severity: blocker
+        type: python
+        module: validator.checks.p2_grounding
+        function: check_no_evidence_fail_closed_contract
+
+      - id: P2-E2E-14
+        title: "E2E flow: no-evidence chat fails closed"
+        layer: L11
+        severity: major
+        type: e2e
+        flow_id: E2E-14
+
+      - id: P2-E2E-15
+        title: "E2E flow: freshness answer carries citation"
+        layer: L11
+        severity: major
+        type: e2e
+        flow_id: E2E-15
+
 
   # ════════════════════════════════════════════════════════════════
   # PHASE 3 — Ingest Automation
@@ -1072,6 +1102,14 @@ phases:
         type: python
         module: validator.checks.p4_consolidation
         function: check_decisions_have_conv_provenance
+
+      - id: P4-PROV-01
+        title: "Decision provenance schema exposes conversation and source-artifact links"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.p4_consolidation
+        function: check_decision_provenance_schema_contract
 
       - id: P4-CONSOLIDATE-02
         title: "consolidate_memory is idempotent (re-run produces same decisions, not duplicates)"
