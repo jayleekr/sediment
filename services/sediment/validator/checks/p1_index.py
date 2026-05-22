@@ -240,3 +240,25 @@ def check_freshness_telemetry_contract(spec: dict, **_) -> dict:
         "expected": {"freshness_axes": "all present", "github_sync_event": True},
         "message": "" if not missing and gh_ok else "freshness telemetry contract incomplete",
     }
+
+
+def check_artifact_chunk_freshness_mismatch_contract(spec: dict, **_) -> dict:
+    """Source-level guard for artifact-without-chunks freshness violations."""
+    import applications.sediment_platform.routers.vault as vault
+
+    src = inspect.getsource(vault.freshness)
+    required = [
+        "artifact_without_chunks",
+        "artifact_count",
+        "chunk_count",
+        "row.get(\"artifact_count\")",
+        "row.get(\"chunk_count\")",
+        "\"violations\"",
+    ]
+    missing = [token for token in required if token not in src]
+    return {
+        "passed": not missing,
+        "actual": {"missing": missing},
+        "expected": {"artifact_chunk_mismatch_violation": True},
+        "message": "" if not missing else "artifact/chunk freshness mismatch contract incomplete",
+    }

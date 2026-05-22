@@ -9,6 +9,8 @@ These checks are read-only assertions over the live DB; they do NOT run the
 worker. Drive separately via `make consolidate` or cron.
 """
 from __future__ import annotations
+from pathlib import Path
+
 from sqlalchemy import text
 
 from lab_lib.db import service_session
@@ -81,4 +83,32 @@ async def check_weekly_active_members(spec: dict, **_) -> dict:
         "actual": {"distinct_active_members_last_7d": n},
         "expected": {"min": 1, "phase_5_5_target": 8},
         "message": "" if n >= 1 else "no active members in last 7d",
+    }
+
+
+def check_decision_provenance_schema_contract(spec: dict, **_) -> dict:
+    """Source-level contract for decision provenance fields and checks."""
+    repo = Path(__file__).resolve().parents[4]
+    init_sql = (repo / "infra" / "init.sql").read_text()
+    consolidate = (repo / "services" / "sediment" / "scripts" / "consolidate_memory.py").read_text()
+    required_schema = [
+        "CREATE TABLE IF NOT EXISTS decisions",
+        "conv_id      UUID REFERENCES conversations",
+        "source_artifact_id UUID REFERENCES artifacts",
+    ]
+    required_worker = [
+        "INSERT INTO decisions",
+        "conv_id",
+    ]
+    missing_schema = [token for token in required_schema if token not in init_sql]
+    missing_worker = [token for token in required_worker if token not in consolidate]
+    return {
+        "passed": not missing_schema and not missing_worker,
+        "actual": {
+            "missing_schema": missing_schema,
+            "missing_worker": missing_worker,
+        },
+        "expected": "decisions carry conversation/source-artifact provenance fields",
+        "message": "" if not missing_schema and not missing_worker
+                   else "decision provenance schema contract incomplete",
     }

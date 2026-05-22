@@ -13,6 +13,7 @@ This is a coarse measure — a smart LLM can still hallucinate around weak
 citations — but it catches the worst regression: completely unrelated answers.
 """
 from __future__ import annotations
+import inspect
 import re
 import sys
 from pathlib import Path
@@ -240,4 +241,27 @@ def check_claim_grounding_contract(spec: dict, **_) -> dict:
         },
         "expected": "fully supported passes; partial/unsupported cases are identified",
         "message": "" if passed else "claim grounding contract below threshold",
+    }
+
+
+def check_no_evidence_fail_closed_contract(spec: dict, **_) -> dict:
+    """Source-level guard that zero-citation retrieval never asks the LLM."""
+    import applications.sediment_langgraph.main as main
+
+    src = inspect.getsource(main._compose_grounded_answer)
+    required = [
+        "if not citations:",
+        "no_evidence_answer(query)",
+        "\"status\": \"no_evidence\"",
+        "_compose_once",
+    ]
+    missing = [token for token in required if token not in src]
+    no_evidence_pos = src.find("no_evidence_answer(query)")
+    compose_pos = src.find("_compose_once")
+    order_ok = no_evidence_pos != -1 and compose_pos != -1 and no_evidence_pos < compose_pos
+    return {
+        "passed": not missing and order_ok,
+        "actual": {"missing": missing, "no_evidence_before_compose": order_ok},
+        "expected": "zero citations return deterministic no-evidence answer before compose",
+        "message": "" if not missing and order_ok else "no-evidence fail-closed contract incomplete",
     }

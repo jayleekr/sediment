@@ -438,3 +438,57 @@ flows:
       - action: assert
         type: text_matches_regex
         value: "\\[[1-5]\\]"
+
+  - id: E2E-14
+    name: "No-evidence chat fails closed"
+    severity: major
+    environments: [dev]
+    repeat: 2
+    pass_threshold: 1
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "input[placeholder='ask the lab…']"
+      - action: fill
+        selector: "input[placeholder='ask the lab…']"
+        value: "zzzxqv no matching vault evidence 917263"
+      - action: click
+        selector: "button:has-text('Send')"
+        wait_for_url_regex: "/sediment/c/"
+      - action: wait_for_idle
+        timeout_ms: 45000
+        screenshot: "01-no-evidence-done"
+      - action: assert
+        type: text_matches_regex
+        value: "(couldn't find evidence|citation validation failed|근거를 찾지 못했습니다|인용 검증)"
+
+  - id: E2E-15
+    name: "Reliability freshness answer carries citation"
+    severity: major
+    environments: [dev]
+    repeat: 2
+    pass_threshold: 1
+    steps:
+      - action: ensure_signed_in
+      - action: navigate
+        url: "/sediment"
+        wait_for: "input[placeholder='ask the lab…']"
+      - action: fill
+        selector: "input[placeholder='ask the lab…']"
+        value: "가장 최신 daily research가 언제꺼야?"
+      - action: click
+        selector: "button:has-text('Send')"
+        wait_for_url_regex: "/sediment/c/"
+      - action: wait_for_text
+        value: "[1]"
+        timeout_ms: 60000
+      - action: wait_for_idle
+        timeout_ms: 60000
+        screenshot: "01-freshness-cited"
+      - action: assert
+        type: text_matches_regex
+        value: "\\[[1-5]\\]"
+      - action: assert
+        type: selector_visible
+        selector: "h3:has-text('Citations')"
