@@ -110,40 +110,62 @@ jobs:
           retention-days: 7
 
   # Discord notification — fires on both deploy success AND failure of the
-  # deploy job. prod_smoke result is separately wired below via a follow-on
-  # condition. Uses the vendored scripts/notify/ from hypeproof-harness.
+  # deploy job. Uses the vendored scripts/notify/ from hypeproof-harness.
+  #
+  # All variable substitution flows through env vars (not direct ${{ }}
+  # interpolation in the shell line) so that release-body / commit-message
+  # text containing $(...) or backticks can't be re-evaluated by bash.
+  # Compromised inputs land as literal strings inside the env value.
   notify_deploy:
     needs: deploy
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
+      SHA: ${{ github.sha }}
+      BRANCH: ${{ github.ref_name }}
+      ACTOR: ${{ github.actor }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
+          cache: pip
       - run: pip install --quiet httpx jinja2 pyyaml
+      - name: Log deploy outcome
+        run: 'echo "deploy.result=${{ needs.deploy.result }}"'
+      - name: Resolve commit message (env-safe)
+        id: cm
+        run: |
+          MSG=$(git log -1 --pretty=%s)
+          # Multi-line env passing via heredoc — bash $(...) result is literal
+          # text, but writing it to GITHUB_ENV with a normal `=` would break if
+          # the message had special chars. Use the heredoc form.
+          {
+            echo "COMMIT_MESSAGE<<__EOF__"
+            echo "$MSG"
+            echo "__EOF__"
+          } >> "$GITHUB_ENV"
       - name: Notify on deploy success
         if: needs.deploy.result == 'success'
-        env:
-          DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
         run: |
           python scripts/notify/notify.py send deploy.success \
             --routes services/sediment/config/notify_routes.yaml \
-            --data sha=${{ github.sha }} \
-            --data branch=${{ github.ref_name }} \
+            --data "sha=$SHA" \
+            --data "branch=$BRANCH" \
             --data product=sediment \
-            --data "author=${{ github.actor }}" \
-            --data "commit_message=$(git log -1 --pretty=%s)" \
-            --data url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            --data "author=$ACTOR" \
+            --data "commit_message=$COMMIT_MESSAGE" \
+            --data "url=$RUN_URL"
       - name: Notify on deploy failure
         if: needs.deploy.result == 'failure'
-        env:
-          DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
         run: |
           python scripts/notify/notify.py send deploy.failure \
             --routes services/sediment/config/notify_routes.yaml \
-            --data sha=${{ github.sha }} \
-            --data branch=${{ github.ref_name }} \
+            --data "sha=$SHA" \
+            --data "branch=$BRANCH" \
             --data product=sediment \
             --data failed_step=deploy \
-            --data url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            --data "url=$RUN_URL"

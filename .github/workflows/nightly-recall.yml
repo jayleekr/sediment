@@ -56,6 +56,8 @@ jobs:
         if: failure()
         env:
           DISCORD_WEBHOOK_SEDIMENT: ${{ secrets.DISCORD_WEBHOOK_SEDIMENT }}
+          # GH-evaluated value lifted to env BEFORE bash; passed by name below.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           pip install --quiet jinja2
           # Try to read the JSON summary if it was written; otherwise just
@@ -69,7 +71,7 @@ jobs:
           python scripts/notify/notify.py send recall.regression \
             --routes services/sediment/config/notify_routes.yaml \
             --tenant hypeproof-lab \
-            --data "prev_pass=${PREV}" \
-            --data "current_pass=${CURR}" \
-            --data "threshold=${PREV}" \
-            --data "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --data "prev_pass=$PREV" \
+            --data "current_pass=$CURR" \
+            --data "threshold=$PREV" \
+            --data "url=$RUN_URL"
