@@ -94,9 +94,35 @@ The first reliability slice is deterministic:
 Future work under Epic #22:
 
 - Decision artifact provenance back to source events.
-- Daily reliability report and notification route.
 
-## 6. Boundary
+## 6. Daily Reliability Monitor
+
+`python -m validator.checks.reliability_daily` emits a stable JSON report to
+stdout and writes `output/reliability/<YYYY-MM-DD>-<tenant>.json`.
+
+The monitor is deterministic by default:
+
+- **Freshness:** latest vault sync, artifact update, chunk update, decision
+  timestamp, artifact/chunk counts, and artifact-without-chunks violations.
+- **Recall:** latest local `P1-latest.json` golden recall results when present;
+  otherwise the section is marked unavailable rather than fabricated.
+- **Grounding:** citation hard gate, zero-evidence fail-closed contract, and
+  claim-level support contract.
+- **Distill:** Discord events seen, decisions/actions extracted, decision
+  artifacts created, and decisions linked to `source_artifact_id`.
+
+If the DB is unavailable, the report still emits with `status=degraded` and
+explicit warnings. The default CLI exit code remains `0` so cron can always
+produce an artifact; use `--strict-exit` in CI to fail on degraded/critical
+status.
+
+Scheduler integration lives in `config/cron.yaml` under `reliability_daily`.
+By default it runs at 08:30 KST and sends a `reliability.daily` notification
+only when warnings exist. The notification payload contains `status`,
+`warning_count`, `critical_count`, `major_count`, `report_path`, and the top
+warnings list, which matches the existing `scripts/notify` route model.
+
+## 7. Boundary
 
 The chat path still does not mutate vault state. It may write:
 

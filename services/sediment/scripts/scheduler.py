@@ -25,7 +25,6 @@ Exit codes:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import signal
 import sys
@@ -262,6 +261,42 @@ async def _run_daily_digest(tenant_slug: str = "hypeproof-lab") -> None:
     await _send_notify("daily.digest", tenant_slug=tenant_slug, payload=payload)
 
 
+async def _run_reliability_daily(
+    tenant_slug: str = "hypeproof-lab",
+    since_hours: int = 24,
+    notify: str = "warning",
+) -> None:
+    """Daily freshness/recall/grounding/distill monitor.
+
+    The monitor itself is provider-free and never raises for DB/provider
+    outages; those become degraded JSON sections and warnings.
+    """
+    from validator.checks.reliability_daily import build_report
+
+    try:
+        report = await build_report(tenant_slug=tenant_slug, since_hours=since_hours, write=True)
+        warnings = report.get("warnings") or []
+        log.info(
+            "scheduler.reliability.daily",
+            tenant=tenant_slug,
+            status=report.get("status"),
+            warnings=len(warnings),
+            path=report.get("path"),
+        )
+        should_notify = notify == "always" or (notify == "warning" and warnings)
+        if should_notify:
+            await _send_notify(
+                report["notification"]["event_type"],
+                tenant_slug=tenant_slug,
+                payload={
+                    **report["notification"]["payload"],
+                    "warnings": warnings[:5],
+                },
+            )
+    except Exception as e:
+        log.exception("scheduler.reliability.error", tenant=tenant_slug, err=str(e)[:200])
+
+
 async def _send_notify(event_type: str, tenant_slug: str, payload: dict) -> None:
     """Thin wrapper around the vendored notify CLI. Never raises — logs and
     swallows because notification failure must not break the cron job.
@@ -272,8 +307,6 @@ async def _send_notify(event_type: str, tenant_slug: str, payload: dict) -> None
     """
     import asyncio as _asyncio
     import json as _json
-    import os as _os
-    import shlex as _shlex
     from pathlib import Path as _Path
 
     notify_py = _Path(__file__).resolve().parents[3] / "scripts" / "notify" / "notify.py"
@@ -376,6 +409,19 @@ async def main_async() -> int:
                 scheduler, f"daily_digest_{tenant}",
                 dg.get("schedule", "0 0 * * *"),
                 _run_daily_digest, tenant,
+            )
+
+    # Daily reliability monitor — 08:30 KST by default, before the 09:00 digest.
+    rel = cfg.get("reliability_daily") or {}
+    if rel.get("enabled", True):
+        for tenant in (rel.get("tenants") or ["hypeproof-lab"]):
+            _add_cron(
+                scheduler, f"reliability_daily_{tenant}",
+                rel.get("schedule", "30 23 * * *"),
+                _run_reliability_daily,
+                tenant,
+                int(rel.get("since_hours", 24)),
+                rel.get("notify", "warning"),
             )
 
     # Boot the scheduler BEFORE introspecting next_run_time — APScheduler

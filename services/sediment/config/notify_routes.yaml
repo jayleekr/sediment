@@ -47,6 +47,10 @@ routes:
     daily.digest:
       channels: [sediment]
       template: daily_digest
+    reliability.daily:
+      channels: [sediment]
+      template: reliability_daily
+      severity: major
     new_decision:
       channels: [sediment]
       template: new_decision
@@ -65,6 +69,9 @@ routes:
     daily.digest:
       channels: [sediment]
       template: daily_digest
+    reliability.daily:
+      channels: [sediment]
+      template: reliability_daily
     new_decision:
       channels: [sediment]
       template: new_decision
