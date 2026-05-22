@@ -11,7 +11,12 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
 
     PUBLIC_PATHS = {"/healthz", "/readyz", "/openapi.json", "/docs", "/redoc"}
     # Auth endpoints must be public (you can't have a token before logging in).
-    PUBLIC_PREFIXES = ("/docs", "/static", "/api/v1/auth/", "/api/v1/billing/webhook")
+    PUBLIC_PREFIXES = (
+        "/docs", "/static", "/api/v1/auth/", "/api/v1/billing/webhook",
+        # /api/v1/issuer/* uses HTTP Basic (per-instructor passphrase), not JWT
+        # (sediment#14). Router handles its own auth; let it through.
+        "/api/v1/issuer/",
+    )
 
     async def dispatch(self, request: Request, call_next) -> Response:
         # CORS preflight (OPTIONS) must pass through untouched so the
