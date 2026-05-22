@@ -229,8 +229,12 @@ async def _resolve_owner(tenant_id: str, hint: Optional[str]) -> Optional[str]:
 
 
 async def _insert_decision(tenant_id: str, conv_id: Optional[str], topic: str,
-                            body: str, status: str) -> Optional[str]:
+                            body: str, status: str) -> tuple[Optional[str], bool]:
     """Insert or return existing id. Dedup key: (tenant_id, topic, conv_id).
+
+    Returns (decision_id, is_new). `is_new` lets the caller fire side
+    effects (notify, audit) only when a row was actually added, not when
+    re-running over the same conv re-discovers it.
 
     conv_id is NULL for event-sourced decisions (Discord #weekly etc. via
     distill.py). In SQL, `conv_id = NULL` is never true, so a plain equality
@@ -251,7 +255,7 @@ async def _insert_decision(tenant_id: str, conv_id: Optional[str], topic: str,
             """), {"tid": tenant_id, "topic": topic, "cid": conv_id})
         row = existing.first()
         if row:
-            return row[0]
+            return row[0], False
         r = await s.execute(text("""
             INSERT INTO decisions (tenant_id, topic, body, status, conv_id, made_at)
             VALUES (:tid, :topic, :body, :status, :cid, now())
@@ -259,7 +263,59 @@ async def _insert_decision(tenant_id: str, conv_id: Optional[str], topic: str,
         """), {"tid": tenant_id, "topic": topic, "body": body,
                 "status": status, "cid": conv_id})
         await s.commit()
-        return r.scalar_one()
+        return r.scalar_one(), True
+
+
+async def _tenant_slug(tenant_id: str) -> str:
+    """Look up tenant slug for notify routing — one query per conv (cheap)."""
+    async with service_session() as s:
+        r = await s.execute(
+            text("SELECT slug FROM tenants WHERE id = CAST(:t AS uuid)"),
+            {"t": tenant_id},
+        )
+        row = r.first()
+        return row[0] if row else "?"
+
+
+async def _notify_new_decision(
+    tenant_slug: str, topic: str, body: str, conv_id: Optional[str],
+) -> None:
+    """Fire a `new_decision` notification through the vendored notify CLI.
+
+    Never raises — consolidation must not break because Discord is having
+    a bad day. Logs the outcome.
+    """
+    import asyncio as _asyncio
+    import json as _json
+    from pathlib import Path as _Path
+
+    notify_py = _Path(__file__).resolve().parents[3] / "scripts" / "notify" / "notify.py"
+    routes = _Path(__file__).resolve().parents[1] / "config" / "notify_routes.yaml"
+    if not notify_py.is_file() or not routes.is_file():
+        log.warning("notify.skip", reason="notify or routes missing")
+        return
+    payload = {
+        "summary": (body or topic)[:300],
+        "rationale": "",                        # consolidator extracts body, not separate rationale
+        "deciders": [],                         # TODO: extract from msgs
+        "source_label": "chat consolidation",
+        "ref": f"conv:{conv_id}" if conv_id else "",
+    }
+    cmd = ["python3", str(notify_py), "send", "new_decision",
+           "--routes", str(routes), "--tenant", tenant_slug,
+           "--data", f"summary={payload['summary']}",
+           "--data", f"source_label={payload['source_label']}",
+           "--data", f"ref={payload['ref']}",
+           "--data", f"deciders:={_json.dumps(payload['deciders'])}"]
+    try:
+        proc = await _asyncio.create_subprocess_exec(
+            *cmd, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE,
+        )
+        out, err = await _asyncio.wait_for(proc.communicate(), timeout=15.0)
+        log.info("consolidate.notify.sent", topic=topic[:60], rc=proc.returncode,
+                 stderr=(err or b"").decode()[:120])
+    except Exception as e:
+        log.warning("consolidate.notify.failed", topic=topic[:60], err=str(e)[:160])
 
 
 async def _insert_action(tenant_id: str, decision_id: Optional[str],
@@ -320,14 +376,17 @@ async def consolidate_conv(conv: dict, dry_run: bool = False) -> dict:
                 "preview": {"decisions": decisions[:3], "actions": actions[:3]}}
 
     topic_to_decision_id: dict[str, str] = {}
+    new_decisions: list[tuple[str, str]] = []   # (topic, body) for notify
     for d in decisions:
-        did = await _insert_decision(
+        did, is_new = await _insert_decision(
             tenant_id, conv_id,
             d["topic"][:200], d.get("body", "")[:2000],
             d.get("status", "made"),
         )
         if did:
             topic_to_decision_id[d["topic"]] = did
+        if is_new:
+            new_decisions.append((d["topic"][:200], d.get("body", "")[:2000]))
 
     inserted_actions = 0
     for a in actions:
@@ -344,9 +403,21 @@ async def consolidate_conv(conv: dict, dry_run: bool = False) -> dict:
                          conv_id=conv_id, err=str(e)[:120])
 
     log.info("consolidate.done", conv_id=conv_id,
-              decisions=len(decisions), actions=inserted_actions)
+              decisions=len(decisions), new_decisions=len(new_decisions),
+              actions=inserted_actions)
+
+    # Fire one notify per NEWLY-inserted decision. Existing-dedup'd ones are
+    # silent — the team already saw them in a prior run. Done after the
+    # commit loop so any notify failure can't roll back the DB writes.
+    if new_decisions:
+        slug = await _tenant_slug(tenant_id)
+        for topic, body in new_decisions:
+            await _notify_new_decision(slug, topic, body, conv_id)
+
     return {"conv_id": conv_id, "status": "ok",
-             "decisions": len(decisions), "actions": inserted_actions}
+             "decisions": len(decisions),
+             "new_decisions": len(new_decisions),
+             "actions": inserted_actions}
 
 
 async def run(

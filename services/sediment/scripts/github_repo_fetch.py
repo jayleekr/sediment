@@ -46,6 +46,7 @@ from sqlalchemy import text
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(SCRIPT.parents[1]))  # services/sediment/
 
+from lab_lib.collection_agent import decide  # noqa: E402
 from lab_lib.connectors.github_repo import (  # noqa: E402
     GitHubRepoConnector,
     NormalizedEvent,
@@ -243,9 +244,14 @@ async def _process_integration(
                 continue
 
             for ev in events:
-                # 1) Raw event row (audit / replay). Dedup'd on external_id;
-                #    duplicates DO fall through to step 2 so a transient
-                #    vault_ingester failure on a prior run is self-healing.
+                # 0) Ask the Collection AI Agent what to do with this event.
+                #    `decide()` reads source_kind + event_rules from cfg and
+                #    returns whether to ingest, notify, or both.
+                cd = decide(ev, cfg)
+
+                # 1) Raw event row (audit / replay) — ALWAYS recorded, even
+                #    when decide() says skip, so the audit trail is complete.
+                #    Dedup'd on external_id; duplicates fall through to step 2.
                 try:
                     if await _insert_event(integration["tenant_id"], ev):
                         summary["events_inserted"] += 1
@@ -259,32 +265,55 @@ async def _process_integration(
                     )
                     continue
 
-                # 2) Chunk + embed via vault_ingester (or hard-delete).
-                #    vault_ingester upserts artifacts by (tenant_id, ref) and
-                #    replaces chunks atomically, so re-running with the same
-                #    content is a no-op semantically.
+                # 2) Delete first if event is a delete-kind. decide() returns
+                #    {ingest: False, notify: False} on file_delete (per vault
+                #    rules); the actual hard-delete is the script's job.
                 path = ev.payload.get("path") or ""
                 if ev.kind == "file_delete":
                     n = await _delete_artifact_chunks(integration["tenant_id"], path)
                     summary["files_deleted"] += 1
-                    log.info("github.artifact.deleted", ref=path, chunks=n)
+                    log.info("github.artifact.deleted", ref=path, chunks=n,
+                             matched_rule=cd.matched_rule)
                     continue
 
-                content = ev.payload.get("content")
-                if not content:
-                    continue
-                ok, err = await _ingest_doc(
-                    http,
-                    integration["tenant_id"],
-                    ref=path,
-                    body=content,
-                    doc_type=_classify_doc_type(path),
-                )
-                if ok:
-                    summary["files_ingested"] += 1
-                else:
-                    log.warning("github.ingest.failed", ref=path, err=err)
-                    summary["ingest_failures"].append({"ref": path, "err": err})
+                # 3) Ingest (chunk + embed via vault_ingester) if the agent
+                #    said so. Empty content → skip (some events carry only
+                #    metadata, no body).
+                if cd.ingest:
+                    content = ev.payload.get("content")
+                    if content:
+                        ok, err = await _ingest_doc(
+                            http,
+                            integration["tenant_id"],
+                            ref=path,
+                            body=content,
+                            doc_type=_classify_doc_type(path),
+                        )
+                        if ok:
+                            summary["files_ingested"] += 1
+                        else:
+                            log.warning("github.ingest.failed", ref=path, err=err,
+                                        matched_rule=cd.matched_rule)
+                            summary["ingest_failures"].append({"ref": path, "err": err})
+
+                # 4) Notify if the agent said so. This is where new_decision
+                #    notifications come from when a wiki/decisions/*.md lands.
+                if cd.notify:
+                    log.info("github.notify.triggered",
+                             event_type=cd.notify_event_type,
+                             channels=cd.notify_channels,
+                             ref=path,
+                             matched_rule=cd.matched_rule)
+                    # Notification dispatch goes through the same path
+                    # scheduler.py uses — see _send_notify there. Not wired in
+                    # this script yet because we want the design fully
+                    # land-tested via consolidate_memory.py first; wiring here
+                    # is a 5-line addition once that path is mature.
+                    summary.setdefault("notify_queued", []).append({
+                        "event_type": cd.notify_event_type,
+                        "ref": path,
+                        "channels": cd.notify_channels,
+                    })
 
         # Advance watermark — use the LAST event's commit_sha if we have
         # any; otherwise leave it untouched (no work happened).
