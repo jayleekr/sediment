@@ -7,10 +7,13 @@
 // (gnome-keyring / kwallet); on Windows in Credential Manager.
 //
 // Tests run against an in-memory mock — see token_tests.rs.
+#![allow(clippy::items_after_test_module)]
 
 use anyhow::{Context, Result};
 
+#[allow(dead_code)]
 const SERVICE: &str = "sediment-cli";
+#[allow(dead_code)]
 const ACCOUNT_INDEX_KEY: &str = "_index";
 
 #[cfg(not(test))]

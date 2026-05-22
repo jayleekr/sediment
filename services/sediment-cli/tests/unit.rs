@@ -65,7 +65,7 @@ fn no_token_produces_auth_envelope_with_hint() {
     );
     assert!(code != 0, "expected non-zero exit for unauthenticated call");
     let parsed: serde_json::Value =
-        serde_json::from_str(&out).expect(&format!("stdout was not JSON: {}", out));
+        serde_json::from_str(&out).unwrap_or_else(|_| panic!("stdout was not JSON: {}", out));
     assert!(
         parsed.get("error").is_some(),
         "missing error envelope: {}",

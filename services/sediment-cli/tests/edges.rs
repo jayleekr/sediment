@@ -229,10 +229,9 @@ fn account_flag_overrides_env() {
     // --account flag at the top level should be visible to commands.
     // We can't easily assert on internals from outside, but we can check
     // that having it doesn't crash and goes through normal codepath.
-    let (code, _, stderr) = run(
+    let (_, _, stderr) = run(
         &["--account", "x@example.test", "auth", "status"],
         &[("XDG_CONFIG_HOME", "/tmp/_no_account_test")],
     );
     assert!(!stderr.contains("panicked"));
-    assert!(code == 0 || code != 0); // either way, no panic — explicit
 }

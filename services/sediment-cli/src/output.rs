@@ -167,6 +167,7 @@ fn truncate(s: &str, n: usize) -> String {
 }
 
 // Convenience for commands that produce typed structs.
+#[allow(dead_code)]
 pub fn render_typed<T: Serialize>(value: &T, fmt: Format) -> anyhow::Result<()> {
     let json = serde_json::to_value(value)?;
     render(&json, fmt)

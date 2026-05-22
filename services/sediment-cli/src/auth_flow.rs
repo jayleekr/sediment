@@ -27,6 +27,7 @@ pub struct StartReq {
 pub struct StartResp {
     pub device_code: String,
     pub user_code: String,
+    #[allow(dead_code)]
     pub verification_uri: String,
     pub verification_uri_complete: String,
     pub expires_in: u64,

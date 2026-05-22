@@ -100,12 +100,11 @@ async def test_hypeproof_lab_token_cannot_see_acme_artifacts(
 
 
 async def test_hypeproof_lab_token_sees_own_marker(client, both_tenants_seeded):
-    """Sanity: search works for the larger tenant (acme has no chunked
-    content in seed data, so we sanity-check via hypeproof-lab instead)."""
+    """Sanity: search can see this tenant's own RLS marker chunk."""
     hl_token = await _mint(client, HL_EMAIL)
     r = await client.get(
         "/api/v1/library/search",
-        params={"q": "research", "limit": 50},
+        params={"q": "lab-only-marker-RLS", "limit": 50},
         headers={"Authorization": f"Bearer {hl_token}"},
     )
     assert r.status_code == 200, r.text
