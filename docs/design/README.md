@@ -80,6 +80,7 @@ This rule is what keeps the SaaS unit economics defensible. Every breach of it a
 
 | File | What | Status |
 |---|---|---|
+| [../specs/chat-session-requirements.rst](../specs/chat-session-requirements.rst) | Chat/session product requirements, acceptance criteria, and Epic #39 test matrix | active canonical spec |
 | [ICP-segmentation.md](./ICP-segmentation.md) | 4 archetypes (D/A/B/C), beachhead = D+A | active reference |
 | [voice-ocr-connector-spec.md](./voice-ocr-connector-spec.md) | Voice + photo OCR connector design | active reference, links from 04 |
 
