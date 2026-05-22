@@ -13,6 +13,7 @@ node_modules/
 .next/
 *.log
 docker-volumes/
+docs/_build/
 
 # Auto-updated pointers to most-recent validation run — noise in commits.
 output/validation/P*-latest.json
