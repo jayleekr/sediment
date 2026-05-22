@@ -40,8 +40,14 @@ class TokenResp(BaseModel):
 async def dev_token(req: DevTokenReq):
     """Local dev only — mint a JWT for any seeded member.
 
-    NextAuth.js (Phase 5) replaces this with proper magic-link / OAuth.
+    Gated by SEDIMENT_DEV_MODE=1. In production this env var is unset,
+    so the endpoint 403s. Without the gate, anyone who knows a seeded
+    email could mint an admin JWT (CVE-class authentication bypass).
+
+    NextAuth.js (web) + /oauth-device/* (CLI) are the production paths.
     """
+    if os.environ.get("SEDIMENT_DEV_MODE") != "1":
+        raise HTTPException(status_code=403, detail="dev mode disabled")
     async with service_session() as s:
         r = await s.execute(text("""
             SELECT m.id::text, m.tenant_id::text, m.role, m.display_name

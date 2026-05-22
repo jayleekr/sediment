@@ -37,6 +37,15 @@ async def _mint(client, email=HL_EMAIL):
 # SQL / LIKE injection
 # ============================================================
 
+async def test_dev_token_gated_when_dev_mode_off(client, monkeypatch):
+    """When SEDIMENT_DEV_MODE!=1 (i.e. production), the /dev-token endpoint
+    MUST 403 — without this gate, anyone who knows a member email could
+    mint an admin JWT (auth bypass)."""
+    monkeypatch.delenv("SEDIMENT_DEV_MODE", raising=False)
+    r = await client.post("/api/v1/auth/dev-token", json={"email": "jay.lee@sonatus.com"})
+    assert r.status_code == 403, f"dev-token must 403 in prod mode, got {r.status_code}: {r.text}"
+
+
 async def test_sql_injection_in_search_query_safe(client):
     """A search query with classic SQLi patterns must not return extra
     rows nor leak error info."""
