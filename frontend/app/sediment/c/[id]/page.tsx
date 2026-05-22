@@ -1,9 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { api, citeExport, type Citation, type Message } from "../../lib/api";
+import { api, citeExport, getFreshness, type Citation, type Freshness, type Message } from "../../lib/api";
 import { streamCurator } from "../../lib/sse";
+
+// Backend phrases emitted by lab_lib/grounding.no_evidence_answer when the
+// retriever returned 0 candidates. Detected here to render a richer empty
+// state with a deep-link to the Library search (which uses a different,
+// more permissive retrieval path — see sediment#52).
+const NO_EVIDENCE_PATTERNS = [
+  "현재 vault에서 이 질문을 뒷받침할 근거를 찾지 못했습니다",
+  "근거를 찾지 못했습니다",
+  "no evidence",
+];
+
+function isNoEvidenceText(text: string | undefined): boolean {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  return NO_EVIDENCE_PATTERNS.some((p) => t.includes(p.toLowerCase()));
+}
 
 type StreamState = {
   status: string;
@@ -90,17 +107,45 @@ export default function ConversationPage() {
     );
   }
 
+  // For each assistant turn, look back for the most recent user turn so a
+  // "no evidence" panel can echo the original question + deep-link Library
+  // search. Mapping is computed once per render; messages list is small.
+  const userQueryFor = (idx: number): string => {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return messages[i].content;
+    }
+    return "";
+  };
+
+  // For the live streaming bubble, the most recent user turn is the source.
+  const lastUserQuery: string =
+    [...messages].reverse().find((m) => m.role === "user")?.content || "";
+
   return (
     <div className="grid grid-cols-12 gap-6">
       <main className="col-span-12 md:col-span-8">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="mb-3 text-lg font-semibold">{conv?.title || "(untitled)"}</h2>
           <div className="space-y-4">
-            {messages.map((m) => (
-              <Bubble key={m.id} role={m.role} content={m.content} citations={m.citations} />
+            {messages.map((m, i) => (
+              <div key={m.id}>
+                <Bubble role={m.role} content={m.content} citations={m.citations} />
+                {m.role === "assistant" &&
+                  (!m.citations || m.citations.length === 0) &&
+                  isNoEvidenceText(m.content) && (
+                    <NoEvidencePanel query={userQueryFor(i)} />
+                  )}
+              </div>
             ))}
             {!stream.done || stream.buffer ? (
-              <Bubble role="assistant" content={stream.buffer || "thinking…"} citations={stream.citations} streaming />
+              <>
+                <Bubble role="assistant" content={stream.buffer || "thinking…"} citations={stream.citations} streaming />
+                {stream.done &&
+                  stream.citations.length === 0 &&
+                  isNoEvidenceText(stream.buffer) && (
+                    <NoEvidencePanel query={lastUserQuery} />
+                  )}
+              </>
             ) : null}
             {stream.error && <p className="text-sm text-red-600">error: {stream.error}</p>}
           </div>
@@ -366,6 +411,76 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
 const OFFLINE_MOCK_PREFIX = "[offline LLM mock]";
 const OFFLINE_FALLBACK =
   "AI provider not configured (offline mode). Citations are real; replies are mocked. Set LLM_PROVIDER in .env to enable streaming responses.";
+
+// Rendered when the chat retriever returned 0 candidates. Offers a deep-link
+// to the Library /search endpoint (different retrieval path — more permissive
+// BM25 + dedup) and surfaces vault freshness so the user can tell whether the
+// gap is "not ingested yet" vs "genuinely absent". See sediment#52.
+function NoEvidencePanel({ query }: { query: string }) {
+  const [fresh, setFresh] = useState<Freshness | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const f = await getFreshness();
+        if (!cancelled) setFresh(f);
+      } catch {
+        /* freshness is informational — silent fail */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const freshLabel = (() => {
+    if (!fresh) return null;
+    const s = fresh.seconds_ago;
+    if (fresh.last_ingest_ts == null) return "vault: never ingested";
+    if (s == null) return "vault: ?";
+    if (s < 3600) return `vault ${Math.max(1, Math.round(s / 60))}m ago`;
+    if (s < 86400) return `vault ${Math.round(s / 3600)}h ago`;
+    return `vault ${Math.round(s / 86400)}d ago`;
+  })();
+
+  const trimmed = (query || "").trim();
+  const libHref = trimmed
+    ? `/sediment/library?q=${encodeURIComponent(trimmed)}`
+    : `/sediment/library`;
+
+  return (
+    <div
+      data-testid="no-evidence-panel"
+      className="ml-2 mt-2 max-w-[80%] rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700"
+    >
+      <div className="font-medium text-neutral-900">No evidence yet for this question.</div>
+      {trimmed && (
+        <div className="mt-1 text-xs text-neutral-600">
+          Searched for: <span className="font-mono">{trimmed}</span>
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+        <Link
+          href={libHref}
+          className="rounded bg-blue-600 px-2 py-1 font-medium text-white hover:bg-blue-700"
+        >
+          Search vault for {trimmed ? `“${trimmed.length > 28 ? trimmed.slice(0, 28) + "…" : trimmed}”` : "this"} →
+        </Link>
+        {freshLabel && (
+          <span className="text-neutral-500" title="Most recent ingest time">
+            {freshLabel}
+          </span>
+        )}
+        <Link href="/sediment/library" className="text-neutral-500 underline hover:text-neutral-900">
+          recent ingests
+        </Link>
+      </div>
+      <p className="mt-2 text-xs text-neutral-500">
+        Tip: chat retrieval is stricter than library search. Direct name or filename queries often work better there.
+      </p>
+    </div>
+  );
+}
 
 function Bubble({
   role,

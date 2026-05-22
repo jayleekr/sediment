@@ -1,12 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, type LibraryItem } from "../lib/api";
 
+// useSearchParams() forces client-side bailout for static prerendering in
+// Next 15+, so the consuming component must be wrapped in <Suspense>. Keeping
+// the inner component separate gives Next a server-renderable shell while
+// the URL-param-aware part hydrates on the client.
 export default function LibraryPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-neutral-500">Loading…</div>}>
+      <LibraryPageInner />
+    </Suspense>
+  );
+}
+
+function LibraryPageInner() {
+  const sp = useSearchParams();
+  const initialQ = sp.get("q") || "";
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [type, setType] = useState<string>("");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQ);
   const [search, setSearch] = useState<{ ref: string; content: string; score: number; date?: string }[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -21,12 +36,13 @@ export default function LibraryPage() {
     }
   }
 
-  async function doSearch() {
-    if (!q.trim()) {
+  async function doSearch(query?: string) {
+    const v = (query ?? q).trim();
+    if (!v) {
       setSearch([]);
       return;
     }
-    const d = await api<{ items: any[] }>(`/api/v1/library/search?q=${encodeURIComponent(q)}`);
+    const d = await api<{ items: any[] }>(`/api/v1/library/search?q=${encodeURIComponent(v)}`);
     setSearch(d.items);
   }
 
@@ -34,6 +50,15 @@ export default function LibraryPage() {
     browse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
+
+  // Auto-run search when arriving via ?q=... deep-link (e.g. from the chat
+  // page's "Search vault for X instead" no-evidence fallback).
+  useEffect(() => {
+    if (initialQ) {
+      doSearch(initialQ);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -59,7 +84,7 @@ export default function LibraryPage() {
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && doSearch()}
             />
-            <button onClick={doSearch} className="rounded bg-blue-600 px-3 py-1 text-sm text-white">
+            <button onClick={() => doSearch()} className="rounded bg-blue-600 px-3 py-1 text-sm text-white">
               Search
             </button>
           </div>
