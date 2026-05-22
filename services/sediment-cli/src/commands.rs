@@ -712,3 +712,68 @@ pub async fn schema(cfg: &Config, tool: &str, fmt: Format) -> Result<()> {
     };
     output::render(&v, fmt)
 }
+
+/// `sediment learn add <conv_id>` — promote the most recent assistant
+/// message from a conversation to a golden-set proposal.
+///
+/// Fetches the conv's last assistant message via /api/v1/conversations/
+/// (already exists), then POSTs the proposal payload to
+/// /api/v1/feedback/promote-to-golden. Backend handles validation +
+/// records the proposal as an events row for admin review.
+pub async fn learn_add(
+    cfg: &Config,
+    conv_id: &str,
+    reason: &str,
+    expected_intent: Option<&str>,
+    fmt: Format,
+) -> Result<()> {
+    let account = cfg.account.clone().unwrap_or_else(|| "default".to_string());
+    let tok = token::get(&account)?
+        .ok_or_else(|| anyhow!("not logged in — run `sediment auth login`"))?;
+    let http = Http::new(cfg.base_url.clone(), Some(tok))?;
+
+    // 1. Pull conv to find the most recent assistant message id
+    let conv: Value = http
+        .get_json(&format!("/api/v1/conversations/{}", conv_id))
+        .await?;
+    let msgs = conv
+        .get("messages")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("conv response missing `messages` array"))?;
+    let last_assistant = msgs
+        .iter()
+        .rev()
+        .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("assistant"));
+    let mid = last_assistant
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("no assistant message in conv — nothing to promote"))?;
+
+    // 2. POST the promotion
+    let mut body = json!({
+        "conv_id": conv_id,
+        "message_id": mid,
+        "reason": reason,
+    });
+    if let Some(ei) = expected_intent {
+        body["expected_intent"] = json!(ei);
+    }
+    // POST returns 204 on success; raw_post + status check avoids the
+    // empty-body decode failure that post_json::<Value> would hit.
+    let resp = http
+        .raw_post("/api/v1/feedback/promote-to-golden", body)
+        .await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("promote-to-golden failed: HTTP {} — {}", status, body));
+    }
+
+    let result = json!({
+        "ok": true,
+        "conv_id": conv_id,
+        "message_id": mid,
+        "next": "an admin will review and merge to golden_queries.yaml via PR",
+    });
+    output::render(&result, fmt)
+}

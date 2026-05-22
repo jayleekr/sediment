@@ -133,6 +133,74 @@ async def _run_github_repo_sync() -> None:
         log.exception("scheduler.github_repo_sync.error", err=str(e)[:200])
 
 
+# ============================================================
+# Self-improving RAG handlers (sediment#15 Phases 2-5)
+# Each one is a thin call into the matching scripts/*.py module.
+# Failures get logged + swallowed — never bring down the scheduler.
+# ============================================================
+
+async def _run_signal_derivation(window_sec: int) -> None:
+    from scripts.signal_derivation import run as sd_run
+    try:
+        summary = await sd_run(window_sec=window_sec)
+        log.info("scheduler.signal_derivation.done", **summary)
+    except Exception as e:
+        log.exception("scheduler.signal_derivation.error", err=str(e)[:200])
+
+
+async def _run_judge_daily(hours: int, max_n: int) -> None:
+    from scripts.judge_daily import run as jd_run
+    try:
+        summary = await jd_run(hours=hours, max_n=max_n)
+        log.info("scheduler.judge_daily.done", **summary)
+    except Exception as e:
+        log.exception("scheduler.judge_daily.error", err=str(e)[:200])
+
+
+async def _run_hard_negative_mining(window_hours: int) -> None:
+    from scripts.hard_negative_mining import run as hnm_run
+    try:
+        summary = await hnm_run(hours=window_hours)
+        log.info("scheduler.hard_negative_mining.done", **summary)
+    except Exception as e:
+        log.exception("scheduler.hard_negative_mining.error", err=str(e)[:200])
+
+
+async def _run_chunking_ablation(corpus_n: int, queries_n: int) -> None:
+    from scripts.chunking_ablation import run as ca_run
+    try:
+        summary = await ca_run(corpus_n=corpus_n, queries_n=queries_n)
+        # Keep the log compact — ablation result has nested grid arrays
+        log.info(
+            "scheduler.chunking_ablation.done",
+            corpus_size=summary.get("corpus_size"),
+            front_size=len(summary.get("pareto_front") or []),
+        )
+    except Exception as e:
+        log.exception("scheduler.chunking_ablation.error", err=str(e)[:200])
+
+
+async def _run_ab_compare(days: int) -> None:
+    from scripts.ab_compare import run as ab_run
+    try:
+        summary = await ab_run(days=days)
+        log.info("scheduler.ab_compare.done", recommendation=summary.get("recommendation"))
+    except Exception as e:
+        log.exception("scheduler.ab_compare.error", err=str(e)[:200])
+
+
+async def _run_dspy_bootstrap(max_iters: int) -> None:
+    """Synchronous run() in dspy_bootstrap — wrap to avoid blocking the loop."""
+    import asyncio as _asyncio
+    from scripts.dspy_bootstrap import run as dspy_run
+    try:
+        loop = _asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, dspy_run, max_iters)
+        log.info("scheduler.dspy_bootstrap.done", status=result.get("status"))
+    except Exception as e:
+        log.exception("scheduler.dspy_bootstrap.error", err=str(e)[:200])
+
+
 async def _run_health_check(alert_channel_name: str) -> None:
     """Check that each watched channel has had an event in the last 24h.
     Logs (and can post to Discord) channels that have gone silent.
@@ -364,10 +432,12 @@ def _add_cron(scheduler: AsyncIOScheduler, name: str, expr: str, fn, *args) -> N
                   err=str(e)[:200])
 
 
-async def main_async() -> int:
-    cfg = _load_config()
-    scheduler = AsyncIOScheduler(timezone=timezone.utc)
+async def _register(scheduler: AsyncIOScheduler, cfg: dict) -> None:
+    """Wire every cron.yaml entry into the scheduler.
 
+    Extracted from main_async() so tests can verify which jobs land
+    without booting the scheduler loop. See tests/test_scheduler_registration.py.
+    """
     # Discord fetch (per-channel, sequential within the job)
     disc = cfg.get("discord") or {}
     channels = disc.get("channels") or []
@@ -440,6 +510,64 @@ async def main_async() -> int:
                 int(rel.get("since_hours", 24)),
                 rel.get("notify", "warning"),
             )
+
+    # ─── Self-improving RAG (sediment#15 Phases 2-5) ─────────────────────
+    # Each section reads its own cron.yaml block. enabled:false (default
+    # for dspy) skips wiring entirely. Every handler swallows exceptions
+    # internally so a broken job never takes the scheduler down.
+
+    sd = cfg.get("signal_derivation") or {}
+    if sd.get("enabled", True):
+        # YAML window is "30m" / "1h" — parse to seconds.
+        w = str(sd.get("window", "30m"))
+        unit = w[-1]; val = int(w[:-1])
+        w_sec = {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit] * val
+        _add_cron(scheduler, "signal_derivation",
+                  sd.get("schedule", "*/15 * * * *"),
+                  _run_signal_derivation, w_sec)
+
+    jd = cfg.get("judge_daily") or {}
+    if jd.get("enabled", True):
+        _add_cron(scheduler, "judge_daily",
+                  jd.get("schedule", "0 21 * * *"),
+                  _run_judge_daily,
+                  int(jd.get("hours", 24)),
+                  int(jd.get("max_n", 200)))
+
+    hnm = cfg.get("hard_negative_mining") or {}
+    if hnm.get("enabled", True):
+        _add_cron(scheduler, "hard_negative_mining",
+                  hnm.get("schedule", "0 18 * * 0"),
+                  _run_hard_negative_mining,
+                  int(hnm.get("window_hours", 168)))
+
+    ca = cfg.get("chunking_ablation") or {}
+    if ca.get("enabled", True):
+        _add_cron(scheduler, "chunking_ablation",
+                  ca.get("schedule", "0 18 * * 1"),
+                  _run_chunking_ablation,
+                  int(ca.get("corpus_n", 50)),
+                  int(ca.get("queries_n", 20)))
+
+    ab = cfg.get("ab_compare") or {}
+    if ab.get("enabled", True):
+        _add_cron(scheduler, "ab_compare",
+                  ab.get("schedule", "0 18 * * 2"),
+                  _run_ab_compare,
+                  int(ab.get("days", 7)))
+
+    dspy = cfg.get("dspy_bootstrap") or {}
+    if dspy.get("enabled", False):  # opt-in (deps heavy)
+        _add_cron(scheduler, "dspy_bootstrap",
+                  dspy.get("schedule", "0 18 * * 3"),
+                  _run_dspy_bootstrap,
+                  int(dspy.get("max_iters", 6)))
+
+
+async def main_async() -> int:
+    cfg = _load_config()
+    scheduler = AsyncIOScheduler(timezone=timezone.utc)
+    await _register(scheduler, cfg)
 
     # Boot the scheduler BEFORE introspecting next_run_time — APScheduler
     # only populates next_run_time once the scheduler is running.

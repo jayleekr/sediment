@@ -99,6 +99,10 @@ jobs:
             tests/test_ask_intent_golden.py \
             tests/test_message_persist_with_intent.py \
             tests/test_faithfulness_check.py \
+            tests/test_signals.py \
+            tests/test_judge_calibration.py \
+            tests/test_promote_to_golden.py \
+            tests/test_phase5_tuning.py \
             -v
       - name: MCP shim UT
         run: |

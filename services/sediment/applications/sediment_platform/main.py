@@ -14,7 +14,7 @@ from lab_lib.tenant_middleware import TenantContextMiddleware
 from .routers import (
     auth, conversations, library, members, ingest_proxy,
     feedback, costs, admin, onboarding, billing, cite_export, vault,
-    issuer, signals,
+    issuer, signals, promote_to_golden,
 )
 
 configure_logging()
@@ -49,6 +49,7 @@ app.include_router(library.router, prefix="/api/v1/library", tags=["library"])
 app.include_router(members.router, prefix="/api/v1/members", tags=["members"])
 app.include_router(ingest_proxy.router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
+app.include_router(promote_to_golden.router, prefix="/api/v1/feedback")
 app.include_router(cite_export.router, prefix="/api/v1/events/cite-export", tags=["activation"])
 app.include_router(vault.router, prefix="/api/v1/vault", tags=["vault"])
 app.include_router(costs.router, prefix="/api/v1/costs", tags=["costs"])
