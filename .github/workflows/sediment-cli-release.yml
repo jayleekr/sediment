@@ -75,9 +75,41 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create GitHub release
+      - name: Create GitHub release (private repo)
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      # Mirror to public release repo so end users can `brew install` /
+      # `curl install.sh` without a GitHub token. Source for binaries stays
+      # private; only the artifacts move to the public mirror. See
+      # sediment#33 for the install-friction issue this resolves.
+      #
+      # Required repo secret: RELEASE_MIRROR_TOKEN — fine-grained PAT with
+      # `contents: write` on jayleekr/sediment-cli-releases ONLY. Falls back
+      # to a warning (not a failure) if missing so private releases aren't
+      # blocked while the secret is being provisioned.
+      - name: Mirror to public release repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_MIRROR_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::RELEASE_MIRROR_TOKEN secret not set — public mirror skipped (see sediment#33)"
+            exit 0
+          fi
+          MIRROR_REPO=jayleekr/sediment-cli-releases
+          # Idempotent: if the tag already exists on the mirror (re-run),
+          # delete + recreate so the asset set is consistent.
+          if gh release view "$TAG" --repo "$MIRROR_REPO" >/dev/null 2>&1; then
+            gh release delete "$TAG" --repo "$MIRROR_REPO" --yes --cleanup-tag
+          fi
+          gh release create "$TAG" \
+            --repo "$MIRROR_REPO" \
+            --title "Sediment CLI $TAG" \
+            --notes "Mirrored from the private source repo. See [install instructions](https://github.com/$MIRROR_REPO#install)." \
+            dist/*
+          echo "::notice::Mirrored $TAG to $MIRROR_REPO. Install: brew install jayleekr/sediment/sediment"
