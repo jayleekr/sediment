@@ -48,6 +48,7 @@ Sediment는 HypeProof의 팀 메모리, 검색, 근거 기반 답변, 세션 보
    design/12-source-kinds-catalog
    design/13-tenant-catalog
    design/14-reliability-and-grounding
+   design/15-conversation-retention
    design/15-self-improving-rag
    design/16-query-event-store
    design/ICP-segmentation

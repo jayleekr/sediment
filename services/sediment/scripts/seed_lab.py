@@ -96,6 +96,10 @@ async def ensure_retention_columns(s) -> None:
     for ddl in ddls:
         try:
             await s.execute(text(ddl))
+            # DDL in the async session is transactional. Commit each step so a
+            # later permission failure cannot roll back columns needed by
+            # owner-connection fallback indexes.
+            await s.commit()
         except SQLAlchemyError as exc:
             await s.rollback()
             # Fall back to owner connection (same pattern as github_login)
