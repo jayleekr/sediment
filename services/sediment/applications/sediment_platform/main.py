@@ -14,6 +14,7 @@ from lab_lib.tenant_middleware import TenantContextMiddleware
 from .routers import (
     auth, conversations, library, members, ingest_proxy,
     feedback, costs, admin, onboarding, billing, cite_export, vault,
+    issuer,
 )
 
 configure_logging()
@@ -54,3 +55,5 @@ app.include_router(costs.router, prefix="/api/v1/costs", tags=["costs"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(onboarding.router, prefix="/api/v1/onboard", tags=["onboarding"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])
+# HypeProof Studio instructor issuer-token self-service (sediment/#14).
+app.include_router(issuer.router, prefix="/api/v1/issuer", tags=["issuer"])
