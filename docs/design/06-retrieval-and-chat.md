@@ -139,6 +139,51 @@ Citation block formatting:
 
 The LLM is instructed (and prompt-tested) to cite via `[N]`. Absence of `[N]` in output → caught by the post-compose validator + the chat-smoke E2E.
 
+## 5a. Freshness intent (added 2026-05-22 per sediment#16 #4)
+
+A v1 design gap, surfaced when a user asked "가장 최신 볼트가 언제꺼야?" and the LLM hallucinated "5/19" while 5/21 was the actual newest in DB. Root cause: queries about *recency* of the dataset got routed to RAG (`library` node), which scores by RRF relevance, not date. The LLM then "picked" a date from the citation list.
+
+**Fix**: a deterministic `freshness` intent that bypasses RAG entirely.
+
+```
+Router heuristic adds:
+  if query contains any of {최신, 가장 최근, latest, newest, this week,
+                              어제, 오늘, yesterday, today, 언제꺼} → freshness
+
+freshness node:
+  SELECT ref, type, date::text, updated_at::text
+  FROM artifacts
+  WHERE tenant_id = current_tenant_id()      -- RLS
+    AND tenant_id = CAST(:tid AS uuid)        -- defense-in-depth
+    [AND type = <inferred type>]              -- pull "research"/"decision" etc from query
+  ORDER BY COALESCE(date, updated_at::date) DESC, updated_at DESC
+  LIMIT 5;
+
+compose:
+  - LLM sees citations ALREADY in date order
+  - System prompt tells it: "citations are already sorted; cite [1] as latest, don't re-rank"
+```
+
+**Why this is the right shape**: the question isn't about content, it's about the *dataset's metadata*. SQL `ORDER BY` is the only correct answer; LLM can only re-render. Cost: zero LLM tokens for the rank (only the wrapper paragraph), and the answer is deterministic.
+
+## 5b. Accuracy framework (added 2026-05-22 per sediment#16 #4)
+
+Another v1 design gap. We had **recall@3** (retrieval correctness) and **E2E** (functional correctness) but no metric for **answer correctness** — does the LLM's composed reply actually match the cited content? The freshness bug was invisible to existing checks because retrieval returned *some* citations and the chat *streamed* an answer — both checks PASS, both were wrong.
+
+New three-axis nightly check (`validator/scripts/accuracy_check.py`):
+
+| Axis | What it measures | How (cheap) |
+|---|---|---|
+| **freshness_accuracy** | Returned "latest X" matches actual newest in DB | Ask `latest <type>` for each artifact type; assert first citation has the max date by ORDER BY (verifiable from ref filename + DB) |
+| **citation_precision** | LLM doesn't fabricate `[N]` references | Parse `[N]` from answer, assert every N ≤ len(citations). No N may exceed the returned set. |
+| **cross_tenant_isolation** | Citations stay within the asking tenant | For each tenant, ask a generic query, assert no citation `ref` matches OTHER tenants' path fingerprints |
+
+What's deliberately NOT here (yet):
+- **Factual correctness** (does the answer match the cited *content*?) — needs LLM-as-judge or human eval. Expensive; defer until recall@3 is consistently > 80% and freshness_accuracy is stable.
+- **Drift trend** — needs N>30 nightly runs to fit a trend. Wire when accuracy_check.py has been running a week.
+
+Wiring: TBD nightly via `.github/workflows/nightly-recall.yml` after the script has produced its first stable baseline.
+
 ## 6. SSE stream contract
 
 The endpoint `POST /v1/sediment/stream` returns `text/event-stream` with this frame structure:

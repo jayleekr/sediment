@@ -166,7 +166,18 @@ async def node_router(state: CuratorState) -> dict:
     #    auto-fix accidentally flipped 2 and 3.
     # 3. member — only when no content-type keyword is present.
     # 4. decision — explicit "결정" / "action".
-    if any(k in q for k in ["count", "summary", "총", "전체", "how many",
+    # Priority order:
+    # 0. freshness — "최신/latest" + a noun → deterministic SQL ORDER BY date,
+    #    bypassing RAG (which can't reliably judge dates from RRF-ranked
+    #    citations). Added per sediment#16 #4.
+    # 1. meta — "칼럼 몇 개?" contains both meta + library keywords; meta wins (count query).
+    # 2. library — content-type keyword wins over member name. "라이언이 쓴 칼럼" must
+    #    route to library (the column), not member lookup.
+    # 3. member — only when no content-type keyword is present.
+    # 4. decision — explicit "결정" / "action".
+    if _is_freshness_query(q):
+        intent = "freshness"
+    elif any(k in q for k in ["count", "summary", "총", "전체", "how many",
                               "몇 개", "몇개", "수", "신규", "지난 ", "최근 30",
                               "이번 달", "이번달"]):
         intent = "meta"
@@ -182,6 +193,22 @@ async def node_router(state: CuratorState) -> dict:
         intent = "library"
     log.info("node.router", intent=intent)
     return {"intent": intent}
+
+
+# Freshness intent detector — keyword-based. Tight enough to avoid false
+# positives (we don't want every query to bypass RAG); broad enough to catch
+# the obvious cases. See sediment#16 #4 for the motivating bug.
+_FRESHNESS_KEYWORDS = [
+    "최신", "가장 최근", "가장 최신", "최근에", "최근의",
+    "latest", "newest", "most recent", "last week", "this week",
+    "어제", "오늘", "yesterday", "today",
+    "언제꺼", "언제 거", "언제거",
+]
+
+
+def _is_freshness_query(ql: str) -> bool:
+    """Heuristic — true when the query is asking 'what's the newest X'."""
+    return any(kw in ql for kw in _FRESHNESS_KEYWORDS)
 
 
 def _build_ts_or_query(q: str) -> str:
@@ -402,6 +429,75 @@ async def node_member_lookup(state: CuratorState) -> dict:
     return {"citations": [{"type": "member", **m} for m in all_results[:5]]}
 
 
+_TYPE_FROM_QUERY = [
+    ("research", ["리서치", "research", "daily-research", "daily research"]),
+    ("decision", ["결정", "decision", "adr"]),
+    ("meeting", ["회의", "meeting"]),
+    ("column", ["칼럼", "column"]),
+    ("novel", ["소설", "novel"]),
+    ("note", ["메모", "note"]),
+]
+
+
+def _detect_freshness_type(q: str) -> str | None:
+    """Pull an artifact `type` hint from a freshness query, if obvious.
+    'latest research' → research. Otherwise None (return all types)."""
+    ql = q.lower()
+    for t, kws in _TYPE_FROM_QUERY:
+        if any(kw in ql for kw in kws):
+            return t
+    return None
+
+
+async def node_freshness_lookup(state: CuratorState) -> dict:
+    """Deterministic 'what's the most recent X' query — no RAG, no LLM.
+
+    Added per sediment#16 #4 — the previous behavior routed 'latest' queries
+    to library (RAG) where the LLM had to pick 'latest' from RRF-ranked
+    citations. It hallucinated. This node uses SQL ORDER BY to return the
+    actual N newest artifacts (optionally filtered by inferred type), and
+    the compose step renders them as a list without LLM judgment.
+
+    Tenant filter explicit (sediment#16 defense-in-depth).
+    """
+    from sqlalchemy import text
+    from lab_lib.db import app_session
+    q = state["query"]
+    tid = str(state["tenant_id"])
+    type_hint = _detect_freshness_type(q)
+
+    async with app_session(state["tenant_id"]) as s:
+        # COALESCE(date, updated_at::date) picks frontmatter `date` when
+        # available (canonical for daily-research / meeting notes), falls
+        # back to ingest timestamp for artifacts without an explicit date.
+        params = {"tid": tid}
+        type_filter = ""
+        if type_hint:
+            type_filter = "AND type = :t"
+            params["t"] = type_hint
+        sql = f"""
+            SELECT ref, type, date::text AS date, updated_at::text AS ingested_at
+            FROM artifacts
+            WHERE tenant_id = CAST(:tid AS uuid)
+              {type_filter}
+            ORDER BY COALESCE(date, updated_at::date) DESC, updated_at DESC
+            LIMIT 5
+        """
+        r = await s.execute(text(sql), params)
+        rows = [dict(row._mapping) for row in r]
+
+    log.info("node.freshness", n=len(rows), type_hint=type_hint or "any")
+    # Render as `freshness` citations — compose step prints them verbatim
+    # (no LLM "judgment" of which is newest).
+    return {
+        "citations": [
+            {"type": "freshness", "rank": i + 1, **row}
+            for i, row in enumerate(rows)
+        ],
+        "intent_hint": type_hint or "any",
+    }
+
+
 async def node_meta_summary(state: CuratorState) -> dict:
     """Per-tenant artifact counts. Explicit tenant filter (see sediment#16)."""
     from sqlalchemy import text
@@ -442,6 +538,7 @@ def build_graph():
     g.add_node("library", node_library_search)
     g.add_node("member", node_member_lookup)
     g.add_node("meta", node_meta_summary)
+    g.add_node("freshness", node_freshness_lookup)   # sediment#16 #4
     g.add_node("compose", node_compose)
     g.add_node("guardrails", node_guardrails)
     g.add_node("save", node_save)
@@ -453,14 +550,16 @@ def build_graph():
         return state.get("intent", "library")
 
     g.add_conditional_edges("router", route_fn, {
-        "library": "library",
-        "member": "member",
-        "decision": "library",   # Phase 4: separate node
-        "meta": "meta",
+        "library":   "library",
+        "member":    "member",
+        "decision":  "library",   # Phase 4: separate node
+        "meta":      "meta",
+        "freshness": "freshness",
     })
     g.add_edge("library", "compose")
     g.add_edge("member", "compose")
     g.add_edge("meta", "compose")
+    g.add_edge("freshness", "compose")
     g.add_edge("compose", "guardrails")
     g.add_edge("guardrails", "save")
     g.add_edge("save", END)
