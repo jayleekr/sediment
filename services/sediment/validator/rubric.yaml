@@ -1111,6 +1111,14 @@ phases:
         module: validator.checks.p4_consolidation
         function: check_decision_provenance_schema_contract
 
+      - id: P4-PROV-02
+        title: "Decision citation payloads expose source provenance"
+        layer: L11
+        severity: major
+        type: python
+        module: validator.checks.p4_consolidation
+        function: check_decision_artifact_provenance_contract
+
       - id: P4-CONSOLIDATE-02
         title: "consolidate_memory is idempotent (re-run produces same decisions, not duplicates)"
         layer: L4

@@ -91,11 +91,24 @@ The first reliability slice is deterministic:
   `SEDIMENT_CLAIM_LLM_JUDGE=1`; offline runs skip it explicitly instead of
   pretending a model judge ran.
 
-Future work under Epic #22:
+## 6. Decision Provenance
 
-- Decision artifact provenance back to source events.
+Distilled decision artifacts carry machine-readable provenance in frontmatter:
 
-## 6. Daily Reliability Monitor
+- `provenance.kind`: `conversation`, `discord_events`, or `unknown`
+- `provenance.source_ref` and `provenance.source_title`
+- `provenance.source_event_ids` for Discord event batches
+- `provenance.source_message_ids` for source messages where available
+- `provenance.channel`, `source_date`, and source window timestamps where
+  available
+
+Retrieval returns this frontmatter as `provenance` and, for decision artifacts,
+also emits `decision_provenance`. If a decision artifact lacks provenance, the
+payload includes `decision_provenance.missing=true` so the UI can show a
+warning instead of silently treating the distilled artifact as a primary
+source.
+
+## 7. Daily Reliability Monitor
 
 `python -m validator.checks.reliability_daily` emits a stable JSON report to
 stdout and writes `output/reliability/<YYYY-MM-DD>-<tenant>.json`.
@@ -122,7 +135,7 @@ only when warnings exist. The notification payload contains `status`,
 `warning_count`, `critical_count`, `major_count`, `report_path`, and the top
 warnings list, which matches the existing `scripts/notify` route model.
 
-## 7. Boundary
+## 8. Boundary
 
 The chat path still does not mutate vault state. It may write:
 

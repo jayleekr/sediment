@@ -112,3 +112,45 @@ def check_decision_provenance_schema_contract(spec: dict, **_) -> dict:
         "message": "" if not missing_schema and not missing_worker
                    else "decision provenance schema contract incomplete",
     }
+
+
+def check_decision_artifact_provenance_contract(spec: dict, **_) -> dict:
+    """Source-level contract for citable decision artifact provenance."""
+    repo = Path(__file__).resolve().parents[4]
+    distill = (repo / "services" / "sediment" / "scripts" / "distill.py").read_text()
+    graph = (
+        repo / "services" / "sediment" / "applications" / "sediment_langgraph"
+        / "graphs" / "lab_curator_graph.py"
+    ).read_text()
+    ui = (repo / "frontend" / "app" / "sediment" / "c" / "[id]" / "page.tsx").read_text()
+
+    required_distill = [
+        "\"provenance\"",
+        "\"source_event_ids\"",
+        "\"source_message_ids\"",
+        "yaml.safe_dump",
+    ]
+    required_graph = [
+        "a.frontmatter -> 'provenance'",
+        "decision_provenance",
+        "jsonb_build_object('missing'",
+    ]
+    required_ui = [
+        "decision_provenance",
+        "provenance missing",
+        "provenanceLabel",
+    ]
+    missing_distill = [token for token in required_distill if token not in distill]
+    missing_graph = [token for token in required_graph if token not in graph]
+    missing_ui = [token for token in required_ui if token not in ui]
+    passed = not missing_distill and not missing_graph and not missing_ui
+    return {
+        "passed": passed,
+        "actual": {
+            "missing_distill": missing_distill,
+            "missing_graph": missing_graph,
+            "missing_ui": missing_ui,
+        },
+        "expected": "decision artifacts expose source provenance through citation payloads and UI warning",
+        "message": "" if passed else "decision artifact provenance contract incomplete",
+    }

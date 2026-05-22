@@ -9,14 +9,12 @@ The Router/Memory paths are stubs that future phases will fill in.
 from __future__ import annotations
 import json
 import re
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Optional, TypedDict
+from typing import Optional, TypedDict
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import get_logger
-from lab_lib.settings import settings
 
 log = get_logger("graph")
 
@@ -113,6 +111,18 @@ def _slug_regex(q: str) -> str:
     if not tokens:
         return "___NEVER___"
     return "(" + "|".join(re.escape(t.lower()) for t in tokens) + ")"
+
+
+def _normalize_citation_row(row: dict) -> dict:
+    """Normalize DB JSON/JSONB fields before SSE/persistence serialization."""
+    for key in ("provenance", "decision_provenance"):
+        value = row.get(key)
+        if isinstance(value, str):
+            try:
+                row[key] = json.loads(value)
+            except json.JSONDecodeError:
+                row[key] = {"raw": value, "parse_error": True}
+    return row
 
 
 def _detect_query_type(q: str) -> Optional[str]:
@@ -325,7 +335,14 @@ async def node_library_search(state: CuratorState) -> dict:
                                 OR a.ref LIKE 'products/sediment/TEST_%'
                                 OR a.ref LIKE 'products/sediment/DECISIONS%'
                               THEN 0.8 ELSE 1.0 END AS score,
-                   a.ref, a.type, a.date::text AS date, a.slug
+                   a.ref, a.type, a.date::text AS date, a.slug,
+                   a.frontmatter -> 'provenance' AS provenance,
+                   CASE
+                     WHEN a.type = 'decision'
+                       THEN COALESCE(a.frontmatter -> 'provenance', '{}'::jsonb)
+                            || jsonb_build_object('missing', NOT (a.frontmatter ? 'provenance'))
+                     ELSE NULL
+                   END AS decision_provenance
             FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
             WHERE c.tsv @@ to_tsquery('simple', :tsq)
               -- Defense-in-depth tenant filter (see sediment#16)
@@ -340,7 +357,7 @@ async def node_library_search(state: CuratorState) -> dict:
                 "slug_re": slug_re,
                 "tid": tid,
             })
-            citations = [dict(row._mapping) for row in r]
+            citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
             log.info("node.library.search", n=len(citations), mode="bm25_only_or")
             return {"citations": citations}
 
@@ -372,13 +389,20 @@ async def node_library_search(state: CuratorState) -> dict:
           ) u GROUP BY id, artifact_id, seq, content
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content,
-               f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug
+               f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug,
+               a.frontmatter -> 'provenance' AS provenance,
+               CASE
+                 WHEN a.type = 'decision'
+                   THEN COALESCE(a.frontmatter -> 'provenance', '{}'::jsonb)
+                        || jsonb_build_object('missing', NOT (a.frontmatter ? 'provenance'))
+                 ELSE NULL
+               END AS decision_provenance
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
         WHERE a.tenant_id = CAST(:tid AS uuid)
         ORDER BY f.score DESC LIMIT 6;
         """
         r = await s.execute(text(sql), {"q": q, "qvec": qvec_str, "tid": tid})
-        citations = [dict(row._mapping) for row in r]
+        citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
     log.info("node.library.search", n=len(citations), mode="hybrid")
     return {"citations": citations}
 

@@ -27,6 +27,7 @@ def _snapshot(now: datetime) -> dict:
             "decisions_extracted": 2,
             "actions_extracted": 1,
             "decision_artifacts_created": 2,
+            "decision_artifacts_with_provenance": 2,
             "decisions_with_source_artifact": 2,
         },
     }
@@ -93,3 +94,14 @@ def test_distill_warns_when_events_have_no_decisions():
 
     assert summary["status"] == "degraded"
     assert any(w["code"] == "distill_zero_decisions" for w in warnings)
+
+
+def test_distill_warns_when_decision_artifact_provenance_missing():
+    now = datetime(2026, 5, 22, tzinfo=timezone.utc)
+    snapshot = _snapshot(now)
+    snapshot["distill"]["decision_artifacts_with_provenance"] = 0
+
+    summary, warnings = rd.summarize_distill(snapshot)
+
+    assert summary["status"] == "degraded"
+    assert any(w["code"] == "decision_artifact_provenance_missing" for w in warnings)

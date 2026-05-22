@@ -133,6 +133,8 @@ export type Citation = {
   score?: number;
   content?: string;
   display_name?: string;
+  provenance?: Record<string, any> | null;
+  decision_provenance?: Record<string, any> | null;
 };
 
 export type LibraryItem = {
