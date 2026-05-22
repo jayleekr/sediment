@@ -20,10 +20,38 @@ SessionApp = async_sessionmaker(_engine_app, expire_on_commit=False, class_=Asyn
 SessionService = async_sessionmaker(_engine_service, expire_on_commit=False, class_=AsyncSession)
 
 
+_BYPASSRLS_WARNED = False
+
+
 @asynccontextmanager
 async def app_session(tenant_id: str) -> AsyncIterator[AsyncSession]:
-    """RLS-enforced session. Sets app.tenant_id at connection level."""
+    """RLS-enforced session. Sets app.tenant_id at connection level.
+
+    Defense-in-depth (sediment#16): logs ONCE at WARN level when the
+    connection is authenticated as a BYPASSRLS role. RLS policies are
+    silently ignored for such roles → cross-tenant leak risk. The fix is
+    Supabase-side (create curator_app role NOT BYPASSRLS + point
+    DATABASE_URL_APP at it); this warning surfaces the misconfig so it
+    can't be silent. Every chat-path SQL already has an explicit
+    tenant_id filter as the actual leak guard.
+    """
+    global _BYPASSRLS_WARNED
     async with SessionApp() as session:
+        if not _BYPASSRLS_WARNED:
+            try:
+                r = await session.execute(text("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user"))
+                row = r.first()
+                if row and row[0]:
+                    import logging
+                    logging.getLogger("lab_lib.db").warning(
+                        "app_session.bypassrls_detected",
+                        extra={"role": "current_user", "issue": "sediment#16"},
+                    )
+                    _BYPASSRLS_WARNED = True
+            except Exception:
+                # `current_user` resolve could fail on some pooler configs;
+                # don't break the session over a diagnostic check
+                _BYPASSRLS_WARNED = True
         await session.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant_id)})
         try:
             yield session

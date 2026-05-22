@@ -246,6 +246,13 @@ async def node_library_search(state: CuratorState) -> dict:
     qvec = embed_one(q)
     qvec_is_zero = not any(abs(x) > 1e-9 for x in qvec)
 
+    # Defense-in-depth: every retrieval query carries an explicit tenant_id
+    # filter (in addition to RLS, which SHOULD also apply via app_session).
+    # If the DB role is misconfigured (e.g., BYPASSRLS superuser instead of
+    # the intended rls-subject role), this clause still prevents cross-tenant
+    # leak. See sediment#16 for the prod incident that drove this.
+    tid = str(state["tenant_id"])
+
     async with app_session(state["tenant_id"]) as s:
         if qvec_is_zero:
             # BM25 only, OR-joined for permissive matching.
@@ -294,6 +301,9 @@ async def node_library_search(state: CuratorState) -> dict:
                    a.ref, a.type, a.date::text AS date, a.slug
             FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
             WHERE c.tsv @@ to_tsquery('simple', :tsq)
+              -- Defense-in-depth tenant filter (see sediment#16)
+              AND a.tenant_id = CAST(:tid AS uuid)
+              AND c.tenant_id = CAST(:tid AS uuid)
             ORDER BY score DESC LIMIT 6;
             """
             r = await s.execute(text(sql_bm25), {
@@ -301,23 +311,31 @@ async def node_library_search(state: CuratorState) -> dict:
                 "type_hint": type_hint,
                 "project_hint": project_hint,
                 "slug_re": slug_re,
+                "tid": tid,
             })
             citations = [dict(row._mapping) for row in r]
             log.info("node.library.search", n=len(citations), mode="bm25_only_or")
             return {"citations": citations}
 
         # Hybrid path (vector + BM25 + RRF rerank)
+        # Defense-in-depth: tenant filter on BOTH source CTEs (bm25 + vec)
+        # so the fused set can never contain cross-tenant rows. See sediment#16.
         qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
         sql = """
         WITH bm25 AS (
           SELECT c.id, c.artifact_id, c.seq, c.content,
                  row_number() OVER (ORDER BY ts_rank(c.tsv, plainto_tsquery('simple', :q)) DESC) AS rank
-          FROM chunks c WHERE c.tsv @@ plainto_tsquery('simple', :q) LIMIT 30
+          FROM chunks c
+          WHERE c.tsv @@ plainto_tsquery('simple', :q)
+            AND c.tenant_id = CAST(:tid AS uuid)
+          LIMIT 30
         ),
         vec AS (
           SELECT c.id, c.artifact_id, c.seq, c.content,
                  row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rank
-          FROM chunks c ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT 30
+          FROM chunks c
+          WHERE c.tenant_id = CAST(:tid AS uuid)
+          ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT 30
         ),
         fused AS (
           SELECT id, artifact_id, seq, content, sum(rrf) AS score FROM (
@@ -329,9 +347,10 @@ async def node_library_search(state: CuratorState) -> dict:
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content,
                f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        WHERE a.tenant_id = CAST(:tid AS uuid)
         ORDER BY f.score DESC LIMIT 6;
         """
-        r = await s.execute(text(sql), {"q": q, "qvec": qvec_str})
+        r = await s.execute(text(sql), {"q": q, "qvec": qvec_str, "tid": tid})
         citations = [dict(row._mapping) for row in r]
     log.info("node.library.search", n=len(citations), mode="hybrid")
     return {"citations": citations}
@@ -357,20 +376,23 @@ def _extract_member_terms(q: str) -> list[str]:
 
 
 async def node_member_lookup(state: CuratorState) -> dict:
+    """Member lookup — defense-in-depth tenant filter (see sediment#16)."""
     from sqlalchemy import text
     from lab_lib.db import app_session
     q = state["query"]
     terms = _extract_member_terms(q)
+    tid = str(state["tenant_id"])
     async with app_session(state["tenant_id"]) as s:
         all_results: list[dict] = []
         for term in terms:
             r = await s.execute(text("""
                 SELECT display_name, real_name, role, title, expertise, interests, external_id
                 FROM members
-                WHERE display_name ILIKE :p OR real_name ILIKE :p OR title ILIKE :p
-                   OR expertise::text ILIKE :p
+                WHERE tenant_id = CAST(:tid AS uuid)
+                  AND (display_name ILIKE :p OR real_name ILIKE :p OR title ILIKE :p
+                       OR expertise::text ILIKE :p)
                 LIMIT 5
-            """), {"p": f"%{term}%"})
+            """), {"p": f"%{term}%", "tid": tid})
             for row in r:
                 d = dict(row._mapping)
                 if d not in all_results:
@@ -381,11 +403,16 @@ async def node_member_lookup(state: CuratorState) -> dict:
 
 
 async def node_meta_summary(state: CuratorState) -> dict:
+    """Per-tenant artifact counts. Explicit tenant filter (see sediment#16)."""
     from sqlalchemy import text
     from lab_lib.db import app_session
+    tid = str(state["tenant_id"])
     async with app_session(state["tenant_id"]) as s:
-        r = await s.execute(text(
-            "SELECT type, count(*) AS n FROM artifacts GROUP BY type ORDER BY n DESC"))
+        r = await s.execute(text("""
+            SELECT type, count(*) AS n FROM artifacts
+            WHERE tenant_id = CAST(:tid AS uuid)
+            GROUP BY type ORDER BY n DESC
+        """), {"tid": tid})
         rows = [dict(row._mapping) for row in r]
     return {"citations": [{"type": "summary", "by_type": rows}]}
 
