@@ -78,6 +78,17 @@ daily_digest:
     - hypeproof-lab
     - kids-edu
 
+# Daily reliability monitor — emits output/reliability/<date>-<tenant>.json
+# and notifies only when degraded/critical by default.
+reliability_daily:
+  enabled: true
+  schedule: "30 23 * * *"  # 08:30 KST = 23:30 UTC previous day
+  since_hours: 24
+  notify: warning           # one of: never, warning, always
+  tenants:
+    - hypeproof-lab
+    - kids-edu
+
 # Cost monitor — daily token rollup; alerts if exceeds budget.
 cost_monitor:
   schedule: "30 21 * * *"  # 06:30 KST

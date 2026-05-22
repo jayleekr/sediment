@@ -1,0 +1,13 @@
+🧭 **Sediment reliability — {{ status or "unknown" }}** · `{{ tenant_slug or "?" }}`
+
+- warnings: {{ warning_count or 0 }}
+- critical: {{ critical_count or 0 }}
+- major: {{ major_count or 0 }}
+- report: `{{ report_path or "n/a" }}`
+
+{% if warnings %}
+**Top warnings:**
+{% for w in warnings[:5] %}
+- `{{ w.code }}` · {{ w.severity }} — {{ w.message }}
+{% endfor %}
+{% endif %}
