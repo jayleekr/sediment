@@ -72,7 +72,7 @@ fn e2e_search_returns_items() {
     assert_eq!(code, 0, "{}", out);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(
-        v["items"].as_array().unwrap().len() > 0,
+        !v["items"].as_array().unwrap().is_empty(),
         "expected at least 1 item"
     );
 }

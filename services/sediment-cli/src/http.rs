@@ -67,6 +67,7 @@ impl Http {
         Self::decode(resp).await
     }
 
+    #[allow(dead_code)]
     pub async fn raw_get(&self, path: &str) -> Result<Response> {
         let resp = self.request(Method::GET, path).send().await?;
         if !resp.status().is_success() {
@@ -109,6 +110,7 @@ impl Http {
 }
 
 /// Whether a status warrants a single retry with the server's Retry-After.
+#[allow(dead_code)]
 pub fn is_transient_retry(status: StatusCode) -> bool {
     matches!(status.as_u16(), 429 | 502 | 503 | 504)
 }

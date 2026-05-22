@@ -46,16 +46,6 @@ impl AppError {
             },
         }
     }
-
-    pub fn exit_code(&self) -> i32 {
-        match self.code {
-            401 => 2, // auth
-            403 => 3, // permission
-            404 => 4, // not found
-            429 => 5, // rate-limited
-            _ => 1,   // generic
-        }
-    }
 }
 
 impl Envelope {

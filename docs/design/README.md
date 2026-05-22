@@ -74,6 +74,7 @@ This rule is what keeps the SaaS unit economics defensible. Every breach of it a
 | 11 | **[deployment.md](./11-deployment.md)** | Fly + supervisord, Vercel, CD pipeline, secrets | Anything that touches prod |
 | 12 | **[source-kinds-catalog.md](./12-source-kinds-catalog.md)** | vault / product / harness / transcript / artifacts taxonomy | Configuring a new source |
 | 13 | **[tenant-catalog.md](./13-tenant-catalog.md)** | hypeproof-lab, kids-edu, acme-test, future | Onboarding a new tenant |
+| 14 | **[reliability-and-grounding.md](./14-reliability-and-grounding.md)** | Freshness axes, citation hard gates, reliability SLOs | Reliability work / dogfood gate |
 
 **Standalone specs** (not in numbered sequence — point-in-time deep dives):
 

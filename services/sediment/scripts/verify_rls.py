@@ -33,11 +33,25 @@ async def get_tenant_ids() -> tuple[str, str]:
 async def insert_marker(tid: str, marker: str) -> None:
     async with service_session() as s:
         await s.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tid})
-        await s.execute(text("""
+        row = await s.execute(text("""
             INSERT INTO artifacts (tenant_id, ref, type, body, frontmatter)
             VALUES (:tid, :ref, 'note', :body, '{}'::jsonb)
             ON CONFLICT (tenant_id, ref) DO UPDATE SET body = EXCLUDED.body, updated_at = now()
+            RETURNING id
         """), {"tid": tid, "ref": f"rls-test/{marker}.md", "body": f"marker={marker}"})
+        artifact_id = str(row.scalar_one())
+        await s.execute(text("""
+            DELETE FROM chunks
+            WHERE tenant_id = CAST(:tid AS uuid) AND artifact_id = CAST(:aid AS uuid)
+        """), {"tid": tid, "aid": artifact_id})
+        await s.execute(text("""
+            INSERT INTO chunks (tenant_id, artifact_id, seq, content)
+            VALUES (CAST(:tid AS uuid), CAST(:aid AS uuid), 0, :content)
+        """), {
+            "tid": tid,
+            "aid": artifact_id,
+            "content": f"RLS search marker {marker} tenant isolation canary",
+        })
 
 
 async def count_with_tenant(view_as: str, marker_a: str, marker_b: str) -> tuple[int, int]:

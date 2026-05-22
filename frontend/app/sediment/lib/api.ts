@@ -87,6 +87,22 @@ export type Freshness = {
   seconds_ago: number | null;
   stale: boolean;
   note?: string;
+  violations?: string[];
+  signals?: Record<
+    string,
+    {
+      ts: string | null;
+      seconds_ago: number | null;
+      stale: boolean;
+      payload?: unknown;
+    }
+  >;
+  counts?: {
+    artifacts: number;
+    chunks: number;
+    decisions: number;
+  };
+  slo?: Record<string, number>;
 };
 
 export async function getFreshness(): Promise<Freshness> {

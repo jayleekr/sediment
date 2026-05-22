@@ -475,6 +475,14 @@ phases:
         function: check_search_latency
         params: {max_p50_ms: 1000}
 
+      - id: P1-FRESH-01
+        title: "Vault freshness telemetry exposes capture/index/distill axes"
+        layer: L2
+        severity: major
+        type: python
+        module: validator.checks.p1_index
+        function: check_freshness_telemetry_contract
+
 
   # ════════════════════════════════════════════════════════════════
   # PHASE 2 — Chat MVP
@@ -953,6 +961,14 @@ phases:
         type: python
         module: validator.checks.p2_grounding
         function: check_answer_grounding
+
+      - id: P2-GROUND-02
+        title: "Citation hard gate rejects missing or invalid refs"
+        layer: L11
+        severity: blocker
+        type: python
+        module: validator.checks.p2_grounding
+        function: check_citation_hard_gate_contract
 
 
   # ════════════════════════════════════════════════════════════════
