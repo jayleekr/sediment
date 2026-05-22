@@ -1,0 +1,82 @@
+# Judge holdout — human-annotated faithfulness benchmark.
+#
+# Used by validator/checks/judge_calibration.py to measure
+# inter-rater agreement (Krippendorff α) between the LLM judge and
+# a human annotator. Refresh monthly.
+#
+# annotator scale (0.0 .. 1.0):
+#   1.0  — every claim verbatim or paraphrased from a citation
+#   0.75 — every claim supported, ≤1 minor inference
+#   0.5  — most claims supported, 1 plausible but uncited claim
+#   0.25 — several uncited / extrapolated claims
+#   0.0  — answer is mostly fabrication
+
+cases:
+  - id: H001
+    query: "지금 볼트에 몇 개의 artifact가 있어?"
+    answer: "볼트에는 총 192개의 artifact가 있으며 [1], 137개의 노트, 27개의 결정, 27개의 회의록, 1개의 리서치로 구성됩니다 [1]."
+    citations:
+      - type: summary
+        by_type:
+          - type: note
+            n: 137
+          - type: decision
+            n: 27
+          - type: meeting
+            n: 27
+          - type: research
+            n: 1
+    human_score: 1.0
+    annotator: jay
+    annotated_at: 2026-05-22
+    notes: "Every claim numeric and directly from the summary citation."
+
+  - id: H002
+    query: "가장 최근의 볼트는 언제꺼야"
+    answer: "가장 최근 항목은 meeting_notes/wizard_curriculum-20260420.md (2026-05-21 (반입일)) 입니다 [1]."
+    citations:
+      - type: meeting
+        rank: 1
+        ref: meeting_notes/wizard_curriculum-20260420.md
+        date: null
+        ingested_at: "2026-05-21 14:45:42.500541+00"
+    human_score: 1.0
+    annotator: jay
+    annotated_at: 2026-05-22
+    notes: "Deterministic freshness render. Perfect grounding."
+
+  - id: H003
+    query: "라이언이 4월에 쓴 mirror-loop 칼럼"
+    answer: "현재 vault에서 이 질문을 뒷받침할 근거를 찾지 못했습니다."
+    citations: []
+    human_score: 1.0
+    annotator: jay
+    annotated_at: 2026-05-22
+    notes: "Correct refusal — empty citations get empty answer per spec."
+
+  - id: H004
+    query: "최신 결정"
+    answer: "가장 최근 항목은 kids_edu_vault/wiki/decisions/track-a-primary-b-backup.md (2026-05-21 (반입일)) 입니다 [1]."
+    citations:
+      - type: decision
+        rank: 1
+        ref: kids_edu_vault/wiki/decisions/track-a-primary-b-backup.md
+        date: "2026-05-12"
+        ingested_at: "2026-05-21 14:45:42.500541+00"
+    human_score: 0.75
+    annotator: jay
+    annotated_at: 2026-05-22
+    notes: "Correct ref but date label '(반입일)' is wrong — content date 2026-05-12 IS available. Minor inference error: chose ingest date over content date."
+
+  - id: H005
+    query: "How many notes do we have?"
+    answer: "We have 137 notes [1]."
+    citations:
+      - type: summary
+        by_type:
+          - type: note
+            n: 137
+    human_score: 1.0
+    annotator: jay
+    annotated_at: 2026-05-22
+    notes: "Single fact, single citation, exact match."

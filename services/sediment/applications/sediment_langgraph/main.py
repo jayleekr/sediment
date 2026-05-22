@@ -100,7 +100,9 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
         retrieval_state["query"] = _augment_query_for_retrieval(state["query"], history)
 
         # Step through graph (non-streaming compute) — collect citations + intent
+        _retrieve_t0 = time.time()
         result = await GRAPH.ainvoke(retrieval_state, config={"configurable": {"thread_id": state["conv_id"]}})
+        retrieval_ms = int((time.time() - _retrieve_t0) * 1000)
         intent = result.get("intent", "library")
         citations = result.get("citations") or []
         # elaborate-mode: graph node returned the prior assistant turn body
@@ -124,6 +126,7 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
         # Cloudflare edge cuts the connection at ~60s idle. We yield a
         # status ping every 15s so the connection stays alive AND the CLI
         # can update its spinner label.
+        _compose_t0 = time.time()
         compose_task = asyncio.create_task(_compose_grounded_answer(
             state["query"], citations, intent, history=history,
             prior_answer=prior_answer,
@@ -141,6 +144,7 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
                 # awaiting the task one more time.
                 break
         answer, grounding = await compose_task
+        compose_ms = int((time.time() - _compose_t0) * 1000)
         accumulator.append(answer)
         for token in _chunk_answer_for_sse(answer):
             yield _sse("delta", {"v": token, "metadata": {"tag": "answer_word"}})
@@ -151,7 +155,19 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
         # it closes the connection, which can cancel the server-side generator
         # before the post-DONE `await _persist_message(...)` runs. Persisting
         # before DONE guarantees the row is written.
-        await _persist_message(identity.tenant_id, state["conv_id"], citations, accumulator)
+        await _persist_message(
+            identity.tenant_id,
+            state["conv_id"],
+            citations,
+            accumulator,
+            # sediment#16: enrich messages with the cohort/grounding fields
+            # that doc 15 (RAGAS gate, judge, etc.) needs to JOIN on.
+            intent=intent,
+            retrieval_ms=retrieval_ms,
+            compose_ms=compose_ms,
+            grounding=grounding,
+            task_tag=state.get("task_tag"),
+        )
 
         # Canonical 'query' activity event. Nothing else writes kind='query';
         # p5_dogfood.py + p5_activation.py both read it (it was previously
@@ -479,15 +495,56 @@ async def _compose_grounded_answer(
     }
 
 
-async def _persist_message(tenant_id: str, conv_id: str, citations: list[dict], tokens: list[str]):
+async def _persist_message(
+    tenant_id: str,
+    conv_id: str,
+    citations: list[dict],
+    tokens: list[str],
+    *,
+    intent: str | None = None,
+    retrieval_ms: int | None = None,
+    compose_ms: int | None = None,
+    grounding: dict | None = None,
+    task_tag: str | None = None,
+):
+    """Persist the assistant message + cohort/grounding metadata.
+
+    The new columns (intent / retrieval_ms / compose_ms / grounding_status /
+    grounding_valid_refs / grounding_invalid_refs / task_tag) come from
+    migration 002 (sediment#16). Keep them all kwargs so older call sites
+    (none, but defensively) still work — defaults are NULL/empty so they
+    don't pollute the existing aggregators.
+    """
     content = "".join(tokens).strip()
     if not content:
         return
+    g = grounding or {}
     async with app_session(tenant_id) as s:
         await s.execute(text("""
-            INSERT INTO messages (tenant_id, conv_id, role, content, citations)
-            VALUES (current_tenant_id(), :cid, 'assistant', :content, CAST(:cit AS jsonb))
-        """), {"cid": conv_id, "content": content, "cit": json.dumps(citations, default=str)})
+            INSERT INTO messages (
+                tenant_id, conv_id, role, content, citations,
+                intent, retrieval_ms, compose_ms,
+                grounding_status, grounding_valid_refs, grounding_invalid_refs,
+                task_tag
+            )
+            VALUES (
+                current_tenant_id(), :cid, 'assistant', :content, CAST(:cit AS jsonb),
+                :intent, :rms, :cms,
+                :gst, CAST(:gvr AS jsonb), CAST(:gir AS jsonb),
+                :task_tag
+            )
+        """), {
+            "cid": conv_id,
+            "content": content,
+            "cit": json.dumps(citations, default=str),
+            "intent": intent,
+            "rms": retrieval_ms,
+            "cms": compose_ms,
+            "gst": g.get("status"),
+            "gvr": json.dumps(g.get("valid_refs", []), default=str),
+            "gir": json.dumps(g.get("invalid_refs", []), default=str),
+            "task_tag": task_tag,
+        })
         await s.execute(text("UPDATE conversations SET updated_at = now() WHERE id = :cid"),
                         {"cid": conv_id})
 

@@ -1,0 +1,37 @@
+[
+  {
+    "query": "What is the mirror-loop lens about?",
+    "score": 0.0,
+    "raw": 0,
+    "reason": "pipeline error: Client error '404 Not Found' for url 'http://localhost:10101/v1/sediment/stream'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "citation_count": 0
+  },
+  {
+    "query": "doing-is-learning이 무슨 뜻이야?",
+    "score": 0.0,
+    "raw": 0,
+    "reason": "pipeline error: Client error '404 Not Found' for url 'http://localhost:10101/v1/sediment/stream'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "citation_count": 0
+  },
+  {
+    "query": "vanilla-wins lens 적용 사례 있나?",
+    "score": 0.0,
+    "raw": 0,
+    "reason": "pipeline error: Client error '404 Not Found' for url 'http://localhost:10101/v1/sediment/stream'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "citation_count": 0
+  },
+  {
+    "query": "humanities-hypothesis 핵심 주장",
+    "score": 0.0,
+    "raw": 0,
+    "reason": "pipeline error: Client error '404 Not Found' for url 'http://localhost:10101/v1/sediment/stream'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "citation_count": 0
+  },
+  {
+    "query": "Who is JY?",
+    "score": 0.0,
+    "raw": 0,
+    "reason": "pipeline error: Client error '404 Not Found' for url 'http://localhost:10101/v1/sediment/stream'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "citation_count": 0
+  }
+]
