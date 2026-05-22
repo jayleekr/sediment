@@ -148,6 +148,27 @@ sediment search "research" --limit 1 --format json | jq '.items[0].ref // "(no i
 Both should print real values (not error envelopes). If either fails,
 print the error and a hint.
 
+### Stage 7a — Configure self-update (optional but recommended)
+
+The Sediment repo is private. For `sediment update` to work, the user needs
+a GitHub token with read access. Two common ways:
+
+```bash
+# via gh CLI (auto-renews; recommended)
+echo 'export GITHUB_TOKEN=$(gh auth token)' >> ~/.zshrc
+source ~/.zshrc
+
+# or via personal access token
+# https://github.com/settings/tokens → Generate, scope: `repo` (read-only is fine)
+echo 'export GITHUB_TOKEN=ghp_xxxx' >> ~/.zshrc
+```
+
+Verify:
+```bash
+sediment update --check
+# {"current":"0.1.x","latest":"0.1.x","newer_available":false,...}
+```
+
 ### Stage 7 — Report
 
 Display a short summary card:

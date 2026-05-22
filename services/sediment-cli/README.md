@@ -137,6 +137,27 @@ Priority: `--flag` > env > stored default.
 | `SEDIMENT_BASE_URL` | Override the API URL (default: prod) |
 | `SEDIMENT_ACCOUNT` | Default account email |
 | `SEDIMENT_DEV_MODE` | Treat `SEDIMENT_BASE_URL` default as localhost:10100 |
+| `GITHUB_TOKEN` | Required by `sediment update` — the Sediment repo is private, so the GitHub Release API needs auth. Set via `export GITHUB_TOKEN=$(gh auth token)`. |
+
+---
+
+## Self-update
+
+```bash
+GITHUB_TOKEN=$(gh auth token) sediment update         # download + replace if newer
+GITHUB_TOKEN=$(gh auth token) sediment update --check # report only
+GITHUB_TOKEN=$(gh auth token) sediment update --force # reinstall same version
+```
+
+The update flow:
+
+1. GET `api.github.com/repos/jayleekr/sediment/releases/latest` (needs PAT)
+2. Compare tag (`sediment-cli-vX.Y.Z`) to `--version`
+3. If newer (or `--force`), download the right tarball for your triple via the api.github.com asset URL (`application/octet-stream` + Bearer)
+4. Verify sha256 against the asset's `digest` metadata
+5. Atomic-rename over the running binary (Unix preserves the old inode for the running process; new lookups get the new file)
+
+No telemetry, no daemon, no background polling. The user invokes it.
 
 ---
 

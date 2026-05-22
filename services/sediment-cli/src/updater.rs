@@ -36,7 +36,12 @@ pub struct Release {
 pub struct Asset {
     pub name: String,
     pub browser_download_url: String,
+    pub url: String, // api.github.com URL — required for private-repo downloads
     pub size: u64,
+    /// GitHub sets this on every asset upload — "sha256:HEX". Saves us a
+    /// separate sidecar fetch.
+    #[serde(default)]
+    pub digest: Option<String>,
 }
 
 #[derive(Debug)]
@@ -44,8 +49,9 @@ pub struct UpdateInfo {
     pub current: String,
     pub latest: String,
     pub release_url: String,
-    pub asset_url: Option<String>,
+    pub asset_url: Option<String>,  // api.github.com URL for download (private-repo safe)
     pub asset_name: Option<String>,
+    pub asset_digest: Option<String>, // "sha256:HEX" from GitHub's asset metadata
     pub is_newer: bool,
 }
 
@@ -70,15 +76,31 @@ pub async fn check_latest() -> Result<UpdateInfo> {
         .timeout(std::time::Duration::from_secs(20))
         .build()?;
     let url = format!("https://api.github.com/repos/{}/{}/releases/latest", OWNER, REPO);
-    let r: Release = client
+    let mut req = client
         .get(&url)
-        .header("Accept", "application/vnd.github+json")
+        .header("Accept", "application/vnd.github+json");
+    // The Sediment repo is private — anonymous GH API calls 404 against
+    // /releases/latest. We forward GITHUB_TOKEN if the user has one set
+    // (a PAT with `repo` scope works; `gh auth token` produces a usable
+    // one). Without a token, users see a clear hint instead of a bare 404.
+    if let Ok(tok) = std::env::var("GITHUB_TOKEN") {
+        if !tok.is_empty() {
+            req = req.bearer_auth(tok);
+        }
+    }
+    let resp = req
         .send()
         .await
-        .with_context(|| format!("GET {}", url))?
-        .error_for_status()?
-        .json()
-        .await?;
+        .with_context(|| format!("GET {}", url))?;
+    if resp.status().as_u16() == 404 {
+        return Err(anyhow!(
+            "GitHub API returned 404 for releases/latest. \
+             Either the repo is private and you need to set GITHUB_TOKEN \
+             (try: `export GITHUB_TOKEN=$(gh auth token)`), \
+             or no release has been published yet."
+        ));
+    }
+    let r: Release = resp.error_for_status()?.json().await?;
 
     // Parse "sediment-cli-vX.Y.Z" → X.Y.Z
     let latest = r
@@ -98,8 +120,14 @@ pub async fn check_latest() -> Result<UpdateInfo> {
         current,
         latest,
         release_url: r.html_url,
-        asset_url: asset.map(|a| a.browser_download_url.clone()),
+        // Use the api.github.com asset URL (`url` field) rather than the
+        // browser_download_url. For private repos, GitHub serves asset bytes
+        // ONLY through the API endpoint with Authorization + an explicit
+        // `Accept: application/octet-stream` header. browser_download_url
+        // 404s without a session cookie.
+        asset_url: asset.map(|a| a.url.clone()),
         asset_name: asset.map(|a| a.name.clone()),
+        asset_digest: asset.and_then(|a| a.digest.clone()),
         is_newer,
     })
 }
@@ -118,11 +146,18 @@ pub async fn perform_update(info: &UpdateInfo) -> Result<PathBuf> {
     // Download tarball into tempdir
     let tmpdir = tempfile::tempdir().context("creating tempdir for update")?;
     let tarball_path = tmpdir.path().join(info.asset_name.as_deref().unwrap_or("sediment.tar.gz"));
-    let mut resp = client
+    let mut req = client
         .get(asset_url)
-        .send()
-        .await?
-        .error_for_status()?;
+        // For api.github.com asset URL, this header tells GitHub to serve
+        // the raw bytes (not the JSON asset metadata).
+        .header("Accept", "application/octet-stream");
+    // Private-repo asset download also needs the PAT.
+    if let Ok(tok) = std::env::var("GITHUB_TOKEN") {
+        if !tok.is_empty() {
+            req = req.bearer_auth(tok);
+        }
+    }
+    let mut resp = req.send().await?.error_for_status()?;
     let mut file = fs::File::create(&tarball_path)?;
     while let Some(chunk) = resp.chunk().await? {
         file.write_all(&chunk)?;
@@ -130,23 +165,19 @@ pub async fn perform_update(info: &UpdateInfo) -> Result<PathBuf> {
     file.flush()?;
     drop(file);
 
-    // (Optional) fetch + verify sha256 sidecar — skip if missing (some releases
-    // may publish only the tarball). The asset name + .sha256 is the convention.
-    let sha_url = format!("{}.sha256", asset_url);
-    let sha_resp = client.get(&sha_url).send().await;
-    if let Ok(r) = sha_resp {
-        if r.status().is_success() {
-            let body = r.text().await.unwrap_or_default();
-            // sha256 sidecar is "HEXDIGEST  filename"
-            if let Some(expected) = body.split_whitespace().next() {
-                let actual = sha256_file(&tarball_path)?;
-                if !expected.eq_ignore_ascii_case(&actual) {
-                    return Err(anyhow!(
-                        "sha256 mismatch: expected={} actual={}",
-                        expected, actual
-                    ));
-                }
-            }
+    // Verify sha256 against the digest GitHub records for the uploaded
+    // asset. No separate sidecar fetch needed — the field comes from the
+    // /releases/latest response.
+    if let Some(expected_full) = &info.asset_digest {
+        let expected = expected_full
+            .strip_prefix("sha256:")
+            .unwrap_or(expected_full);
+        let actual = sha256_file(&tarball_path)?;
+        if !expected.eq_ignore_ascii_case(&actual) {
+            return Err(anyhow!(
+                "sha256 mismatch: expected={} actual={}",
+                expected, actual
+            ));
         }
     }
 
