@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { getToken, setToken } from "./lib/api";
+import { getToken, setToken, isTokenRejected } from "./lib/api";
 
 // Mirrors the NextAuth session's backend JWT into the existing
 // localStorage `curator.token` the 11 UI files already read. This is the
@@ -22,6 +22,16 @@ export default function AuthBridge() {
       return;
     }
     if (s.curatorToken && getToken() !== s.curatorToken) {
+      // Loop guard: api() marks tokens as `rejected` on 401. NextAuth's
+      // periodic session refetch produces a NEW session object even when
+      // curatorToken is unchanged → without this gate, AuthBridge sees
+      // localStorage empty (api cleared it) + session.curatorToken (still
+      // the bad JWT) → reinstalls → 401 → clearToken → repeat. Infinite
+      // reload. If the same JWT just got rejected, leave localStorage
+      // empty and let page.tsx render the sign-in card.
+      if (isTokenRejected(s.curatorToken)) {
+        return;
+      }
       setToken(s.curatorToken);
       // After sign-in lands, nudge the page to re-read the new token.
       //   - At /sediment landing → land on the chat shell.

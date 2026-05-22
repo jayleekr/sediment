@@ -22,6 +22,24 @@ export function clearToken() {
   if (typeof window !== "undefined") window.localStorage.removeItem("curator.token");
 }
 
+/** Mark a specific JWT as backend-rejected. AuthBridge checks this before
+ *  re-mirroring session.curatorToken into localStorage — without this guard,
+ *  NextAuth's periodic session refetch returns the same (now-bad) curatorToken,
+ *  AuthBridge re-installs it, api() gets 401 again, clearToken() fires, repeat
+ *  → infinite reload loop. Keyed on the token string itself so a fresh sign-in
+ *  (different JWT) clears the gate naturally. */
+export function markTokenRejected(token: string) {
+  if (typeof window === "undefined") return;
+  if (!token) return;
+  window.sessionStorage.setItem("curator.token_rejected", token);
+}
+
+export function isTokenRejected(token: string): boolean {
+  if (typeof window === "undefined") return false;
+  if (!token) return false;
+  return window.sessionStorage.getItem("curator.token_rejected") === token;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -42,8 +60,15 @@ export async function api<T = unknown>(
   const res = await fetch(`${base}${path}`, { ...init, headers });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    // Expired / invalid token → wipe it so the next render shows the sign-in form
-    if (res.status === 401) clearToken();
+    // Expired / invalid token → wipe it AND tell AuthBridge "this exact
+    // JWT got rejected, don't keep re-installing it from session". Without
+    // the markTokenRejected, NextAuth's session refetch produces a new
+    // session object every cycle even when curatorToken is unchanged;
+    // AuthBridge re-applies, api() rejects, repeat — infinite reload.
+    if (res.status === 401) {
+      if (token) markTokenRejected(token);
+      clearToken();
+    }
     throw new ApiError(res.status, `${res.status} ${res.statusText}: ${txt}`);
   }
   return res.json() as Promise<T>;
