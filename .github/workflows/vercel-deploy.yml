@@ -1,0 +1,75 @@
+name: Vercel deploy (frontend)
+
+# Pushes to main that touch the Next.js frontend trigger a production
+# deploy to the `sediment` Vercel project (under HypeProofLab team).
+#
+# Why this exists: the Vercel project's native git integration drifted
+# (sediment#vercel-cd). Rather than trust the dashboard, we own the CD
+# from CI — same as how Fly is deployed.
+#
+# Secrets required (set via `gh secret set …`):
+#   VERCEL_TOKEN       — classic personal access token, HypeProofLab scope
+#   VERCEL_ORG_ID      — team_D76brJMvqpfXDNVt3H7jv66D
+#   VERCEL_PROJECT_ID  — prj_60c2kX1pawC3jPdA0NX928ycfupQ
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/vercel-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  # Serialize deploys — Vercel queues them anyway, but this keeps the
+  # workflow tab tidy and prevents wasted minutes on superseded runs.
+  group: vercel-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel env + build
+        run: |
+          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+          vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy prebuilt to production
+        id: deploy
+        run: |
+          URL=$(vercel deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $URL"
+
+      - name: Smoke check — /sediment/device must 200
+        run: |
+          # The page that broke onboarding when it 404'd. Treat it as a
+          # canary for every deploy.
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 https://sediment.hypeproof-ai.xyz/sediment/device)
+            if [ "$code" = "200" ]; then
+              echo "PASS: /sediment/device → 200 at attempt $i"
+              exit 0
+            fi
+            echo "attempt $i: /sediment/device → $code"
+            sleep 5
+          done
+          echo "FAIL: /sediment/device did not return 200 after 10 attempts"
+          exit 1

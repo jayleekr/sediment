@@ -287,6 +287,19 @@ install_completion_bash() {
         dest="$HOME/.local/share/bash-completion/completions/sediment"
     fi
     "$1" completion bash > "$dest" 2>/dev/null && c_blue "  bash   → $dest"
+
+    # macOS ships bash 3.2 (2007) and the bash-completion@2 package isn't
+    # installed by default — without it, dropping a file in the XDG dir does
+    # nothing because nothing scans that dir. So we also append a direct
+    # source line to ~/.bashrc as a guaranteed loader. Idempotent.
+    if [[ -f "$HOME/.bashrc" ]] && ! grep -q "completions/sediment" "$HOME/.bashrc" 2>/dev/null; then
+        cat >> "$HOME/.bashrc" <<EOF
+
+# Sediment CLI tab completion (bash)
+[ -f "$dest" ] && . "$dest"
+EOF
+        c_blue "         (added source line to ~/.bashrc)"
+    fi
 }
 
 install_completion_fish() {
