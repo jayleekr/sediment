@@ -25,7 +25,25 @@ async def create(req: CreateConvReq, identity: Identity = Depends(require_identi
     return {"id": str(row[0]), "created_at": row[1].isoformat(), "title": req.title}
 
 
-_SEED_TITLES_SQL = "('sec-check', 'lab-priv', 'rls-check')"
+# Per design doc 15: hide test pollution from sidebar by default. The same
+# pattern list lives in scripts/cleanup_test_conversations.py — keep them in
+# sync if a new test prefix is introduced.
+_TEST_TITLE_PATTERNS = [
+    "sec-check", "lab-priv", "rls-check",                 # legacy seed
+    "kids-edu-smoke", "freshness-accuracy-",              # smoke runs
+    "citation-precision", "cross-tenant-iso",             # accuracy framework
+    "discord-reply-",                                     # gateway runner (removed)
+    "probe", "probe2", "test:",                           # human probes
+    "openclaw-",                                          # future OpenClaw bot
+]
+
+
+def _exclude_test_sql() -> str:
+    """SQL fragment to AND in: filters test-prefix titles."""
+    or_clauses = " OR ".join(
+        f"title ILIKE '{p}%'" for p in _TEST_TITLE_PATTERNS
+    )
+    return f" AND NOT ({or_clauses})"
 
 
 @router.get("")
@@ -33,13 +51,18 @@ async def list_convs(
     identity: Identity = Depends(require_identity),
     limit: int = 30,
     include_test: bool = Query(default=False, alias="include_test"),
+    include_archived: bool = Query(default=False, alias="include_archived"),
 ):
-    seed_filter = "" if include_test else f" AND title NOT IN {_SEED_TITLES_SQL}"
+    test_filter = "" if include_test else _exclude_test_sql()
+    # Per design 15: hide archived convs by default
+    archived_filter = "" if include_archived else " AND archived_at IS NULL"
     sql = f"""
-        SELECT id::text, user_id::text, title, created_at, updated_at
+        SELECT id::text, user_id::text, title, created_at, updated_at,
+               COALESCE(pinned, FALSE) AS pinned,
+               archived_at, temporary
         FROM conversations
-        WHERE 1=1{seed_filter}
-        ORDER BY updated_at DESC LIMIT :limit
+        WHERE 1=1{test_filter}{archived_filter}
+        ORDER BY pinned DESC, updated_at DESC LIMIT :limit
     """
     async with app_session(identity.tenant_id) as s:
         r = await s.execute(text(sql), {"limit": limit})

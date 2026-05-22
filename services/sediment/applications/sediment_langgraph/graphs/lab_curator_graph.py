@@ -185,7 +185,20 @@ async def node_router(state: CuratorState) -> dict:
     #    route to library (the column), not member lookup.
     # 3. member — only when no content-type keyword is present.
     # 4. decision — explicit "결정" / "action".
-    if _is_freshness_query(q):
+    # Priority 0a — `elaborate`: user is asking to expand on the IMMEDIATE
+    # prior turn ("디테일하게/더 자세히/explain more/expand on"). Must NOT
+    # re-search — reuses the prior assistant turn's citations and asks the
+    # LLM to expand each one. Added per UX critique: re-searching a short
+    # follow-up like "디테일하게 설명해" returns BM25-relevant-but-wrong
+    # content.
+    if _is_elaborate_query(q):
+        # Only route to elaborate if there IS a prior assistant turn to
+        # expand. Otherwise fall through to library (treat as a fresh ask).
+        if state.get("conv_id"):
+            intent = "elaborate"
+        else:
+            intent = "library"
+    elif _is_freshness_query(q):
         intent = "freshness"
     elif any(k in q for k in ["count", "summary", "총", "전체", "how many",
                               "몇 개", "몇개", "수", "신규", "지난 ", "최근 30",
@@ -203,6 +216,23 @@ async def node_router(state: CuratorState) -> dict:
         intent = "library"
     log.info("node.router", intent=intent)
     return {"intent": intent}
+
+
+# Elaborate-intent detector — user wants MORE DEPTH on what was just
+# discussed, not a new search. These follow-up patterns should reuse
+# prior citations + tell the LLM to expand each.
+_ELABORATE_KEYWORDS = [
+    "디테일하게", "더 자세히", "자세히 설명", "자세하게",
+    "구체적으로", "상세히", "상세하게",
+    "explain more", "expand on", "in more detail", "elaborate",
+    "go deeper", "tell me more",
+    "더 알려줘", "더 설명", "조금 더",
+]
+
+
+def _is_elaborate_query(ql: str) -> bool:
+    """Heuristic — true when the query is asking to expand the prior turn."""
+    return any(kw in ql for kw in _ELABORATE_KEYWORDS)
 
 
 # Freshness intent detector — keyword-based. Tight enough to avoid false
@@ -522,6 +552,59 @@ async def node_freshness_lookup(state: CuratorState) -> dict:
     }
 
 
+async def node_elaborate(state: CuratorState) -> dict:
+    """Reuse the immediate prior assistant turn's citations + tell the LLM
+    to expand each one. NO new retrieval. NO new search.
+
+    Why: short follow-ups like "디테일하게 설명해" are anaphoric — they
+    want depth on what was JUST discussed, not a new topic. RAG can't
+    distinguish "expand" from "search" — when retrieval re-fires on a
+    short query, RRF pulls semantically-related-but-tangential content
+    and the LLM dutifully answers about THAT (the 필라멘트리 incident).
+
+    Mechanic: load the MOST RECENT assistant message for this conv_id,
+    pull its citations array as-is, return them so compose can render
+    against the original sources. Compose's system prompt also reads
+    `state.intent == "elaborate"` and switches to expand-mode (drop the
+    "≤ 4 short paragraphs" cap).
+    """
+    from sqlalchemy import text
+    from lab_lib.db import app_session
+    tid = str(state["tenant_id"])
+    conv_id = state["conv_id"]
+
+    async with app_session(state["tenant_id"]) as s:
+        r = await s.execute(text("""
+            SELECT citations, content
+            FROM messages
+            WHERE tenant_id = CAST(:tid AS uuid)
+              AND conv_id = CAST(:cid AS uuid)
+              AND role = 'assistant'
+              AND citations IS NOT NULL
+              AND jsonb_array_length(citations) > 0
+            ORDER BY created_at DESC
+            LIMIT 1
+        """), {"tid": tid, "cid": conv_id})
+        row = r.first()
+
+    if not row:
+        # No prior cited turn → fall back to library search (caller
+        # routes accordingly via the empty `citations` signal)
+        log.info("node.elaborate.no_prior", conv=conv_id)
+        return {"citations": [], "elaborate_fell_back": True}
+
+    prior_citations = list(row[0] or [])
+    prior_answer = row[1] or ""
+    log.info("node.elaborate.reuse",
+             conv=conv_id, citations=len(prior_citations))
+    # Re-emit the prior citations so compose has them. Add a sentinel field
+    # so compose's prompt can detect this and switch to expand-mode.
+    return {
+        "citations": prior_citations,
+        "elaborate_prior_answer": prior_answer[:1500],   # cap for context
+    }
+
+
 async def node_meta_summary(state: CuratorState) -> dict:
     """Per-tenant artifact counts. Explicit tenant filter (see sediment#16)."""
     from sqlalchemy import text
@@ -562,7 +645,8 @@ def build_graph():
     g.add_node("library", node_library_search)
     g.add_node("member", node_member_lookup)
     g.add_node("meta", node_meta_summary)
-    g.add_node("freshness", node_freshness_lookup)   # sediment#16 #4
+    g.add_node("freshness", node_freshness_lookup)    # sediment#16 #4
+    g.add_node("elaborate", node_elaborate)           # UX critique 2026-05-22
     g.add_node("compose", node_compose)
     g.add_node("guardrails", node_guardrails)
     g.add_node("save", node_save)
@@ -579,11 +663,13 @@ def build_graph():
         "decision":  "library",   # Phase 4: separate node
         "meta":      "meta",
         "freshness": "freshness",
+        "elaborate": "elaborate",
     })
     g.add_edge("library", "compose")
     g.add_edge("member", "compose")
     g.add_edge("meta", "compose")
     g.add_edge("freshness", "compose")
+    g.add_edge("elaborate", "compose")
     g.add_edge("compose", "guardrails")
     g.add_edge("guardrails", "save")
     g.add_edge("save", END)

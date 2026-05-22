@@ -89,6 +89,13 @@ reliability_daily:
     - hypeproof-lab
     - kids-edu
 
+# Conversation retention sweep (design doc 15) — archive inactive convs
+# at 30 days, purge expired at 90 days, plus temporary-mode (1h archive
+# + 24h purge). Idempotent.
+retention_sweep:
+  enabled: true
+  schedule: "0 4 * * *"  # 04:00 UTC = 13:00 KST off-peak
+
 # Cost monitor — daily token rollup; alerts if exceeds budget.
 cost_monitor:
   schedule: "30 21 * * *"  # 06:30 KST

@@ -78,6 +78,35 @@ async def add_github_login_column_as_owner() -> None:
         await conn.close()
 
 
+async def ensure_retention_columns(s) -> None:
+    """Per design doc 15. Idempotent — safe to re-run on every deploy.
+
+    Adds: pinned, archived_at, temporary, purge_after to conversations.
+    Falls back to owner connection if RLS-subject role can't ALTER (same
+    pattern as ensure_github_login_column).
+    """
+    ddls = [
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS temporary BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS purge_after TIMESTAMPTZ",
+        "CREATE INDEX IF NOT EXISTS conversations_archived_at_idx ON conversations (archived_at)",
+        "CREATE INDEX IF NOT EXISTS conversations_purge_after_idx ON conversations (purge_after)",
+    ]
+    for ddl in ddls:
+        try:
+            await s.execute(text(ddl))
+        except SQLAlchemyError as exc:
+            await s.rollback()
+            # Fall back to owner connection (same pattern as github_login)
+            log.info("seed.schema.retention.fallback_owner", ddl=ddl[:80], err=str(exc)[:120])
+            owner_conn = await asyncpg.connect(migrations_db_url())
+            try:
+                await owner_conn.execute(ddl)
+            finally:
+                await owner_conn.close()
+
+
 async def ensure_github_login_column(s) -> None:
     """Keep old single-owner deploys migratable without breaking service roles."""
     try:
@@ -162,6 +191,8 @@ async def main():
         # Idempotent migration for DBs created before github_login existed
         # (fresh installs get it + the UNIQUE from init.sql).
         await ensure_github_login_column(s)
+        # Idempotent migration for conversation retention (design 15).
+        await ensure_retention_columns(s)
         tid = await upsert_tenant(s, settings.default_tenant_slug, settings.default_tenant_name)
         log.info("seed.tenant", id=tid, slug=settings.default_tenant_slug)
         for m in members:

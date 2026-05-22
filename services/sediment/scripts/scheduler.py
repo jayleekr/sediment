@@ -169,6 +169,16 @@ async def _run_health_check(alert_channel_name: str) -> None:
                     alert_channel=alert_channel_name)
 
 
+async def _run_retention_sweep() -> None:
+    """Daily archive + purge per design doc 15. Idempotent."""
+    from scripts.retention_sweep import amain as ret_amain
+    try:
+        rc = await ret_amain([])
+        log.info("scheduler.retention_sweep.done", rc=rc)
+    except Exception as e:
+        log.exception("scheduler.retention_sweep.error", err=str(e)[:200])
+
+
 async def _run_cost_monitor(daily_budget_usd: float, alert_channel_name: str) -> None:
     """Daily LLM cost rollup from the llm_calls table (real token counts).
 
@@ -398,6 +408,13 @@ async def main_async() -> int:
     _add_cron(scheduler, "cost_monitor", cm.get("schedule", "30 21 * * *"),
               _run_cost_monitor, float(cm.get("daily_budget_usd", 5.0)),
               cm.get("alert_channel_name", "sediment"))
+
+    # Retention sweep (design doc 15) — archive inactive convs, purge expired
+    rs = cfg.get("retention_sweep") or {}
+    if rs.get("enabled", True):
+        _add_cron(scheduler, "retention_sweep",
+                  rs.get("schedule", "0 4 * * *"),  # 13:00 KST
+                  _run_retention_sweep)
 
     # Daily digest — 09:00 KST = 00:00 UTC. Per-tenant; v1 loops over a
     # static list in cron.yaml. Move to DB-driven `tenants WHERE
