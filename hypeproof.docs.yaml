@@ -1,0 +1,7 @@
+product: sediment
+label: Sediment
+docs_root: docs/dev
+adr_root: docs/adr
+version_source: services/sediment/pyproject.toml
+portal_path: /members/sediment/docs
+required_score: 95
