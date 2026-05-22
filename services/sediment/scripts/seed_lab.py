@@ -108,15 +108,24 @@ async def ensure_retention_columns(s) -> None:
         "CREATE INDEX IF NOT EXISTS conversations_archived_at_idx ON conversations (archived_at)",
         "CREATE INDEX IF NOT EXISTS conversations_purge_after_idx ON conversations (purge_after)",
     ]
-    try:
-        owner_conn = await asyncpg.connect(migrations_db_url())
-    except Exception as e:
-        log.warning("seed.schema.retention.owner_conn_unavailable",
-                    err=str(e)[:200],
-                    hint="schema likely already applied; if not, run ALTERs manually")
-        return
-    try:
-        for ddl in ddls:
+    for ddl in ddls:
+        try:
+            await s.execute(text(ddl))
+            # DDL in the async session is transactional. Commit each step so a
+            # later permission failure cannot roll back columns needed by
+            # owner-connection fallback indexes.
+            await s.commit()
+        except SQLAlchemyError as exc:
+            await s.rollback()
+            log.info("seed.schema.retention.fallback_owner",
+                     ddl=ddl[:80], err=str(exc)[:120])
+            try:
+                owner_conn = await asyncpg.connect(migrations_db_url())
+            except Exception as e:
+                log.warning("seed.schema.retention.owner_conn_unavailable",
+                            ddl=ddl[:80], err=str(e)[:200],
+                            hint="schema likely already applied; if not, run ALTERs manually")
+                continue
             try:
                 await owner_conn.execute(ddl)
             except Exception as e:
@@ -124,8 +133,8 @@ async def ensure_retention_columns(s) -> None:
                 # manual migration ran; index errors are also benign
                 log.info("seed.schema.retention.ddl_warning",
                          ddl=ddl[:80], err=str(e)[:120])
-    finally:
-        await owner_conn.close()
+            finally:
+                await owner_conn.close()
 
 
 async def ensure_github_login_column(s) -> None:

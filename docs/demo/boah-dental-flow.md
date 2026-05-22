@@ -3,7 +3,7 @@
 **Status:** Draft 2026-05-21 PM. First concrete A archetype customer flow.
 **Linked:** [`ICP-segmentation.md`](../design/ICP-segmentation.md) §A 치과 archetype, [`voice-ocr-connector-spec.md`](../design/voice-ocr-connector-spec.md)
 **Warm lead context:** `products/ai-architect-academy/cases/boah-dental-2026-05-26-teaser.md` (5/26 맛빼기 세션 진행 중)
-**Memory:** [boah-dental-academy.md](../../../.claude/projects/-Users-jaylee-CodeWorkspace-hypeproof/memory/boah-dental-academy.md)
+**Memory:** `boah-dental-academy.md` (private HypeProof memory note; not published in docs)
 
 > **Anti-goal:** 환자 데이터 절대 안 만짐. 카톡 단톡방 자동 fetch 없음. 의료법 26조 + PIPA 100% 부합.
 > **Goal:** 원장 머릿속 운영 노하우 + 직원 회의 결정 + 운영 SOP를 자산화.

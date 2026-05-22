@@ -1,28 +1,34 @@
-Sediment Documentation
-======================
+Sediment 문서
+=============
 
-This site publishes the existing Sediment documentation from the repository.
-The canonical chat/session requirements are written in reStructuredText; most
-existing design notes remain Markdown and are rendered through MyST.
+Sediment는 HypeProof의 팀 메모리, 검색, 근거 기반 답변, 세션 보존을 위한
+제품입니다. 이 문서는 현재 저장소의 설계 문서, 요구사항, 리서치, dogfood
+기록을 배포 가능한 형태로 묶은 문서 사이트입니다.
 
-Canonical Specs
----------------
+언어 선택
+---------
+
+* `한국어 문서 <index.html>`_
+* `English documentation <en/index.html>`_
+
+핵심 스펙
+---------
 
 .. toctree::
    :maxdepth: 2
 
    specs/chat-session-requirements
 
-Research
---------
+리서치
+------
 
 .. toctree::
    :maxdepth: 1
 
    research/chat-session-benchmark-2026-05
 
-Design
-------
+설계
+----
 
 .. toctree::
    :maxdepth: 1
@@ -42,11 +48,15 @@ Design
    design/12-source-kinds-catalog
    design/13-tenant-catalog
    design/14-reliability-and-grounding
+   design/15-conversation-retention
+   design/15-self-improving-rag
+   design/16-query-event-store
    design/ICP-segmentation
    design/cli-deployment
    design/cli-multi-user-access
    design/cli-test-requirements
    design/voice-ocr-connector-spec
+   integration/from-openclaw
 
 Dogfood
 -------
@@ -63,8 +73,8 @@ Dogfood
    dogfood/sediment-dogfood-channel
    dogfood/trigger-bot-spec
 
-Runbooks and Guides
--------------------
+런북과 가이드
+-------------
 
 .. toctree::
    :maxdepth: 1
@@ -74,8 +84,13 @@ Runbooks and Guides
    runbooks/supabase-pro-upgrade
    demo/boah-dental-flow
 
-Diagrams
---------
+다이어그램
+----------
 
 * `Architecture diagram <architecture-diagram.html>`_
 * `System flow <system-flow.html>`_
+
+.. toctree::
+   :hidden:
+
+   en/index
