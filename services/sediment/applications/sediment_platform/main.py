@@ -14,7 +14,7 @@ from lab_lib.tenant_middleware import TenantContextMiddleware
 from .routers import (
     auth, conversations, library, members, ingest_proxy,
     feedback, costs, admin, onboarding, billing, cite_export, vault,
-    issuer,
+    issuer, signals,
 )
 
 configure_logging()
@@ -52,6 +52,9 @@ app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"]
 app.include_router(cite_export.router, prefix="/api/v1/events/cite-export", tags=["activation"])
 app.include_router(vault.router, prefix="/api/v1/vault", tags=["vault"])
 app.include_router(costs.router, prefix="/api/v1/costs", tags=["costs"])
+# sediment#15 Phase 2: implicit/explicit signal writer. Router already
+# carries its own /api/v1/signals prefix.
+app.include_router(signals.router)
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(onboarding.router, prefix="/api/v1/onboard", tags=["onboarding"])
 app.include_router(billing.router, prefix="/api/v1/billing", tags=["billing"])

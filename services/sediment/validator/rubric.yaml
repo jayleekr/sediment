@@ -1009,6 +1009,34 @@ phases:
         type: e2e
         flow_id: E2E-15
 
+      # ─── Faithfulness gate (sediment#15 Phase 1, sediment#16 §1) ────────────
+      # Runs the golden_queries.yaml set through prod/dev pipeline, judges
+      # each (question, answer, citations) triple with Claude Haiku, and
+      # gates on aggregate scores. Cost: ~$0.50 per full 40-query run.
+      # Designed to be gated by `SEDIMENT_FAITHFULNESS_ENABLED=1` in CI so
+      # PR-time builds without an API key skip cleanly.
+      - id: P2-FAITH-MEAN
+        title: "Faithfulness mean ≥ 0.75"
+        layer: L4
+        severity: blocker
+        type: python
+        module: validator.checks.p2_faithfulness
+        callable: check_faithfulness_mean
+        threshold: 0.75
+        limit: 40
+        enabled_env: SEDIMENT_FAITHFULNESS_ENABLED
+
+      - id: P2-FAITH-P25
+        title: "Faithfulness 25th percentile ≥ 0.50 (tail check)"
+        layer: L4
+        severity: major
+        type: python
+        module: validator.checks.p2_faithfulness
+        callable: check_faithfulness_p25
+        threshold: 0.50
+        limit: 40
+        enabled_env: SEDIMENT_FAITHFULNESS_ENABLED
+
 
   # ════════════════════════════════════════════════════════════════
   # PHASE 3 — Ingest Automation
