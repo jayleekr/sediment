@@ -115,3 +115,28 @@ queries:
     ]
     difficulty: medium
     lang: ko
+
+  # ─── Member-name short queries (2) ──────────────────────────
+  # Regression coverage for sediment#52 — short Korean entity-name queries
+  # were returning 0 hits in chat because hybrid BM25 used AND-joined
+  # plainto_tsquery. After switching to OR-joined to_tsquery these should
+  # surface the stakeholder/decision doc reliably.
+  - id: KE-011
+    q: "태봉호는 뭐하는자식이야"
+    expected_intent: library
+    ideal_refs: [
+      "kids_edu_vault/wiki/stakeholders",
+      "kids_edu_vault/wiki/decisions/production-loop-adoption.md",
+    ]
+    difficulty: medium
+    lang: ko
+
+  - id: KE-012
+    q: "BH가 누구야?"
+    expected_intent: library
+    ideal_refs: [
+      "kids_edu_vault/wiki/stakeholders",
+      "kids_edu_vault/wiki/decisions/production-loop-adoption.md",
+    ]
+    difficulty: medium
+    lang: ko

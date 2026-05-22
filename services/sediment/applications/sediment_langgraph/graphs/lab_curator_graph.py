@@ -378,7 +378,7 @@ async def node_library_search(state: CuratorState) -> dict:
               -- Defense-in-depth tenant filter (see sediment#16)
               AND a.tenant_id = CAST(:tid AS uuid)
               AND c.tenant_id = CAST(:tid AS uuid)
-            ORDER BY score DESC LIMIT 6;
+            ORDER BY score DESC LIMIT 8;
             """
             r = await s.execute(text(sql_bm25), {
                 "tsq": ts_or,
@@ -394,22 +394,33 @@ async def node_library_search(state: CuratorState) -> dict:
         # Hybrid path (vector + BM25 + RRF rerank)
         # Defense-in-depth: tenant filter on BOTH source CTEs (bm25 + vec)
         # so the fused set can never contain cross-tenant rows. See sediment#16.
+        #
+        # BM25 uses to_tsquery + OR-joined tokens (same as offline path) instead
+        # of plainto_tsquery (AND-joined). Why: AND between tokens silently
+        # drops every multi-token query where no single chunk contains all
+        # tokens — e.g. "BH가 누구야?" / "태봉호는 뭐하는자식이야" returned 0 BM25
+        # hits even though the entity name is in the corpus (sediment#52). vec
+        # alone can't recover on short Korean entity queries, so the BM25
+        # branch must do its share. ts_or="" (no tokens) → bm25 CTE returns 0
+        # rows and the fused result falls back to vec-only naturally.
+        ts_or = _build_ts_or_query(q)
         qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
         sql = """
         WITH bm25 AS (
           SELECT c.id, c.artifact_id, c.seq, c.content,
-                 row_number() OVER (ORDER BY ts_rank(c.tsv, plainto_tsquery('simple', :q)) DESC) AS rank
+                 row_number() OVER (ORDER BY ts_rank(c.tsv, to_tsquery('simple', :tsq)) DESC) AS rank
           FROM chunks c
-          WHERE c.tsv @@ plainto_tsquery('simple', :q)
+          WHERE CAST(:tsq AS text) <> ''
+            AND c.tsv @@ to_tsquery('simple', :tsq)
             AND c.tenant_id = CAST(:tid AS uuid)
-          LIMIT 30
+          LIMIT 50
         ),
         vec AS (
           SELECT c.id, c.artifact_id, c.seq, c.content,
                  row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rank
           FROM chunks c
           WHERE c.tenant_id = CAST(:tid AS uuid)
-          ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT 30
+          ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT 50
         ),
         fused AS (
           SELECT id, artifact_id, seq, content, sum(rrf) AS score FROM (
@@ -417,6 +428,15 @@ async def node_library_search(state: CuratorState) -> dict:
             UNION ALL
             SELECT id, artifact_id, seq, content, 1.0/(60+rank) AS rrf FROM vec
           ) u GROUP BY id, artifact_id, seq, content
+        ),
+        -- Per-artifact dedup: keep the highest-scoring chunk per artifact so a
+        -- single long doc can't dominate top-N. Matches the offline BM25 path
+        -- and the platform /search endpoint behavior.
+        deduped AS (
+          SELECT DISTINCT ON (artifact_id)
+                 id, artifact_id, seq, content, score
+          FROM fused
+          ORDER BY artifact_id, score DESC
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content,
                f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug,
@@ -427,13 +447,13 @@ async def node_library_search(state: CuratorState) -> dict:
                         || jsonb_build_object('missing', NOT (a.frontmatter ? 'provenance'))
                  ELSE NULL
                END AS decision_provenance
-        FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        FROM deduped f JOIN artifacts a ON a.id = f.artifact_id
         WHERE a.tenant_id = CAST(:tid AS uuid)
-        ORDER BY f.score DESC LIMIT 6;
+        ORDER BY f.score DESC LIMIT 8;
         """
-        r = await s.execute(text(sql), {"q": q, "qvec": qvec_str, "tid": tid})
+        r = await s.execute(text(sql), {"tsq": ts_or, "qvec": qvec_str, "tid": tid})
         citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
-    log.info("node.library.search", n=len(citations), mode="hybrid")
+    log.info("node.library.search", n=len(citations), mode="hybrid", ts_or_empty=(not ts_or))
     return {"citations": citations}
 
 
