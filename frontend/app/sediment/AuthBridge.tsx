@@ -23,8 +23,19 @@ export default function AuthBridge() {
     }
     if (s.curatorToken && getToken() !== s.curatorToken) {
       setToken(s.curatorToken);
-      // Re-enter so page.tsx re-reads the token and renders the app.
-      window.location.replace("/sediment");
+      // After sign-in lands, nudge the page to re-read the new token.
+      //   - At /sediment landing → land on the chat shell.
+      //   - Anywhere else (e.g. /sediment/device for device-flow approval,
+      //     /sediment/library) → KEEP the current path; reload so the
+      //     effect that gated on getToken() runs again. Previously this
+      //     hard-coded a redirect to /sediment, which broke device flow
+      //     (user signed in, got bounced to /sediment, never approved).
+      const path = window.location.pathname;
+      if (path === "/sediment" || path === "/sediment/") {
+        window.location.replace("/sediment");
+      } else {
+        window.location.reload();
+      }
     }
   }, [session]);
 

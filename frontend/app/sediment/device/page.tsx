@@ -94,11 +94,10 @@ function DeviceApproveInner() {
   }
 
   if (phase === "needs_auth") {
-    // The Sediment frontend uses NextAuth (GitHub provider). The CTA below
-    // dispatches to /api/auth/signin which is NextAuth's standard entry —
-    // it'll bring the user back to this exact URL after sign-in.
+    // Use NextAuth's client-side signIn() helper — calling it with an
+    // explicit provider + callbackUrl bypasses the /api/auth/signin UI
+    // (which has its own redirect handling that strips our query string).
     const cb = typeof window !== "undefined" ? window.location.href : "/sediment/device";
-    const signInHref = `/api/auth/signin?callbackUrl=${encodeURIComponent(cb)}`;
     return (
       <Wrapper title="Sign in to approve">
         <p className="mb-4 text-neutral-600">
@@ -114,12 +113,17 @@ function DeviceApproveInner() {
             pre-filled after sign-in.
           </p>
         )}
-        <a
-          href={signInHref}
+        <button
+          onClick={() => {
+            // Dynamic import — avoids forcing next-auth/react into every page.
+            import("next-auth/react").then(({ signIn }) => {
+              signIn("github", { callbackUrl: cb });
+            });
+          }}
           className="inline-flex items-center justify-center rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
         >
           Sign in with GitHub
-        </a>
+        </button>
       </Wrapper>
     );
   }
