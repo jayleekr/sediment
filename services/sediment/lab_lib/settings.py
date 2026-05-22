@@ -8,6 +8,16 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # DB
+    # Two-role split (sediment#16): app subject to RLS, service BYPASSRLS.
+    # LOCAL dev defaults point at the dockerized PG (container `curator-pg`,
+    # DB name `curator`, roles `curator_app/curator_service`). These names
+    # are legacy from the pre-2026-05-15 brand rename and are KEPT for the
+    # local docker stack (per CLAUDE.md: "DB cluster identity" — renaming
+    # the docker container would invalidate every dev's local volumes for
+    # no upside).
+    # PROD overrides both via fly secrets DATABASE_URL_APP/SERVICE which
+    # point at Supabase pooler with `sediment_app/sediment_service` roles
+    # (created 2026-05-22, NOT BYPASSRLS / BYPASSRLS respectively).
     database_url_app: str = "postgresql+asyncpg://curator_app:curator_app_local@localhost:5433/curator"
     database_url_service: str = "postgresql+asyncpg://curator_service:curator_service_local@localhost:5433/curator"
     redis_url: str = "redis://localhost:6380/0"
