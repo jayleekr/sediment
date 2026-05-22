@@ -11,9 +11,12 @@ Run: make seed
 from __future__ import annotations
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
+import asyncpg
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 # Resolve data/members.json by walking up from this script. The old hardcoded
 # parents[5] assumed the pre-split monorepo layout
@@ -41,6 +44,65 @@ from lab_lib.settings import settings  # noqa: E402
 
 configure_logging()
 log = get_logger("seed")
+
+
+async def has_member_column(s, column_name: str) -> bool:
+    r = await s.execute(text("""
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'members'
+            AND column_name = :column_name
+        )
+    """), {"column_name": column_name})
+    return bool(r.scalar_one())
+
+
+def migrations_db_url() -> str:
+    raw = os.environ.get("SEDIMENT_MIGRATIONS_DB_URL")
+    if raw:
+        return raw.replace("+asyncpg", "")
+    svc = settings.database_url_service.replace("+asyncpg", "")
+    return svc.replace(
+        "curator_service:curator_service_local",
+        "curator:curator_local_dev",
+    )
+
+
+async def add_github_login_column_as_owner() -> None:
+    conn = await asyncpg.connect(migrations_db_url())
+    try:
+        await conn.execute("ALTER TABLE members ADD COLUMN IF NOT EXISTS github_login TEXT")
+    finally:
+        await conn.close()
+
+
+async def ensure_github_login_column(s) -> None:
+    """Keep old single-owner deploys migratable without breaking service roles."""
+    try:
+        await s.execute(text(
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS github_login TEXT"
+        ))
+    except SQLAlchemyError as exc:
+        await s.rollback()
+        if await has_member_column(s, "github_login"):
+            log.info("seed.schema.github_login_present", ddl_skipped=True)
+            return
+        try:
+            await add_github_login_column_as_owner()
+            log.info("seed.schema.github_login_added", via="owner_connection")
+            return
+        except Exception as owner_exc:
+            if await has_member_column(s, "github_login"):
+                log.info("seed.schema.github_login_present", ddl_skipped=True)
+                return
+            exc.add_note(f"owner DDL fallback failed: {owner_exc!r}")
+        raise RuntimeError(
+            "members.github_login is missing and the current DB role cannot add it; "
+            "set SEDIMENT_MIGRATIONS_DB_URL or apply infra/init.sql/migrations "
+            "with owner credentials before seed_lab"
+        ) from exc
 
 
 async def upsert_tenant(s, slug: str, name: str) -> str:
@@ -99,9 +161,7 @@ async def main():
     async with service_session() as s:
         # Idempotent migration for DBs created before github_login existed
         # (fresh installs get it + the UNIQUE from init.sql).
-        await s.execute(text(
-            "ALTER TABLE members ADD COLUMN IF NOT EXISTS github_login TEXT"
-        ))
+        await ensure_github_login_column(s)
         tid = await upsert_tenant(s, settings.default_tenant_slug, settings.default_tenant_name)
         log.info("seed.tenant", id=tid, slug=settings.default_tenant_slug)
         for m in members:
