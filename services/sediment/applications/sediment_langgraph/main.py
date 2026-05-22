@@ -354,6 +354,47 @@ async def _compose_once(
     return "".join(tokens).strip()
 
 
+def _render_freshness_answer(citations: list[dict]) -> str:
+    """Render freshness citations as a deterministic Korean answer.
+
+    Each citation looks like:
+      {"type": "...", "rank": 1, "ref": "...", "date": "2026-..." or null,
+       "ingested_at": "2026-..."}
+
+    We surface content date when present, fall back to ingestion date with
+    a "(반입일)" qualifier so the user knows the difference. The first
+    citation is presented as the headline answer; the rest as context.
+    """
+    if not citations:
+        return "최근 항목을 찾지 못했습니다."
+
+    def _stamp(c: dict) -> str:
+        d = c.get("date")
+        if d:
+            return str(d)
+        ing = c.get("ingested_at")
+        if ing:
+            # Drop microseconds + tz for readability — keep YYYY-MM-DD
+            return f"{str(ing)[:10]} (반입일)"
+        return "날짜 미상"
+
+    top = citations[0]
+    top_ref = top.get("ref", "(no ref)")
+    top_date = _stamp(top)
+    lines = [
+        f"가장 최근 항목은 **{top_ref}** ({top_date}) 입니다 [1]."
+    ]
+    if len(citations) > 1:
+        lines.append("")
+        lines.append("다음 4개 항목 (최신순):")
+        for c in citations[1:5]:
+            rank = c.get("rank", "?")
+            ref = c.get("ref", "(no ref)")
+            stamp = _stamp(c)
+            lines.append(f"- [{rank}] {ref} — {stamp}")
+    return "\n".join(lines)
+
+
 async def _compose_grounded_answer(
     query: str,
     citations: list[dict],
@@ -377,6 +418,24 @@ async def _compose_grounded_answer(
             "citation_count": 0,
             "inline_refs": [],
             "valid_refs": [],
+            "invalid_refs": [],
+            "retry_count": 0,
+        }
+
+    # Freshness intent: skip the LLM entirely. The freshness node already
+    # returns artifacts ordered by COALESCE(date, ingested) DESC — we just
+    # render that list. Putting an LLM in front of it produces "I don't
+    # know" answers when content date is null (LLM can't pick rank-1 from
+    # a list with missing dates, even though SQL already did).
+    # Per node_freshness_lookup docstring: "compose step renders them as a
+    # list without LLM judgment" — this is that step.
+    if intent == "freshness":
+        answer = _render_freshness_answer(citations)
+        return answer, {
+            "status": "freshness_deterministic",
+            "citation_count": len(citations),
+            "inline_refs": list(range(1, len(citations) + 1)),
+            "valid_refs": list(range(1, len(citations) + 1)),
             "invalid_refs": [],
             "retry_count": 0,
         }
