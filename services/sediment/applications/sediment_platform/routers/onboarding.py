@@ -4,6 +4,7 @@ Creates a new tenant + initial owner member + default subscription.
 Authenticated via service token (NextAuth callback after sign-up flow).
 """
 from __future__ import annotations
+import secrets as _secrets
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
@@ -32,9 +33,32 @@ class OnboardResp(BaseModel):
 
 
 def _check_service_key(x_service_key: str | None):
-    """In production: verify against env. For local: just accept any non-empty."""
-    if not x_service_key:
-        raise HTTPException(status_code=401, detail="missing X-Service-Key")
+    """Verify the request bears the shared onboarding secret.
+
+    2026-05-23 FIX-B — previously this only checked the header was non-empty,
+    which made `/api/v1/onboard` an open admin-JWT minting service. Two
+    reviewers independently flagged it CRITICAL (output/reviews/.../REPORT.md
+    #4). Now:
+      - prod (secret set, non-empty): constant-time compare via secrets.compare_digest
+      - dev (secret empty AND header empty): accept (legacy local behavior)
+      - dev (secret empty BUT header present): accept the header verbatim
+        — keeps existing dev scripts that send any string working, but the
+        explicit empty-secret dev mode is the only path that doesn't compare.
+    Production path is locked by validate_runtime_secrets() at app boot —
+    if SEDIMENT_ONBOARDING_SECRET is empty in prod, the process won't start.
+    """
+    expected = settings.sediment_onboarding_secret
+    if not expected:
+        # Dev path — no secret configured. Still require *something* to keep
+        # the route from being trivially scriptable by accident.
+        if not x_service_key:
+            raise HTTPException(status_code=401, detail="missing X-Service-Key")
+        return
+    # Prod path — constant-time compare. compare_digest needs bytes/str of
+    # equal length to avoid leaking length; both args are str so equal-length
+    # branch isn't required here.
+    if not x_service_key or not _secrets.compare_digest(x_service_key, expected):
+        raise HTTPException(status_code=401, detail="invalid X-Service-Key")
 
 
 @router.post("", response_model=OnboardResp)

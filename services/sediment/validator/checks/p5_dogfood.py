@@ -30,11 +30,20 @@ from sqlalchemy import text
 
 from lab_lib.db import service_session
 
-REPO_ROOT = Path(__file__).resolve().parents[6]
-PROD_ROOT = REPO_ROOT / "products" / "sediment"
-OUT_DIR = PROD_ROOT / "output" / "dogfood"
-VAL_DIR = PROD_ROOT / "output" / "validation"
-LEARNINGS = PROD_ROOT / "harness" / "ralph" / "LEARNINGS.md"
+# Anchor on infra/init.sql — survives layout changes (2026-05-23 fix).
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        if (p / "infra" / "init.sql").is_file():
+            return p
+    return here.parents[4]
+
+
+REPO_ROOT = _repo_root()
+PROD_ROOT = REPO_ROOT  # Legacy alias.
+OUT_DIR = REPO_ROOT / "output" / "dogfood"
+VAL_DIR = REPO_ROOT / "output" / "validation"
+LEARNINGS = REPO_ROOT / "harness" / "ralph" / "LEARNINGS.md"
 
 
 def _criterion(name: str, passed: bool, value: Any, target: Any, note: str = "") -> dict:

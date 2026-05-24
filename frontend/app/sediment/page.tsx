@@ -5,9 +5,14 @@ import Link from "next/link";
 import { signIn as githubSignIn } from "next-auth/react";
 import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } from "./lib/api";
 
-const ENABLE_DEV_AUTH =
-  process.env.NODE_ENV === "development" ||
-  process.env.NEXT_PUBLIC_SEDIMENT_DEV_AUTH === "1";
+// FIX-B 2026-05-23: previously this also accepted NEXT_PUBLIC_SEDIMENT_DEV_AUTH=1
+// which is inlined into the production bundle — a single Vercel env misconfig
+// opened auth bypass (default email in input is jay.lee@sonatus.com, backend
+// accepts /api/v1/auth/dev-token and returns a real admin JWT).
+// Now: only NODE_ENV=development enables the dev-token flow. There is no
+// production-side toggle. To re-enable for staging, gate via server-only env
+// (SEDIMENT_DEV_AUTH without NEXT_PUBLIC_ prefix) read in a route handler.
+const ENABLE_DEV_AUTH = process.env.NODE_ENV === "development";
 
 export default function CuratorHome() {
   const [mounted, setMounted] = useState(false);

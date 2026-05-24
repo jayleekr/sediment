@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "description": "Catastrophic-blast-radius files protected from Edit/Write. Referenced by CLAUDE.md. Created during gstack-full review 2026-05-23.",
+  "patterns": [
+    {
+      "glob": "infra/init.sql",
+      "reason": "RLS schema DDL. Wrong edit = cross-tenant data leak. Parent session only, document the why."
+    },
+    {
+      "glob": ".env",
+      "reason": "API keys, secrets. Never edit via agent."
+    },
+    {
+      "glob": ".env.*",
+      "reason": "Environment overrides including .env.local, .env.production. Same blast radius as .env."
+    },
+    {
+      "glob": "services/sediment/applications/sediment_platform/routers/billing.py",
+      "reason": "Stripe webhook handler. Wrong edit = revenue/security incident."
+    },
+    {
+      "glob": "**/credentials*",
+      "reason": "Credential files of any shape."
+    },
+    {
+      "glob": "**/*.pem",
+      "reason": "Private keys / TLS certs."
+    },
+    {
+      "glob": "**/*.key",
+      "reason": "Private keys."
+    }
+  ]
+}

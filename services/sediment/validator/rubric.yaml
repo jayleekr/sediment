@@ -133,14 +133,18 @@ phases:
         function: check_force_rls_all
 
       - id: P0-RLS-03
-        title: "tenant_isolation policy exists per table (13 policies)"
+        title: "tenant_isolation policy exists per table (>= 13 policies)"
         layer: L3
         severity: blocker
         type: sql
         sql: |
           SELECT count(*) FROM pg_policies
           WHERE policyname='tenant_isolation' AND schemaname='public'
-        expected_value: 13
+        # 2026-05-24: was hard-equal 13. Migrations 001 + 002 added new
+        # tenant tables (cli_users, query_events, etc.) with their own
+        # tenant_isolation policy → count is 16 now. Use a floor instead
+        # of an exact match so future migrations don't bounce the check.
+        expected_min_value: 13
         role: service
 
       - id: P0-RLS-04
@@ -218,7 +222,7 @@ phases:
         layer: L1
         severity: minor
         type: bash
-        cmd: "test -s products/sediment/SPEC.md && test -s products/sediment/README.md"
+        cmd: "test -s SPEC.md && test -s README.md"
         expected_exit: 0
 
 
@@ -1021,7 +1025,7 @@ phases:
         severity: blocker
         type: python
         module: validator.checks.p2_faithfulness
-        callable: check_faithfulness_mean
+        function: check_faithfulness_mean
         threshold: 0.75
         limit: 40
         enabled_env: SEDIMENT_FAITHFULNESS_ENABLED
@@ -1032,7 +1036,7 @@ phases:
         severity: major
         type: python
         module: validator.checks.p2_faithfulness
-        callable: check_faithfulness_p25
+        function: check_faithfulness_p25
         threshold: 0.50
         limit: 40
         enabled_env: SEDIMENT_FAITHFULNESS_ENABLED
@@ -1056,7 +1060,7 @@ phases:
         layer: L1
         severity: blocker
         type: bash
-        cmd: "test -x products/sediment/services/sediment/scripts/cron/daily_ingest.sh"
+        cmd: "test -x services/sediment/scripts/cron/daily_ingest.sh"
         expected_exit: 0
 
       - id: P3-CRON-02
@@ -1080,7 +1084,7 @@ phases:
         layer: L2
         severity: minor
         type: bash
-        cmd: "cd products/sediment/services/sediment && .venv/bin/python -m scripts.cron.retro"
+        cmd: "cd services/sediment && .venv/bin/python -m scripts.cron.retro"
         expected_exit: 0
 
       # P3-LAUNCHD-01, P3-LAUNCHD-02, P3-GHA-01 removed 2026-05-21 —

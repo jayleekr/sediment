@@ -7,8 +7,19 @@ from sqlalchemy import text
 from lab_lib.db import service_session
 from ..types import CheckResult
 
-REPO_ROOT = Path(__file__).resolve().parents[6]  # checks→validator→sediment→services→sediment→products→mvp
-PROD_ROOT = REPO_ROOT / "products" / "sediment"
+# Anchor on infra/init.sql instead of parents[N] — survives layout changes
+# (2026-05-23 fix: parents[6] resolved 2 above repo root after products/sediment
+# → repo-root rename, making PROD_ROOT a non-existent path).
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        if (p / "infra" / "init.sql").is_file():
+            return p
+    return here.parents[4]
+
+
+REPO_ROOT = _repo_root()
+PROD_ROOT = REPO_ROOT  # Legacy alias — products/sediment/ no longer exists as a separate dir.
 
 TENANT_TABLES = [
     "tenants", "subscriptions", "integrations", "members",

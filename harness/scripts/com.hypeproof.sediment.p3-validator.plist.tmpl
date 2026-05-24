@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template — rendered by install-p3-cron.sh at install time.
+  Placeholders: __REPO_ROOT__, __HOME__, __LOG_DIR__
+  Do NOT load this file directly via launchctl. Use:
+    bash harness/scripts/install-p3-cron.sh
+-->
 <plist version="1.0">
 <dict>
   <key>Label</key>
@@ -7,7 +13,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/jaylee/CodeWorkspace/hypeproof/.claude/worktrees/mvp/products/sediment/harness/scripts/run-p3-validator.sh</string>
+    <string>__REPO_ROOT__/harness/scripts/run-p3-validator.sh</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
@@ -17,17 +23,17 @@
     <integer>15</integer>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/jaylee/CodeWorkspace/hypeproof/cron-reports/curator-p3-out.log</string>
+  <string>__LOG_DIR__/sediment-p3-out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/jaylee/CodeWorkspace/hypeproof/cron-reports/curator-p3-err.log</string>
+  <string>__LOG_DIR__/sediment-p3-err.log</string>
   <key>WorkingDirectory</key>
-  <string>/Users/jaylee/CodeWorkspace/hypeproof/.claude/worktrees/mvp</string>
+  <string>__REPO_ROOT__</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key>
-    <string>/Users/jaylee</string>
+    <string>__HOME__</string>
     <key>PATH</key>
-    <string>/Users/jaylee/.local/bin:/Users/jaylee/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>__HOME__/.local/bin:__HOME__/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
 </dict>
 </plist>

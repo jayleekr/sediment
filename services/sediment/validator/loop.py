@@ -31,14 +31,24 @@ from .types import PhaseReport
 configure_logging()
 log = get_logger("validator.loop")
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+def _find_repo_root() -> Path:
+    """Anchor on init.sql instead of parents[N] — survives layout changes."""
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        if (p / "infra" / "init.sql").is_file():
+            return p
+    env = os.environ.get("SEDIMENT_REPO_ROOT")
+    return Path(env) if env else here.parents[3]
+
+
+REPO_ROOT = _find_repo_root()
 
 
 async def loop(phase_id: str, max_iter: int = 50, target_score_pct: float = 95,
                stall_window: int = 5, stall_min_delta: float = 2.0,
                cost_budget_usd: float = 50.0) -> int:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    out_dir = Path(__file__).resolve().parents[2].parent / "output" / "validation" / f"loop-{phase_id}-{ts}"
+    out_dir = REPO_ROOT / "output" / "validation" / f"loop-{phase_id}-{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     history_path = out_dir / "history.csv"

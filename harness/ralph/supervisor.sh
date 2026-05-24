@@ -26,7 +26,7 @@ unset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_EXPERIMENTAL_AGENT
       OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES OTEL_SERVICE_NAME 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RALPH="$SCRIPT_DIR/ralph.sh"
 LOG_DIR="$REPO_ROOT/output/ralph"
 mkdir -p "$LOG_DIR"
@@ -40,6 +40,11 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --max-restarts) MAX_RESTARTS="$2"; shift 2 ;;
     --cooldown)     COOLDOWN="$2"; shift 2 ;;
+    # CLAUDE.md documents `supervisor.sh --max-iter 50 --cost-budget 20`.
+    # Those flags belong to ralph.sh — accept them here and pass through
+    # so the documented invocation works end-to-end.
+    --max-iter|--cost-budget|--sleep|--model|--resume|--dry-run)
+                    break ;;
     *)              break ;;
   esac
 done
@@ -131,7 +136,7 @@ while [ "$restart_count" -lt "$MAX_RESTARTS" ]; do
           fi
           echo
           echo "## Recovery suggestions"
-          echo "1. Check service health: \`./products/sediment/harness/monitor/watch.sh\`"
+          echo "1. Check service health: \`./harness/monitor/watch.sh\`"
           echo "2. Run /curator:medic for diagnosis"
           echo "3. Check ANTHROPIC_API_KEY validity"
           echo "4. Resume after fixing: \`./supervisor.sh --max-restarts 5\`"

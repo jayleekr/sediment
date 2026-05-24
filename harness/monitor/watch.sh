@@ -13,8 +13,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-RALPH_DIR="$REPO_ROOT/products/sediment/harness/ralph"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RALPH_DIR="$REPO_ROOT/harness/ralph"
 VALIDATION_DIR="$REPO_ROOT/output/validation"
 
 INTERVAL="${INTERVAL:-3}"

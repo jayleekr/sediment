@@ -25,11 +25,11 @@ unset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_EXPERIMENTAL_AGENT
       OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES OTEL_SERVICE_NAME 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-UX_DIR="$REPO_ROOT/products/sediment/output/ux"
-SVC="$REPO_ROOT/products/sediment/services/sediment"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+UX_DIR="$REPO_ROOT/output/ux"
+SVC="$REPO_ROOT/services/sediment"
 STATE_FILE="$UX_DIR/STATE.json"
-PROGRESS_MD="$REPO_ROOT/products/sediment/UX_PROGRESS.md"
+PROGRESS_MD="$REPO_ROOT/UX_PROGRESS.md"
 SUP_LOG="$UX_DIR/supervisor.log"
 INNER_LOG="$UX_DIR/inner.log"
 INNER_PID_FILE="$UX_DIR/inner.pid"

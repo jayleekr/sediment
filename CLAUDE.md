@@ -185,6 +185,7 @@ the workflow itself works, plus high-volume bulk fixes.
 | Cookie-consent modal blocks E2E clicks | `e2e_runner.py` pre-seeds `localStorage.cookie_consent` via `add_init_script` |
 | Parent Claude env leaks to child claude -p | supervisor.sh + ralph.sh `unset` first action |
 | In-coder gate under-measures delta | gate auto-bounces uvicorn services first |
+| `fly ssh console -C` hangs non-interactively | use `bash harness/scripts/fly-exec.sh "<cmd>"` or `make prod-run` — wraps `fly machine exec` (sediment#54) |
 
 ---
 

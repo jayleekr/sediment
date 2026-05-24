@@ -177,16 +177,77 @@ pub async fn perform_update(info: &UpdateInfo) -> Result<PathBuf> {
         }
     }
 
-    // Extract tarball
+    // Extract tarball with path-traversal protection.
+    //
+    // 2026-05-23 FIX-D (REPORT.md CRIT #8): previously this shelled out to
+    // `tar -xzf` which accepts any path inside the archive — a malicious
+    // tarball with `../../usr/local/bin/curl` would replace system binaries
+    // outside extract_dir. The sha256 check only protects transport, not a
+    // compromised publisher. Now we extract in-process via the `tar` crate
+    // and reject any entry whose path escapes extract_dir.
     let extract_dir = tmpdir.path().join("extracted");
     fs::create_dir(&extract_dir)?;
-    let extract_status = std::process::Command::new("tar")
-        .args(["-xzf", tarball_path.to_str().unwrap()])
-        .arg("-C")
-        .arg(&extract_dir)
-        .status()?;
-    if !extract_status.success() {
-        return Err(anyhow!("tar -xzf failed"));
+    {
+        use flate2::read::GzDecoder;
+        use tar::Archive;
+        let tarball_file = fs::File::open(&tarball_path)
+            .with_context(|| format!("opening {}", tarball_path.display()))?;
+        let mut archive = Archive::new(GzDecoder::new(tarball_file));
+        // Per-entry validation. The `tar` crate's Entry::path() returns a
+        // sanitized path, but we re-check against the destination after
+        // joining to absolutely guarantee no escape via "..", absolute
+        // paths, or symlinks pointing outside extract_dir.
+        let extract_dir_canon = fs::canonicalize(&extract_dir)
+            .with_context(|| format!("canonicalize {}", extract_dir.display()))?;
+        for entry_result in archive.entries()? {
+            let mut entry = entry_result.context("reading tar entry")?;
+            let path_in_tar = entry.path().context("reading tar entry path")?.into_owned();
+            // Reject absolute paths and any path containing "..".
+            if path_in_tar.is_absolute() {
+                return Err(anyhow!(
+                    "tarball contains absolute path entry: {} — refusing to extract",
+                    path_in_tar.display()
+                ));
+            }
+            for component in path_in_tar.components() {
+                if matches!(component, std::path::Component::ParentDir) {
+                    return Err(anyhow!(
+                        "tarball entry escapes extract dir: {} — refusing to extract",
+                        path_in_tar.display()
+                    ));
+                }
+            }
+            // Compute the on-disk target + ensure it stays under extract_dir.
+            let dest = extract_dir.join(&path_in_tar);
+            // Resolve dest's parent (must exist or be creatable inside extract_dir).
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("creating dir {}", parent.display())
+                })?;
+                let parent_canon = fs::canonicalize(parent).with_context(|| {
+                    format!("canonicalize {}", parent.display())
+                })?;
+                if !parent_canon.starts_with(&extract_dir_canon) {
+                    return Err(anyhow!(
+                        "tar entry would write outside extract dir: {} → {}",
+                        path_in_tar.display(),
+                        parent_canon.display()
+                    ));
+                }
+            }
+            // Reject symlinks entirely — a release tarball has no business
+            // including them, and they're another escape vector.
+            let entry_type = entry.header().entry_type();
+            if entry_type.is_symlink() || entry_type.is_hard_link() {
+                return Err(anyhow!(
+                    "tarball contains symlink/hardlink: {} — refusing to extract",
+                    path_in_tar.display()
+                ));
+            }
+            entry
+                .unpack(&dest)
+                .with_context(|| format!("unpacking {}", dest.display()))?;
+        }
     }
 
     // The tarball convention: one binary named "sediment" at the archive root.

@@ -19,98 +19,23 @@ from lab_lib.logging import get_logger
 log = get_logger("graph")
 
 
-# English stop-words filtered out of BM25 OR-tsquery. PostgreSQL's
-# to_tsquery('simple', ...) does NOT remove stop-words, so without this filter
-# common tokens like "is", "the", "what", "about" generate spurious matches
-# against any document containing them — drowning out real signal in long
-# corpora and crashing recall@3. See P1-GOLDEN-RAG-01.
-# Korean tokens (가-힣 range) are NEVER filtered — they're rare and meaningful.
-_STOP_WORDS = frozenset({
-    "is", "the", "a", "an", "of", "in", "at", "to", "for", "on", "with", "by",
-    "about", "what", "how", "why", "when", "where", "which", "this", "that",
-    "are", "was", "were", "be", "been", "being", "have", "has", "had",
-    "do", "does", "did", "will", "would", "could", "should", "may", "might",
-    "its", "it", "and", "or", "if", "not", "but", "so", "too", "also",
-    "can", "more", "my", "me", "we", "you", "he", "she", "they", "their",
-})
-
-# Korean particle suffixes stripped when normalizing BM25 tokens.
-# "라이언이" → "라이언", "4월에" → "4월". Ordered longest-first to avoid partial strips.
-# Only strips when the remaining base form is >= 2 chars. See P1-RAG-KO-particle.
-_KO_PARTICLE_SUFFIXES: tuple[str, ...] = (
-    "입니다", "했던",
-    "하는", "에서", "에게", "으로", "이다",
-    "한", "쓴",
-    "이", "가", "을", "를", "의", "에", "로", "는", "은", "와", "과",
+# WO-7 2026-05-23: search helpers extracted to lab_lib.search_utils.
+# The 130 lines previously here were verbatim-duplicated with library.py
+# (and the workspace_mcp.py zero-vector guard was MISSING — a confirmed
+# LEARNINGS-class drift). Local underscore aliases preserved so any
+# remaining call sites continue to resolve without further edits.
+from lab_lib.search_utils import (
+    _STOP_WORDS,
+    _KO_PARTICLE_SUFFIXES,
+    strip_korean_particles as _strip_korean_particles,
+    _TYPE_HINT_MAP,
+    detect_query_type as _detect_query_type,
+    _PROJECT_HINT_MAP,
+    detect_project_path as _detect_project_path,
+    slug_regex as _slug_regex,
+    build_ts_or_query as _build_ts_or_query,
+    is_zero_vector,
 )
-
-
-def _strip_korean_particles(tok: str) -> str | None:
-    """Return tok with one trailing Korean particle removed, or None if no match."""
-    for p in _KO_PARTICLE_SUFFIXES:
-        if tok.endswith(p):
-            base = tok[: -len(p)]
-            if len(base) >= 2:
-                return base
-    return None
-
-
-# Maps query keywords to artifact type for BM25 type-boosting (3x weight).
-_TYPE_HINT_MAP: dict[str, str] = {
-    "칼럼": "column",
-    "column": "column",
-    "리서치": "research",
-    "research": "research",
-    "daily": "research",
-    "소설": "novel",
-    "novel": "novel",
-    # Research-typical signals — "evaluation harness", "agents", "benchmark"
-    # phrasing comes from daily research notes far more often than columns.
-    # Gives a tie-breaker boost to research/ for queries like GQ-017.
-    "evaluation": "research",
-    "harness": "research",
-    "benchmark": "research",
-    "agents": "research",
-}
-
-
-# Maps project keywords (KO/EN) to a substring of artifacts.ref. When a query
-# names a project explicitly, boost artifacts under that path. Solves the
-# "동아일보 관련 칼럼이나 제안" → products/donga-roi class of failures where the
-# project nickname isn't in the document body verbatim.
-_PROJECT_HINT_MAP: dict[str, str] = {
-    "donga": "donga", "동아": "donga", "동아일보": "donga",
-    "academy": "ai-architect-academy", "아카데미": "ai-architect-academy",
-    "curator": "ai-curator", "큐레이터": "ai-curator",
-    "simulacra": "simulacra", "시뮬라크라": "simulacra",
-    "roadmap": "hypeproof-roadmap", "로드맵": "hypeproof-roadmap",
-    "validation": "sediment/VALIDATION", "validator": "sediment/VALIDATION",
-}
-
-
-def _detect_project_path(q: str) -> str:
-    """Return a substring of `artifacts.ref` implied by the query, or ''."""
-    ql = q.lower()
-    for kw, path in _PROJECT_HINT_MAP.items():
-        if kw in ql:
-            return path
-    return ""
-
-
-def _slug_regex(q: str) -> str:
-    """POSIX regex of alphanumeric query tokens (>=3 chars) for filename match.
-
-    A token in the query that appears in `a.slug` or the last segment of
-    `a.ref` (e.g. "VALIDATION_PLAN" matches "validation"; "2026Q2" matches
-    "2026") is a near-certain signal of intent. We boost those hits 2x to
-    overcome BM25 score plateaus on documents that don't repeat their own
-    name in the body. Use a sentinel that never matches when no tokens exist
-    (instead of NULL — keeps the SQL parameter type stable for asyncpg).
-    """
-    tokens = re.findall(r"[A-Za-z0-9]{3,}", q)
-    if not tokens:
-        return "___NEVER___"
-    return "(" + "|".join(re.escape(t.lower()) for t in tokens) + ")"
 
 
 def _normalize_citation_row(row: dict) -> dict:
@@ -123,19 +48,6 @@ def _normalize_citation_row(row: dict) -> dict:
             except json.JSONDecodeError:
                 row[key] = {"raw": value, "parse_error": True}
     return row
-
-
-def _detect_query_type(q: str) -> Optional[str]:
-    """Return artifact-type hint implied by the query, or None.
-
-    Uses token-based matching (not substring) to avoid false positives like
-    "칼럼이나" (= column-or) triggering the column boost for non-column queries.
-    """
-    tokens = set(re.findall(r"[A-Za-z0-9가-힣]+", q.lower()))
-    for keyword, atype in _TYPE_HINT_MAP.items():
-        if keyword in tokens:
-            return atype
-    return None
 
 
 class CuratorState(TypedDict, total=False):
@@ -251,51 +163,8 @@ def _is_freshness_query(ql: str) -> bool:
     return any(kw in ql for kw in _FRESHNESS_KEYWORDS)
 
 
-def _build_ts_or_query(q: str) -> str:
-    """Tokenize a free-text query into an OR-joined to_tsquery expression.
-
-    plainto_tsquery uses AND between terms — too strict for short knowledge
-    queries where each individual term hits but the conjunction doesn't (e.g.
-    "summarize hypeproof lab activity" matches 0 chunks because no single chunk
-    contains all four). We fall back to OR semantics in offline mode so BM25
-    still returns relevant chunks for SSE-05 / citation flow.
-
-    English stop-words are filtered out (see _STOP_WORDS); Korean tokens are
-    always kept because to_tsquery('simple', ...) won't dedupe them and they
-    carry strong signal in this corpus.
-    """
-    raw = re.findall(r"[A-Za-z0-9가-힣_]+", q)
-    result: list[str] = []
-    seen: set[str] = set()
-
-    def _add(tok: str) -> None:
-        if tok not in seen:
-            seen.add(tok)
-            result.append(tok)
-
-    for t in raw:
-        t_lower = t.lower()
-        if len(t_lower) < 2:
-            continue
-        has_korean = any("가" <= c <= "힣" for c in t_lower)
-        if has_korean:
-            _add(t_lower)
-            # Strip Korean particles — "라이언이" → "라이언", "4월에" → "4월" —
-            # so tokens match the base forms stored in the tsvector index.
-            stripped = _strip_korean_particles(t_lower)
-            if stripped is not None:
-                _add(stripped)
-            # Mixed Latin+Korean (e.g. "learning이"): also emit Latin-only form
-            # so it matches ts_vectors that stored the term without Korean postfix.
-            latin_only = re.sub(r"[가-힣]+", "", t_lower)
-            if latin_only and len(latin_only) >= 2 and latin_only not in _STOP_WORDS:
-                _add(latin_only)
-        elif t_lower not in _STOP_WORDS:
-            _add(t_lower)
-
-    if not result:
-        return ""
-    return " | ".join(result)
+# _build_ts_or_query was a second copy of the function imported above as
+# `_build_ts_or_query` from lab_lib.search_utils. Deleted 2026-05-23 (WO-7).
 
 
 async def node_library_search(state: CuratorState) -> dict:
@@ -311,7 +180,7 @@ async def node_library_search(state: CuratorState) -> dict:
 
     q = state["query"]
     qvec = embed_one(q)
-    qvec_is_zero = not any(abs(x) > 1e-9 for x in qvec)
+    qvec_is_zero = is_zero_vector(qvec)
 
     # Defense-in-depth: every retrieval query carries an explicit tenant_id
     # filter (in addition to RLS, which SHOULD also apply via app_session).

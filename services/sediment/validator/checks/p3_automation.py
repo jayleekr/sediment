@@ -7,9 +7,18 @@ from pathlib import Path
 from lab_lib.db import service_session
 from sqlalchemy import text
 
-REPO_ROOT = Path(__file__).resolve().parents[6]  # checks→validator→sediment→services→sediment→products→repo-root
-PROD_ROOT = REPO_ROOT / "products" / "sediment"
-SVC_ROOT = PROD_ROOT / "services" / "sediment"
+# Anchor on infra/init.sql — survives layout changes (2026-05-23 fix).
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        if (p / "infra" / "init.sql").is_file():
+            return p
+    return here.parents[4]
+
+
+REPO_ROOT = _repo_root()
+PROD_ROOT = REPO_ROOT  # Legacy alias.
+SVC_ROOT = REPO_ROOT / "services" / "sediment"
 
 
 def check_daily_ingest_dryrun(spec: dict, **_) -> dict:

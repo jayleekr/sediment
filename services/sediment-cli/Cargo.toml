@@ -26,6 +26,12 @@ url = "2"
 futures-util = "0.3"
 bytes = "1"
 thiserror = "1"
+# 2026-05-23 FIX-D: extract release tarballs in-process so we can validate
+# each entry's path for traversal (../, absolute) BEFORE writing. Replaces
+# the prior `tar -xzf` shell-out (CRIT #8) which also had shell-out PATH
+# hijack and BSD-vs-GNU portability concerns. flate2 + tar = ~250KB combined.
+tar = "0.4"
+flate2 = "1"
 
 [dev-dependencies]
 tempfile = "3"

@@ -30,8 +30,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-SVC_DIR="$REPO_ROOT/products/sediment/services/sediment"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SVC_DIR="$REPO_ROOT/services/sediment"
 
 BASELINE_REF="${1:-HEAD~1}"
 
@@ -48,9 +48,9 @@ fi
 # Limit scope to services/sediment/ — other paths don't affect uvicorn services.
 CHANGED=$(
   {
-    git diff --name-only "$BASELINE_REF"...HEAD -- products/sediment/services/sediment/
-    git diff --name-only -- products/sediment/services/sediment/
-    git diff --cached --name-only -- products/sediment/services/sediment/
+    git diff --name-only "$BASELINE_REF"...HEAD -- services/sediment/
+    git diff --name-only -- services/sediment/
+    git diff --cached --name-only -- services/sediment/
   } | sort -u
 )
 
@@ -72,21 +72,21 @@ need_metadata=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
-    products/sediment/services/sediment/applications/sediment_platform/*)
+    services/sediment/applications/sediment_platform/*)
       need_platform=1 ;;
-    products/sediment/services/sediment/applications/sediment_langgraph/*)
+    services/sediment/applications/sediment_langgraph/*)
       need_langgraph=1 ;;
-    products/sediment/services/sediment/applications/vault_ingester/*)
+    services/sediment/applications/vault_ingester/*)
       need_ingester=1 ;;
-    products/sediment/services/sediment/applications/metadata_svc/*)
+    services/sediment/applications/metadata_svc/*)
       need_metadata=1 ;;
-    products/sediment/services/sediment/lab_platform/* | \
-    products/sediment/services/sediment/lab_lib/*)
+    services/sediment/lab_platform/* | \
+    services/sediment/lab_lib/*)
       # shared libs imported by all services
       need_platform=1; need_langgraph=1; need_ingester=1; need_metadata=1 ;;
-    products/sediment/services/sediment/validator/* | \
-    products/sediment/services/sediment/scripts/* | \
-    products/sediment/services/sediment/tests/*)
+    services/sediment/validator/* | \
+    services/sediment/scripts/* | \
+    services/sediment/tests/*)
       ;;  # validator/scripts/tests don't run as long-lived services
   esac
 done <<< "$CHANGED"

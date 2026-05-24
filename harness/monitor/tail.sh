@@ -3,8 +3,8 @@
 # Less detailed than watch.sh — just streaming.
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-RALPH_DIR="$REPO_ROOT/products/sediment/harness/ralph"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RALPH_DIR="$REPO_ROOT/harness/ralph"
 LOG_DIR="$REPO_ROOT/output/ralph"
 
 if [ ! -f "$RALPH_DIR/JOURNAL.md" ]; then

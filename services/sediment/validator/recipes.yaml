@@ -9,7 +9,7 @@ recipes:
   - matches:
       check_id: P0-INFRA-01
     fix:
-      - cmd: "docker compose -f products/sediment/infra/docker-compose.yml up -d"
+      - cmd: "docker compose -f infra/docker-compose.yml up -d"
         timeout: 30
       - wait_until_healthy: "docker exec curator-pg pg_isready -U curator -d curator"
         timeout: 60
@@ -18,7 +18,7 @@ recipes:
   - matches:
       check_id: P0-INFRA-02
     fix:
-      - cmd: "docker compose -f products/sediment/infra/docker-compose.yml up -d redis"
+      - cmd: "docker compose -f infra/docker-compose.yml up -d redis"
         timeout: 20
     description: "Start Redis container"
 
@@ -31,21 +31,21 @@ recipes:
   - matches:
       check_id_prefix: "P0-DDL"
     fix:
-      - cmd: "docker exec -i curator-pg psql -U curator -d curator < products/sediment/infra/init.sql"
+      - cmd: "docker exec -i curator-pg psql -U curator -d curator < infra/init.sql"
     description: "Re-apply init.sql"
 
   # ── RLS schema (P0/P1) ────────────────────────────────────
   - matches:
       check_id_in: ["P0-RLS-03", "P0-RLS-04"]
     fix:
-      - cmd: "docker exec -i curator-pg psql -U curator -d curator < products/sediment/infra/init.sql"
+      - cmd: "docker exec -i curator-pg psql -U curator -d curator < infra/init.sql"
     description: "Re-apply init.sql to recreate missing policies"
 
   # ── Seed data (P1) ────────────────────────────────────────
   - matches:
       check_id_prefix: "P1-SEED"
     fix:
-      - cmd: "make -C products/sediment seed"
+      - cmd: "makeseed"
         timeout: 60
     description: "Run make seed"
 
@@ -53,7 +53,7 @@ recipes:
   - matches:
       check_id: P1-INGEST-01
     fix:
-      - background_cmd: "make -C products/sediment ingester"
+      - background_cmd: "makeingester"
         wait_for_url: "http://localhost:11000/healthz"
         timeout: 30
     description: "Start vault-ingester in background"
@@ -61,7 +61,7 @@ recipes:
   - matches:
       check_id: P1-INGEST-02
     fix:
-      - background_cmd: "make -C products/sediment metadata"
+      - background_cmd: "makemetadata"
         wait_for_url: "http://localhost:12000/healthz"
         timeout: 30
     description: "Start metadata-svc in background"
@@ -69,7 +69,7 @@ recipes:
   - matches:
       check_id: P2-HEALTH-01
     fix:
-      - background_cmd: "make -C products/sediment platform"
+      - background_cmd: "makeplatform"
         wait_for_url: "http://localhost:10100/healthz"
         timeout: 30
     description: "Start curator-platform in background"
@@ -77,7 +77,7 @@ recipes:
   - matches:
       check_id: P2-HEALTH-02
     fix:
-      - background_cmd: "make -C products/sediment langgraph"
+      - background_cmd: "makelanggraph"
         wait_for_url: "http://localhost:10020/healthz"
         timeout: 30
     description: "Start curator-langgraph in background"
@@ -94,7 +94,7 @@ recipes:
   - matches:
       check_id_in: ["P1-INGEST-06", "P1-INGEST-07"]
     fix:
-      - cmd: "make -C products/sediment ingest"
+      - cmd: "makeingest"
         timeout: 600
     description: "Run repo ingest"
 
@@ -103,7 +103,7 @@ recipes:
       check_id_prefix: "P2-E2E"
       message_contains: "playwright not installed"
     fix:
-      - cmd: "cd products/sediment/services/sediment && .venv/bin/pip install playwright && .venv/bin/playwright install chromium"
+      - cmd: "cd services/sediment && .venv/bin/pip install playwright && .venv/bin/playwright install chromium"
         timeout: 600
     description: "Install Playwright + chromium"
 
@@ -159,9 +159,9 @@ human_required:
 # These files are protected by .claude/guard.json. AI cannot edit them via any
 # tool (Write/Edit blocked at the harness level, not just convention).
 forbid_ai_edit:
-  - "products/sediment/infra/init.sql"   # RLS schema — adding/altering policies
-  - "products/sediment/.env"             # secrets
-  - "products/sediment/services/sediment/applications/sediment_platform/routers/billing.py"  # Stripe / financial
+  - "infra/init.sql"   # RLS schema — adding/altering policies
+  - ".env"             # secrets
+  - "services/sediment/applications/sediment_platform/routers/billing.py"  # Stripe / financial
   - "**/credentials*"                      # any credential file
 
 # ── Backward-compat alias (old scripts may reference no_auto_fix) ──

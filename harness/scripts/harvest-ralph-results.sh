@@ -11,7 +11,7 @@
 #
 # SUPERVISOR_LOG defaults to /tmp/ralph-50iter.log.
 #
-# Output: products/sediment/RALPH_50ITER_RESULT.md
+# Output: RALPH_50ITER_RESULT.md
 #
 # This is meant to be the user's first read after a long autonomous ralph run.
 # Tells them what ralph did, what it touched, what cost, and what next.
@@ -19,8 +19,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-RALPH_DIR="$REPO_ROOT/products/sediment/harness/ralph"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RALPH_DIR="$REPO_ROOT/harness/ralph"
 LOG_DIR="$REPO_ROOT/output/ralph"
 STATE_FILE="$RALPH_DIR/STATE.json"
 JOURNAL_FILE="$RALPH_DIR/JOURNAL.md"
@@ -28,7 +28,7 @@ TODO_FILE="$RALPH_DIR/TODO.md"
 LEARNINGS_FILE="$RALPH_DIR/LEARNINGS.md"
 SUPERVISOR_LOG="${1:-/tmp/ralph-50iter.log}"
 
-OUT="$REPO_ROOT/products/sediment/RALPH_50ITER_RESULT.md"
+OUT="$REPO_ROOT/RALPH_50ITER_RESULT.md"
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
@@ -213,13 +213,13 @@ cat <<'EOF'
 
 ```bash
 # Continue from where ralph left off (preserves TODO/JOURNAL/STATE):
-bash products/sediment/harness/ralph/supervisor.sh \
+bash harness/ralph/supervisor.sh \
   --max-iter 100 --cost-budget 30 \
   --max-restarts 2 --cooldown 60
 
 # Or fresh start (wipes state):
-rm -f products/sediment/harness/ralph/{STATE.json,TODO.md,JOURNAL.md}
-bash products/sediment/harness/ralph/supervisor.sh ...
+rm -f harness/ralph/{STATE.json,TODO.md,JOURNAL.md}
+bash harness/ralph/supervisor.sh ...
 
 # Validate without ralph:
 make -C products/sediment validate-all

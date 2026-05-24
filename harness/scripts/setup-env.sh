@@ -3,9 +3,9 @@
 # Implements 8 stages from /curator:setup skill.
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-SVC="$REPO_ROOT/products/sediment/services/sediment"
-ENV_FILE="$REPO_ROOT/products/sediment/.env"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SVC="$REPO_ROOT/services/sediment"
+ENV_FILE="$REPO_ROOT/.env"
 LOG_DIR="$REPO_ROOT/output/setup"
 mkdir -p "$LOG_DIR"
 
@@ -125,7 +125,7 @@ fi
 stage 7 ".env"
 if [ ! -f "$ENV_FILE" ]; then
   miss ".env missing — copying from .env.example"
-  cp "$REPO_ROOT/products/sediment/.env.example" "$ENV_FILE"
+  cp "$REPO_ROOT/.env.example" "$ENV_FILE"
 fi
 if grep -q '^ANTHROPIC_API_KEY=sk-ant-\.\.\.' "$ENV_FILE" || \
    grep -q '^ANTHROPIC_API_KEY=$' "$ENV_FILE" 2>/dev/null; then
@@ -147,7 +147,7 @@ if [ "$running" -ge 2 ]; then
   ok "postgres + redis up"
 else
   miss "starting docker compose"
-  docker compose -f "$REPO_ROOT/products/sediment/infra/docker-compose.yml" up -d 2>&1 | tail -5
+  docker compose -f "$REPO_ROOT/infra/docker-compose.yml" up -d 2>&1 | tail -5
   for i in $(seq 1 30); do
     sleep 2
     docker exec curator-pg pg_isready -U curator -d curator >/dev/null 2>&1 && { ok "postgres ready"; break; }

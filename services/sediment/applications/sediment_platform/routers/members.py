@@ -36,7 +36,22 @@ async def me(identity: Identity = Depends(require_identity)):
 
 @router.get("/{member_id}/profile")
 async def profile(member_id: str, identity: Identity = Depends(require_identity)):
-    """Member profile + recent contributions + open actions."""
+    """Member profile + recent contributions + open actions.
+
+    2026-05-23 FIX-B: RBAC added. Previously any authenticated viewer in the
+    tenant could read every member's email, real name, expertise, last 10
+    artifacts, and 20 open actions (output/reviews/.../REPORT.md CRIT #5).
+    Now: only the member themselves OR a tenant admin can read this profile.
+    Other roles still get a 404 (not 403) to avoid email-enumeration via the
+    error code — same response shape as "member doesn't exist".
+    """
+    if identity.role != "admin" and identity.member_id != member_id:
+        # Treat as not-found rather than forbidden — prevents probing the
+        # member directory by ID. The list endpoint above (`GET /members`)
+        # remains the directory view, and intentionally returns less detail
+        # than this profile endpoint.
+        raise HTTPException(status_code=404, detail="not found")
+
     async with app_session(identity.tenant_id) as s:
         m = (await s.execute(text("""
             SELECT id::text, external_id, email, display_name, real_name,

@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from lab_lib.logging import configure_logging, get_logger
+from lab_lib.settings import validate_runtime_secrets
 from lab_lib.tenant_middleware import TenantContextMiddleware
 
 from .routers import (
@@ -19,6 +20,10 @@ from .routers import (
 
 configure_logging()
 log = get_logger("platform")
+
+# Fail-loud at boot in prod if jwt_secret / onboarding_secret are still
+# defaults. No-op in dev/test/CI. See lab_lib.settings.validate_runtime_secrets.
+validate_runtime_secrets()
 
 app = FastAPI(title="Curator Platform", version="0.1.0")
 

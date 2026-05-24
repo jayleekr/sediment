@@ -31,6 +31,11 @@ dependencies = [
   "playwright>=1.49",
   "google-genai>=1.0",
   "apscheduler>=3.10",
+  # WO-1 2026-05-23: Stripe webhook signature verification.
+  # construct_event() validates the Stripe-Signature header + timestamp
+  # tolerance in a single call. Pin major version 8 — Stripe SDK bumps
+  # major frequently, and 8.x has the stable Event / Webhook API we use.
+  "stripe>=8,<9",
 ]
 
 [project.optional-dependencies]

@@ -26,11 +26,11 @@ unset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_EXPERIMENTAL_AGENT
       OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES OTEL_SERVICE_NAME 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-SVC="$REPO_ROOT/products/sediment/services/sediment"
-UX_DIR="$REPO_ROOT/products/sediment/output/ux"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SVC="$REPO_ROOT/services/sediment"
+UX_DIR="$REPO_ROOT/output/ux"
 RUBRIC="$SVC/validator/ux_rubric.yaml"
-LEARNINGS="$REPO_ROOT/products/sediment/harness/ralph/LEARNINGS.md"
+LEARNINGS="$REPO_ROOT/harness/ralph/LEARNINGS.md"
 STATE_FILE="$UX_DIR/STATE.json"
 
 mkdir -p "$UX_DIR"
@@ -103,7 +103,7 @@ run_capture() {
     log "  capture exit=$rc (E2E may have flakes — continuing)"
   fi
   # Find latest screenshot iter dir
-  LATEST_SCREENSHOT_DIR=$(ls -1dt "$REPO_ROOT/products/sediment/output/validation/screenshots"/iter-* 2>/dev/null | head -1)
+  LATEST_SCREENSHOT_DIR=$(ls -1dt "$REPO_ROOT/output/validation/screenshots"/iter-* 2>/dev/null | head -1)
   log "  screenshot dir: $LATEST_SCREENSHOT_DIR"
   echo "$LATEST_SCREENSHOT_DIR"
 }
@@ -192,13 +192,13 @@ Full feedback (read for axis-level context):
 
 Workflow:
   1. cd $REPO_ROOT
-  2. bash products/sediment/harness/scripts/ai-commit.sh baseline UX-$iter P2
-  3. bash products/sediment/harness/scripts/ai-commit.sh begin UX-$iter
+  2. bash harness/scripts/ai-commit.sh baseline UX-$iter P2
+  3. bash harness/scripts/ai-commit.sh begin UX-$iter
   4. Read each screenshot in the finding's "screenshot" + "files_likely_changed" list.
   5. Apply the suggested_fix exactly. Don't refactor unrelated code.
-  6. bash products/sediment/harness/scripts/ai-commit.sh gate UX-$iter P2
+  6. bash harness/scripts/ai-commit.sh gate UX-$iter P2
      (gate auto-bounces services + runs lint-sql)
-  7. If gate passes: bash products/sediment/harness/scripts/ai-commit.sh commit UX-$iter "ux: \$AXIS — iter $iter — \$ONE_LINE"
+  7. If gate passes: bash harness/scripts/ai-commit.sh commit UX-$iter "ux: \$AXIS — iter $iter — \$ONE_LINE"
   8. Append LEARNINGS entry pattern=ux_coder_fix detail=axis=\$AXIS iter=$iter
 
 Hard rules from your contract: never edit guard.json forbidden files; never

@@ -1,0 +1,97 @@
+# Harness gates — fast canaries on every PR + push.
+#
+# Runs the same checks `make doctor` runs locally, minus the docker/uvicorn
+# steps (which need infrastructure CI doesn't have). What this catches:
+#
+#   - :NAME::TYPE SQL cast regression (LEARNINGS hot-list)
+#   - JWT roundtrip / 4-tier policy / search_utils drift
+#   - chunker section-overlap or KO multibyte regression
+#   - settings boot-guard regression (jwt_secret default, etc.)
+#   - GitHub connector PAT mandate regression
+#   - Discord circuit breaker primitives
+#
+# Runs fast (<60s typical). Required to pass before merge.
+
+name: Harness gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      # Bash glob — files that, if changed, MIGHT regress the harness or
+      # safety-critical code paths the smoke tests guard.
+      - 'services/sediment/lab_lib/**'
+      - 'services/sediment/applications/sediment_platform/routers/**'
+      - 'services/sediment/applications/sediment_langgraph/**'
+      - 'services/sediment/lab_platform/**'
+      - 'services/sediment/validator/recipes.yaml'
+      - 'services/sediment/validator/fixer.py'
+      - 'services/sediment/validator/rubric.yaml'
+      - 'harness/scripts/**'
+      - 'services/sediment/pyproject.toml'
+      - '.github/workflows/harness-gates.yml'
+
+defaults:
+  run:
+    working-directory: .
+
+jobs:
+  lint-sql-cast:
+    name: Lint :NAME::TYPE SQL cast
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lint
+        run: bash harness/scripts/lint-sql-cast.sh
+
+  smoke-tests:
+    name: Python smoke tests (JWT, fixer 4-tier, search_utils, chunker, ...)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install backend deps (editable + dev extras)
+        working-directory: services/sediment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          # Install the package with dev extras (matches what `make install`
+          # would do locally). Smoke tests need: jose, fastapi, fastmcp,
+          # stripe, tiktoken, sqlalchemy, etc.
+          .venv/bin/pip install -e ".[dev]"
+      - name: Run smoke tests
+        run: bash harness/scripts/smoke-tests.sh
+
+  deploy-check-offline:
+    name: Pre-push readiness (offline — fly auth not required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo (for cargo check step)
+        run: rustup component add clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install backend deps
+        working-directory: services/sediment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+      - name: Run deploy-check (offline)
+        # Skip validate-p0 in CI (no docker postgres). The full deploy-check
+        # runs locally via `make deploy-check` before push.
+        env:
+          DEPLOY_CHECK_SKIP_VALIDATE: "1"
+        run: bash harness/scripts/deploy-check.sh --skip-fly || true
+        # Exit 0 always — this is informational in CI. The local
+        # `make deploy-check` (with flyctl auth) is the real gate.

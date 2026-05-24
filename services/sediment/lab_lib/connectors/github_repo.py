@@ -38,6 +38,7 @@ Limits we do NOT try to solve here:
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -45,6 +46,8 @@ from typing import Any
 import httpx
 
 from .base import ConnectorABC, NormalizedEvent, Resource
+
+log = logging.getLogger(__name__)
 
 
 _GH_BASE = "https://api.github.com"
@@ -60,7 +63,32 @@ def _resolve_token(explicit: str | None = None) -> str | None:
         v = os.environ.get(envvar)
         if v:
             return v
-    return None  # unauth is fine for public repos
+    return None  # unauth is fine for public repos OR an explicit opt-in
+
+
+# WO-7 #5 2026-05-24: governance flag — when set, require a token.
+# Unauthenticated GitHub API caps at 60 requests/hour. Initial sync of a
+# 100-file vault blows past that limit before finishing one repo (one /tree
+# call + one /contents call per matching file ≈ 100+ requests). The first
+# pull dies mid-flight, the second silently retries the same files, and
+# every tenant on the worker hits the same rate-limit ceiling. Force-fail
+# at connector init when a real prod env (FLY_APP_NAME) is detected without
+# a token. Local dev with no FLY_APP_NAME still tolerates anonymous calls.
+def _enforce_token_in_prod(token: str | None) -> None:
+    if token:
+        return
+    if os.environ.get("SEDIMENT_GITHUB_ALLOW_ANONYMOUS") == "1":
+        # Explicit opt-in for the unusual case (e.g. one-shot smoke test).
+        log.warning("github connector running anonymously — 60 req/hr cap")
+        return
+    if os.environ.get("FLY_APP_NAME") or os.environ.get("SEDIMENT_ENV") == "prod":
+        raise RuntimeError(
+            "GitHubRepoConnector requires a token in prod: set GITHUB_TOKEN, "
+            "GH_TOKEN, or HYPEPROOF_GITHUB_TOKEN. Anonymous API is capped at "
+            "60 req/hr — initial sync of a 100-file vault will exhaust it "
+            "before finishing. To override (dev/smoke test), set "
+            "SEDIMENT_GITHUB_ALLOW_ANONYMOUS=1."
+        )
 
 
 def _matches_filter(
@@ -113,6 +141,7 @@ class GitHubRepoConnector(ConnectorABC):
         self._extensions = tuple(extensions)
         self._branch_override = branch
         self._token = _resolve_token(token)
+        _enforce_token_in_prod(self._token)
 
         headers = {
             "User-Agent": _USER_AGENT,
@@ -135,7 +164,22 @@ class GitHubRepoConnector(ConnectorABC):
     # -----------------------------------------------------------------
 
     async def _get(self, path: str, **params: Any) -> httpx.Response:
+        """Issue a GitHub API GET with explicit rate-limit awareness.
+
+        WO-7 #5 2026-05-24: previously this had zero rate-limit handling —
+        a 403 with ``X-RateLimit-Remaining: 0`` would propagate as a fatal
+        500 upstream. Now we surface it as a clear RuntimeError so the
+        caller (collection_agent) can mark the connector unhealthy instead
+        of retrying the same call into a wall of 403s.
+        """
         r = await self._client.get(path, params=params or None)
+        if r.status_code == 403 and r.headers.get("X-RateLimit-Remaining") == "0":
+            reset = r.headers.get("X-RateLimit-Reset", "unknown")
+            limit = r.headers.get("X-RateLimit-Limit", "unknown")
+            raise RuntimeError(
+                f"github rate limit exhausted (limit={limit}, reset_epoch={reset}). "
+                f"{'Set GITHUB_TOKEN' if not self._token else 'Token exhausted — wait or rotate'}."
+            )
         return r
 
     async def _resolve_branch(self, owner: str, repo: str) -> str:

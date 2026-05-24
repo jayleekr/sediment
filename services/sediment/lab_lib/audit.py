@@ -3,17 +3,30 @@
 Fire-and-forget: callers use `audit_log(...)` and continue; the write is
 scheduled as a task. Failure to log must never break the request, so all
 errors are swallowed and counted.
+
+2026-05-23 FIX-C (REPORT.md CRIT #6): previously this discarded the handle
+returned by ``asyncio.create_task``. asyncio holds only weak references to
+tasks, so under any GC pressure the audit write could be cancelled mid-
+INSERT — silent gaps in the table that cost/billing attribution depends on.
+Now we keep a strong reference in a module-level set and discard it from a
+done-callback, the pattern Python's docs recommend.
 """
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, Set
 
 from sqlalchemy import text
 
 from .db import service_session
 
 log = logging.getLogger(__name__)
+
+# Strong refs to in-flight audit writes. asyncio keeps only weak refs to
+# tasks returned by create_task, so without this set the GC can cancel a
+# pending audit INSERT before it commits. Tasks self-remove via the
+# done-callback below.
+_PENDING_AUDIT_TASKS: Set[asyncio.Task] = set()
 
 
 async def _write(tenant_id: str, member_id: str, tool: str, client: Optional[str],
@@ -45,11 +58,15 @@ def audit_log(tenant_id: str, member_id: str, tool: str,
               error_reason: Optional[str] = None) -> None:
     """Fire-and-forget audit write. Safe to call from any async context."""
     try:
-        asyncio.create_task(_write(
+        task = asyncio.create_task(_write(
             tenant_id, member_id, tool, client,
             latency_ms, result_bytes, status_code, error_reason,
         ))
     except RuntimeError:
         # No running loop (e.g. sync context). Skip silently — audit log
         # is best-effort.
-        pass
+        return
+    # Keep a strong reference until the task finishes — asyncio only holds
+    # weak refs, so without this the GC can cancel the INSERT mid-flight.
+    _PENDING_AUDIT_TASKS.add(task)
+    task.add_done_callback(_PENDING_AUDIT_TASKS.discard)

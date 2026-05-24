@@ -32,9 +32,12 @@ export LLM_PROVIDER=claude_cli
 export LLM_MODEL_DEFAULT=claude-sonnet-4-6
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"   # products/sediment/
-REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
-SVC_DIR="$PROJECT_DIR/services/sediment"
+# Post-rename (2026-05-15): products/sediment/ → repo root. PROJECT_DIR and
+# REPO_ROOT both resolve to the same path now; kept as separate names for
+# legacy readers but they're equal.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_DIR="$REPO_ROOT"
+SVC_DIR="$REPO_ROOT/services/sediment"
 VENV="$SVC_DIR/.venv/bin/python"
 
 MAX_ITERS="${MAX_ITERS:-200}"
@@ -319,21 +322,21 @@ WORK ORDER:
   iter: $iter
 
 PROCESS:
-1. Read products/sediment/CLAUDE.md
-2. Read products/sediment/services/sediment/validator/recipes.yaml — verify $check_id is in ai_propose_review_commit tier
-3. Run: bash products/sediment/harness/scripts/ai-commit.sh baseline $check_id P-feature
-4. Run: bash products/sediment/harness/scripts/ai-commit.sh begin $check_id
+1. Read CLAUDE.md
+2. Read services/sediment/validator/recipes.yaml — verify $check_id is in ai_propose_review_commit tier
+3. Run: bash harness/scripts/ai-commit.sh baseline $check_id P-feature
+4. Run: bash harness/scripts/ai-commit.sh begin $check_id
 5. Diagnose the failure. Read source. Apply minimal targeted fix via Edit tool.
-6. Run: bash products/sediment/harness/scripts/ai-commit.sh gate $check_id P-feature
-7. If gate passes: bash products/sediment/harness/scripts/ai-commit.sh commit $check_id "fix($check_id): from feature-loop iter=$iter"
-8. If gate fails: bash products/sediment/harness/scripts/ai-commit.sh rollback $check_id
+6. Run: bash harness/scripts/ai-commit.sh gate $check_id P-feature
+7. If gate passes: bash harness/scripts/ai-commit.sh commit $check_id "fix($check_id): from feature-loop iter=$iter"
+8. If gate fails: bash harness/scripts/ai-commit.sh rollback $check_id
 
 OUTPUT a single-line JSON to stdout at end: {"check_id":"...","verdict":"committed|rolled_back|skipped","sha":"..."}
 
 CONSTRAINTS:
 - Forbidden files: init.sql, .env, billing.py, credentials*, .ssh/**, .claude/settings*.json
 - Never bypass --no-verify, never edit guard.json
-- Stay within products/sediment/services/sediment/ unless the fix is web-side (web/src/app/curator/**)
+- Stay within services/sediment/ unless the fix is frontend-side (frontend/app/**)
 - LLM_PROVIDER is claude_cli; do NOT change that
 EOF
 

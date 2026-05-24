@@ -203,9 +203,13 @@ flows:
         url: "/sediment"
         wait_for: "text=Conversations"
         screenshot: "01-acme-home"
-      # Attempt to use a lab conversation URL must result in 404 or empty state
+      # Attempt to use a REAL lab conversation URL must result in 404 / empty.
+      # WO-7 #6 2026-05-24: the prior hardcoded 00000000-...-deadbeef0000 UUID
+      # didn't exist for any tenant, so the test passed whether RLS worked or
+      # not — no signal on cross-tenant isolation. Now {{lab_conv_id}} is
+      # resolved by e2e_runner from a live DB query (most-recent lab conv).
       - action: navigate
-        url: "/sediment/c/00000000-0000-0000-0000-deadbeef0000"
+        url: "/sediment/c/{{lab_conv_id}}"
         wait_for_idle: true
         screenshot: "02-acme-cross-tenant"
       - action: assert_no

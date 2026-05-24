@@ -13,9 +13,11 @@ unset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_EXPERIMENTAL_AGENT
       OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES OTEL_SERVICE_NAME 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Post-rename: PROJECT_DIR = REPO_ROOT = repo top.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_DIR="$REPO_ROOT"
 LOOP="$SCRIPT_DIR/feature-loop.sh"
-LOG_DIR="$PROJECT_DIR/output/feature-loop"
+LOG_DIR="$REPO_ROOT/output/feature-loop"
 SUP_LOG="$LOG_DIR/supervisor.log"
 mkdir -p "$LOG_DIR"
 

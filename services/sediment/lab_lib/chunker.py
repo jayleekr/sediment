@@ -3,7 +3,20 @@
 Strategy:
   1. Split by H1/H2/H3 headings preserving hierarchy.
   2. If any section > max_tokens, sub-split by paragraph.
-  3. Add overlap of ~200 tokens between consecutive chunks.
+  3. Add overlap of ~200 tokens between consecutive chunks of the SAME section.
+
+WO-7 2026-05-23 (REPORT.md HIGH × 2):
+  - Section-crossing overlap no longer mislabels heading_path. Previously
+    chunk N (section B) prepended the tail of chunk N-1 (section A) but kept
+    heading_path "B" — citation provenance for the overlap text pointed at
+    the wrong section, breaking architectural law #2 (every answer cites).
+    Now: overlap is only applied when consecutive chunks share heading_path.
+  - tiktoken tail-decode no longer prepends `\\ufffd` (replacement char) to
+    Korean overlap. cl100k_base splits multi-byte UTF-8 mid-codepoint when
+    you slice the last N tokens. The decoded string starts with one or more
+    replacement chars → embedding model treats every overlap chunk as
+    "junk-prefix + content" and KO recall drops. Now: we walk forward past
+    any leading `\\ufffd` before joining.
 """
 from __future__ import annotations
 import re
@@ -12,6 +25,11 @@ from dataclasses import dataclass
 import tiktoken
 
 _enc = tiktoken.get_encoding("cl100k_base")
+
+# Unicode REPLACEMENT CHARACTER — what tiktoken's decode emits for broken
+# multi-byte sequences. We strip leading occurrences when computing overlap
+# so Korean / Japanese / Chinese chunks don't gain a junk prefix.
+_REPLACEMENT = "�"
 
 
 @dataclass
@@ -39,6 +57,35 @@ def _split_by_paragraph(text: str, max_tokens: int) -> list[str]:
     if current:
         out.append(current)
     return out
+
+
+def _clean_tail_tokens(tokens: list[int], n: int) -> str:
+    """Return the last ``n`` tokens decoded to a string with no leading
+    `\\ufffd` (UTF-8 replacement) chars.
+
+    tiktoken's cl100k_base assigns multi-token sequences to Korean / Japanese
+    / Chinese characters (and many emoji). Slicing the last N tokens often
+    cuts a multi-token codepoint in the middle, and ``decode`` produces a
+    replacement char for the broken halves. Embedding models treat these as
+    junk prefix.
+
+    We start with ``tokens[-n:]`` and pull additional context tokens to the
+    left until the decoded string begins cleanly (or until we've consumed
+    half the source). Worst case: prefix stays — better than truncating
+    arbitrary text.
+    """
+    if not tokens or n <= 0:
+        return ""
+    n = min(n, len(tokens))
+    cap = min(len(tokens), n + 16)  # at most 16 extra tokens of left-walk
+    while n <= cap:
+        decoded = _enc.decode(tokens[-n:])
+        if not decoded.startswith(_REPLACEMENT):
+            return decoded
+        n += 1
+    # Give up — strip leading replacement chars so we at least don't ship the
+    # broken bytes. Better imperfect content than guaranteed junk prefix.
+    return _enc.decode(tokens[-n:]).lstrip(_REPLACEMENT)
 
 
 def chunk_markdown(text: str, max_tokens: int = 1500, overlap_tokens: int = 200) -> list[Chunk]:
@@ -84,15 +131,26 @@ def chunk_markdown(text: str, max_tokens: int = 1500, overlap_tokens: int = 200)
                 chunks.append(Chunk(seq=seq, content=sub, heading_path=path))
                 seq += 1
 
-    # Apply overlap (prepend tail of previous chunk to current)
+    # Apply overlap — but ONLY between chunks of the same section.
+    # Section-crossing overlap would put text from section A into chunk N
+    # whose heading_path is section B; citation provenance for the overlap
+    # range would be wrong (law #2 violation). Clean section boundaries are
+    # the safer default — no overlap across them.
     if overlap_tokens > 0 and len(chunks) > 1:
         new_chunks: list[Chunk] = [chunks[0]]
         for i in range(1, len(chunks)):
-            prev_tokens = _enc.encode(chunks[i - 1].content)
-            tail_tokens = prev_tokens[-overlap_tokens:]
-            tail = _enc.decode(tail_tokens)
-            merged = tail + "\n\n" + chunks[i].content
-            new_chunks.append(Chunk(seq=i, content=merged, heading_path=chunks[i].heading_path))
+            curr = chunks[i]
+            prev = chunks[i - 1]
+            if prev.heading_path != curr.heading_path:
+                # Different section — no overlap, preserve clean boundary.
+                new_chunks.append(Chunk(seq=i, content=curr.content,
+                                        heading_path=curr.heading_path))
+                continue
+            prev_tokens = _enc.encode(prev.content)
+            tail = _clean_tail_tokens(prev_tokens, overlap_tokens)
+            merged = tail + "\n\n" + curr.content if tail else curr.content
+            new_chunks.append(Chunk(seq=i, content=merged,
+                                    heading_path=curr.heading_path))
         chunks = new_chunks
 
     return chunks

@@ -3,7 +3,7 @@
 # Idempotent — safe to run multiple times.
 #
 # Run from repo root:
-#   ./products/sediment/harness/bootstrap-all.sh [--with-ralph]
+#   ./harness/bootstrap-all.sh [--with-ralph]
 #
 # Stages (each logged + skippable if already done):
 #   STAGE 1  docker up (Postgres + Redis)
@@ -17,10 +17,10 @@
 #   STAGE 9  (--with-ralph) start Ralph loop (background)
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$REPO_ROOT/output/bootstrap"
 mkdir -p "$LOG_DIR"
-ENV="$REPO_ROOT/products/sediment/.env"
+ENV="$REPO_ROOT/.env"
 
 # PATH augmentation — Docker Desktop credential helpers + Homebrew (macOS).
 # Without this, docker compose pull fails with "docker-credential-desktop not found".
@@ -39,7 +39,7 @@ stage 1 "docker up"
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q curator-pg; then
   ok "postgres already running"
 else
-  cd "$REPO_ROOT/products/sediment"
+  cd "$REPO_ROOT"
   docker compose -f infra/docker-compose.yml up -d 2>&1 | tee "$LOG_DIR/01-docker.log"
 fi
 # wait healthy
@@ -52,7 +52,7 @@ done
 
 # ────────────────────────────────────────────────────────────
 stage 2 "python venv + deps"
-SVC="$REPO_ROOT/products/sediment/services/sediment"
+SVC="$REPO_ROOT/services/sediment"
 if [ -x "$SVC/.venv/bin/python" ]; then
   ok "venv exists"
 else
@@ -76,7 +76,7 @@ fi
 # ────────────────────────────────────────────────────────────
 stage 4 "seed"
 if [ ! -f "$ENV" ]; then
-  cp "$REPO_ROOT/products/sediment/.env.example" "$ENV"
+  cp "$REPO_ROOT/.env.example" "$ENV"
   warn "created $ENV from example — edit it to add API keys, then re-run"
 fi
 cd "$SVC"
@@ -112,7 +112,9 @@ fi
 
 # ────────────────────────────────────────────────────────────
 stage 7 "platform :10100 + langgraph :10020 + metadata :12000"
-for svc_port in "metadata_svc:12000" "curator_platform:10100" "curator_langgraph:10020"; do
+# 2026-05-23 fix: module names renamed curator_* → sediment_* months ago,
+# bootstrap-all.sh wasn't updated → ModuleNotFoundError on every fresh-clone.
+for svc_port in "metadata_svc:12000" "sediment_platform:10100" "sediment_langgraph:10020"; do
   app="${svc_port%%:*}"; port="${svc_port##*:}"
   if curl -fsS "http://localhost:$port/healthz" >/dev/null 2>&1; then
     ok "$app already up"
@@ -143,7 +145,7 @@ esac
 if [ "$WITH_RALPH" = "1" ]; then
   stage 9 "Ralph loop (background, with supervisor)"
   cd "$REPO_ROOT"
-  nohup bash products/sediment/harness/ralph/supervisor.sh \
+  nohup bash harness/ralph/supervisor.sh \
     --max-restarts 15 --cooldown 120 \
     > "$LOG_DIR/09-ralph.log" 2>&1 &
   echo $! > "$LOG_DIR/ralph.pid"
@@ -154,5 +156,5 @@ echo
 echo "═══ Bootstrap complete ═══"
 echo "  logs:           $LOG_DIR"
 echo "  validation:     $REPO_ROOT/output/validation/P0-latest.md"
-echo "  monitor live:   bash products/sediment/harness/monitor/watch.sh"
-[ "$WITH_RALPH" = "1" ] && echo "  ralph journal:  $REPO_ROOT/products/sediment/harness/ralph/JOURNAL.md"
+echo "  monitor live:   bash harness/monitor/watch.sh"
+[ "$WITH_RALPH" = "1" ] && echo "  ralph journal:  $REPO_ROOT/harness/ralph/JOURNAL.md"

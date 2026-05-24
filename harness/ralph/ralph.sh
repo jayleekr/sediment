@@ -32,7 +32,7 @@ unset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_EXPERIMENTAL_AGENT
       OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES OTEL_SERVICE_NAME 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RALPH_DIR="$SCRIPT_DIR"
 LOG_DIR="$REPO_ROOT/output/ralph"
 mkdir -p "$LOG_DIR"
@@ -85,7 +85,8 @@ finish() {
   echo "=== Ralph stopped: $reason ==="
   echo "  iter      = $(jq -r '.iteration' "$STATE_FILE")"
   echo "  cost      = \$$(jq -r '.cumulative_cost_usd' "$STATE_FILE")"
-  echo "  todo open = $(grep -c '^- \[ \]' "$TODO_FILE" || echo 0)"
+  # awk always exits 0 — avoids set -e killing the finish path on grep rc=1
+  echo "  todo open = $(awk '/^- \[ \]/{c++} END{print c+0}' "$TODO_FILE" 2>/dev/null || echo 0)"
   echo "  journal   = $JOURNAL_FILE"
   exit 0
 }
@@ -108,7 +109,9 @@ require_state_files "pre-loop"
 
 iter=0
 stalled=0
-prev_open_count=$(grep -c '^- \[ \]' "$TODO_FILE")
+# Use awk (always rc=0) instead of grep -c (rc=1 when zero matches kills set -e).
+# The state-file-missing case is handled by require_state_files above.
+prev_open_count=$(awk '/^- \[ \]/{c++} END{print c+0}' "$TODO_FILE")
 
 while :; do
   iter=$((iter + 1))
@@ -131,7 +134,10 @@ while :; do
     finish "stop_signal_in_journal"
   fi
 
-  open_count=$(grep -c '^- \[ \]' "$TODO_FILE")
+  # awk-based count makes "all done" reachable under set -e (LEARNINGS:
+  # grep -c returns rc=1 with stdout=0 when zero matches → set -e killed
+  # the loop before the all_todos_done branch ever ran).
+  open_count=$(awk '/^- \[ \]/{c++} END{print c+0}' "$TODO_FILE")
   if [ "$open_count" = "0" ]; then finish "all_todos_done"; fi
 
   if [ "$open_count" = "$prev_open_count" ]; then

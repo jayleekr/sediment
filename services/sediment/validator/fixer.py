@@ -97,14 +97,42 @@ async def _apply_step(step: dict, repo_root: Path) -> bool:
     return False
 
 
+def _collect_no_auto_patterns(recipes_doc: dict) -> list[str]:
+    """Aggregate patterns that MUST NOT auto-fix.
+
+    Reads the 4-tier policy explicitly:
+      - Tier 3 ``human_required`` (RLS — instant release block)
+      - Tier 4 ``forbid_ai_edit`` (init.sql / .env / billing.py / credentials*)
+      - Legacy ``no_auto_fix`` (backwards-compat alias kept for old callers)
+
+    2026-05-23 fix — previously only the legacy alias was read, so deleting
+    it would have silently re-enabled auto-fix on Tier-3/4 patterns. RLS
+    protection survived only because the alias coincidentally still listed
+    ``P*-RLS-*``. Now each tier is read explicitly.
+    """
+    patterns: list[str] = []
+    for key in ("human_required", "forbid_ai_edit", "no_auto_fix"):
+        block = recipes_doc.get(key, [])
+        if isinstance(block, dict):
+            block = block.get("patterns", [])
+        if isinstance(block, list):
+            patterns.extend(p for p in block if isinstance(p, str))
+    # Dedupe while preserving order — easier to read in logs.
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in patterns:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
 async def fix_failures(report: PhaseReport, repo_root: Path,
                        output_dir: Path) -> dict:
     """Try to auto-fix every failure. Returns summary dict."""
     recipes_doc = _load_recipes()
     recipes = recipes_doc.get("recipes", [])
-    no_auto = recipes_doc.get("no_auto_fix", [])
-    if isinstance(no_auto, dict):
-        no_auto = no_auto.get("patterns", [])
+    no_auto = _collect_no_auto_patterns(recipes_doc)
 
     summary = {
         "total_failures": 0,

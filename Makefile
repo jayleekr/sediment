@@ -7,7 +7,8 @@
         permissions ralph ralph-resume ralph-reset \
         monitor monitor-tail monitor-dashboard \
         bounce-services lint-sql p3-cron-install p3-cron-status p3-cron-uninstall \
-        push prod-run
+        push prod-run \
+        preflight smoke-tests deploy-check verify-deploy doctor
 
 SHELL := /bin/bash
 SVC_DIR := services/sediment
@@ -21,7 +22,7 @@ PY := $(VENV_DIR)/bin/python
 PYTEST := $(VENV_DIR)/bin/pytest
 
 help:
-	@echo "AI Curator — local dev"
+	@echo "Sediment — local dev"
 	@echo ""
 	@echo " infra:"
 	@echo "  make up            — start Postgres+Redis (docker)"
@@ -53,6 +54,13 @@ help:
 	@echo "  make push                                            — push w/ auto-rebase on conflict"
 	@echo "  make prod-run SCRIPT=cleanup_test_conversations      — run scripts/X on the fly VM"
 	@echo "  make prod-run SCRIPT=retention_sweep ARGS=--dry-run  — with args"
+	@echo ""
+	@echo " harness gates (after any code change):"
+	@echo "  make doctor          — one-shot: preflight + smoke + deploy-check (run me FIRST)"
+	@echo "  make preflight       — local stack ready? (docker, venv, ports, .env, lint)"
+	@echo "  make smoke-tests     — fast Python canaries (JWT, fixer 4-tier, search_utils, chunker, ...)"
+	@echo "  make deploy-check    — pre-push gate (fly secrets, migrations, nginx envsubst, P0)"
+	@echo "  make verify-deploy   — post-deploy prod check (healthz, OAuth, proxy guard, headers)"
 
 # ================ infra ================
 up:
@@ -160,11 +168,13 @@ dev:
 	@echo "open 4 terminal tabs and run: make platform / make langgraph / make ingester / make metadata"
 
 # ================ web ================
+# 2026-05-23 fix: post-split layout — frontend lives at `frontend/` inside this
+# repo, not at `../../web/` (pre-split monorepo path).
 web:
-	cd ../../web && npm run dev
+	cd frontend && npm run dev
 
 web-build:
-	cd ../../web && npm run build
+	cd frontend && npm run build
 
 clean:
 	rm -rf $(SVC_DIR)/.venv $(SVC_DIR)/**/__pycache__ $(SVC_DIR)/.pytest_cache
@@ -304,10 +314,11 @@ push:
 
 # `make prod-run SCRIPT=X [ARGS=...]` — run a Python module on the fly VM.
 #
-# Wraps the verbose `fly ssh console -C "/bin/sh -c 'cd /app/services/sediment
-# && /run-with-db.sh python -m scripts.X ARGS'"` invocation that was hit 5+
-# times in one session. The /run-with-db.sh wrapper massages DATABASE_URL
-# into asyncpg form so the script's `service_session()` works.
+# Uses harness/scripts/fly-exec.sh (which calls `fly machine exec`) instead of
+# `fly ssh console -C`, because the latter hangs the client process indefinitely
+# after the remote command exits when invoked non-interactively (sediment#54).
+# The /run-with-db.sh wrapper massages DATABASE_URL into asyncpg form so the
+# script's `service_session()` works.
 #
 # Examples:
 #   make prod-run SCRIPT=cleanup_test_conversations ARGS=--dry-run
@@ -319,4 +330,44 @@ prod-run:
 	  echo "       (module is the dotted path after \`scripts.\` — e.g. cleanup_test_conversations)"; \
 	  exit 1; \
 	fi
-	fly ssh console -a hypeproof-sediment -C "/bin/sh -c 'cd /app/services/sediment && /run-with-db.sh python -m scripts.$(SCRIPT) $(ARGS)'"
+	bash harness/scripts/fly-exec.sh "cd /app/services/sediment && /run-with-db.sh python -m scripts.$(SCRIPT) $(ARGS)"
+
+
+# ================ harness gates (2026-05-24) ================
+# One-command answers to "is this code good to push?" / "is prod ready?"
+# Each script is also runnable standalone — these are just convenience aliases.
+
+preflight:
+	@bash harness/scripts/preflight.sh
+
+# --quick skips the slow validate-p0 step. Useful in tight inner-loop iterations.
+preflight-quick:
+	@bash harness/scripts/preflight.sh --quick
+
+smoke-tests:
+	@bash harness/scripts/smoke-tests.sh
+
+deploy-check:
+	@bash harness/scripts/deploy-check.sh
+
+# --skip-fly avoids the flyctl auth/network calls (useful offline).
+deploy-check-offline:
+	@bash harness/scripts/deploy-check.sh --skip-fly
+
+verify-deploy:
+	@bash harness/scripts/verify-deploy.sh
+
+# Doctor — the "I just made changes, am I OK?" single command.
+# Runs in this order: preflight-quick → smoke-tests → deploy-check-offline.
+# Stops at first FAIL so the user can fix one thing at a time.
+doctor:
+	@echo "── 1/3 preflight (quick) ──"
+	@bash harness/scripts/preflight.sh --quick || (echo; echo "✗ preflight failed — fix above before continuing"; exit 1)
+	@echo
+	@echo "── 2/3 smoke-tests ──"
+	@bash harness/scripts/smoke-tests.sh || (echo; echo "✗ smoke tests failed — fix above before continuing"; exit 1)
+	@echo
+	@echo "── 3/3 deploy-check (offline mode — re-run with flyctl auth for full check) ──"
+	@bash harness/scripts/deploy-check.sh --skip-fly || (echo; echo "✗ deploy-check failed"; exit 1)
+	@echo
+	@echo "✓ doctor: ALL GREEN. To ship: make deploy-check (with fly auth) then git push origin main."

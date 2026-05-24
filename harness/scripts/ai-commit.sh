@@ -23,9 +23,9 @@
 
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-SVC="$REPO_ROOT/products/sediment/services/sediment"
-LEARN="$REPO_ROOT/products/sediment/harness/ralph/LEARNINGS.md"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SVC="$REPO_ROOT/services/sediment"
+LEARN="$REPO_ROOT/harness/ralph/LEARNINGS.md"
 STATE_DIR="$REPO_ROOT/output/ai-commit"
 mkdir -p "$STATE_DIR"
 
@@ -65,7 +65,7 @@ case "$cmd" in
     # Lint gate — block known-bad SQL cast pattern before validator (LEARNINGS
     # 2026-05-05 #test-04 sqlalchemy_jsonb_cast + recurrence in ai_coder_dispatch_real).
     # Hard fail: ai-coder must not introduce :NAME::TYPE in any text() query.
-    if ! bash "$REPO_ROOT/products/sediment/harness/scripts/lint-sql-cast.sh" \
+    if ! bash "$REPO_ROOT/harness/scripts/lint-sql-cast.sh" \
         > "$STATE_DIR/$CHECK_ID.lint.log" 2>&1; then
       echo "LINT FAIL: :NAME::TYPE SQL cast pattern found — see $STATE_DIR/$CHECK_ID.lint.log"
       log_learn "lint_sql_cast_violation" "check=$CHECK_ID — gate blocked by lint"
@@ -77,7 +77,7 @@ case "$cmd" in
     # loaded with old code and we under-measure the delta (LEARNINGS 2026-05-08
     # pattern=service_restart_propagation). Best-effort — never blocks gate.
     BASELINE_SHA=$(cat "$STATE_DIR/$CHECK_ID.base" 2>/dev/null || echo "HEAD~1")
-    bash "$REPO_ROOT/products/sediment/harness/scripts/restart-services-if-changed.sh" \
+    bash "$REPO_ROOT/harness/scripts/restart-services-if-changed.sh" \
       "$BASELINE_SHA" \
       > "$STATE_DIR/$CHECK_ID.bounce.log" 2>&1 || true
 
@@ -86,7 +86,7 @@ case "$cmd" in
       > "$STATE_DIR/$CHECK_ID.validate-after.log" 2>&1
     rc=$?
 
-    LATEST_JSON=$(ls -1t "$REPO_ROOT/products/sediment/output/validation/$PHASE-"*.json 2>/dev/null | head -1)
+    LATEST_JSON=$(ls -1t "$REPO_ROOT/output/validation/$PHASE-"*.json 2>/dev/null | head -1)
     NEW_SCORE=$(jq -r '.score_pct // 0' "$LATEST_JSON" 2>/dev/null || echo 0)
     NEW_BLK=$(jq -r '.blockers_passed' "$LATEST_JSON" 2>/dev/null || echo 0)
     NEW_BLK_T=$(jq -r '.blockers_total' "$LATEST_JSON" 2>/dev/null || echo 0)
@@ -116,7 +116,7 @@ case "$cmd" in
     cd "$SVC"
     .venv/bin/python -m validator --phase "$PHASE" \
       > "$STATE_DIR/$CHECK_ID.validate-baseline.log" 2>&1 || true
-    LATEST=$(ls -1t "$REPO_ROOT/products/sediment/output/validation/$PHASE-"*.json 2>/dev/null | head -1)
+    LATEST=$(ls -1t "$REPO_ROOT/output/validation/$PHASE-"*.json 2>/dev/null | head -1)
     SCORE=$(jq -r '.score_pct // 0' "$LATEST" 2>/dev/null || echo 0)
     echo "$SCORE" > "$STATE_DIR/$CHECK_ID.baseline_score"
     echo "baseline=$SCORE"

@@ -8,11 +8,13 @@ CLI: /oauth-device implements RFC 8628 Device Authorization Grant so the
 `sediment` CLI can authenticate headless (no embedded browser server).
 """
 from __future__ import annotations
+import logging
 import os
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import bindparam, text
@@ -20,6 +22,8 @@ from sqlalchemy import bindparam, text
 from lab_lib.auth import Identity, mint_token, require_identity
 from lab_lib.db import service_session
 from lab_lib.settings import settings
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -65,24 +69,105 @@ class OAuthExchangeReq(BaseModel):
     provider: str                       # "github"
     github_login: str | None = None
     verified_emails: list[str] = []
+    # WO-7 #3 2026-05-24: GitHub OAuth access token from the NextAuth flow.
+    # Previously the backend trusted whatever ``github_login`` /
+    # ``verified_emails`` the client posted — anyone with a JS console
+    # could swap them for someone else's login + a self-asserted email and
+    # mint that member's JWT. Now: the access_token is presented and the
+    # backend re-fetches /user and /user/emails from GitHub server-side,
+    # using the authoritative values as the resolution input.
+    access_token: str | None = None
+
+
+async def _fetch_github_identity(access_token: str) -> tuple[str, list[str]]:
+    """Server-side verification of GitHub identity via the access_token.
+
+    Returns ``(login, verified_emails)``. Anything client-supplied is
+    discarded — we trust only GitHub's response.
+
+    Raises HTTPException(401) if the token is invalid / expired / lacks
+    required scope (``read:user``, ``user:email``).
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Sediment/0.1",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            r_user = await client.get("https://api.github.com/user", headers=headers)
+            r_emails = await client.get("https://api.github.com/user/emails", headers=headers)
+        except httpx.HTTPError as e:
+            log.warning("oauth_exchange.github_fetch_error", error=str(e))
+            raise HTTPException(status_code=502, detail="github api unreachable")
+    if r_user.status_code == 401:
+        raise HTTPException(status_code=401, detail="invalid github access_token")
+    if r_user.status_code != 200:
+        raise HTTPException(status_code=502,
+                            detail=f"github /user returned {r_user.status_code}")
+    if r_emails.status_code != 200:
+        # /user/emails needs user:email scope. Fail clearly so the operator
+        # can fix the NextAuth scope config rather than silently fall back
+        # to public email (which would re-open the trust gap).
+        raise HTTPException(status_code=403,
+                            detail="github access_token missing user:email scope")
+    login = (r_user.json().get("login") or "").strip()
+    raw_emails = r_emails.json() or []
+    # GitHub returns objects like {"email": "...", "verified": true, "primary": true}.
+    # We only accept verified addresses — unverified ones can be set to
+    # someone else's address without proof of ownership.
+    verified = sorted({
+        (e.get("email") or "").strip().lower()
+        for e in raw_emails
+        if isinstance(e, dict) and e.get("verified")
+        and isinstance(e.get("email"), str)
+    } - {""})
+    if not login:
+        raise HTTPException(status_code=403, detail="github /user returned no login")
+    return login, verified
 
 
 @router.post("/oauth-exchange", response_model=TokenResp)
 async def oauth_exchange(req: OAuthExchangeReq):
     """Exchange a NextAuth-verified OAuth identity for a Sediment JWT.
 
-    The frontend authenticates the user with GitHub (NextAuth), then calls
-    this with the GitHub login + verified emails. Resolution is by
-    github_login first — GitHub account emails are frequently private and
-    differ from the seeded member email, so email is only a fallback for
-    members not yet github-mapped. The backend remains the single source of
-    truth for tenant/role and JWT signing; it never trusts a client-supplied
-    tenant.
+    WO-7 #3 2026-05-24 (REPORT.md HIGH): server-side identity verification.
+    Previously the request body's ``github_login`` and ``verified_emails``
+    were trusted verbatim, which meant any JS console could mint a JWT for
+    any tenant member whose github_login it knew. Now: the client posts
+    its NextAuth-issued ``access_token`` and the backend re-fetches the
+    real identity from GitHub. Client-supplied ``github_login`` /
+    ``verified_emails`` are accepted only when ``access_token`` is absent
+    AND ``SEDIMENT_TRUST_CLIENT_OAUTH=1`` is set (dev-only escape hatch).
+
+    Resolution: github_login first — GitHub account emails are frequently
+    private and differ from the seeded member email, so email is only a
+    fallback for members not yet github-mapped. The backend remains the
+    single source of truth for tenant/role and JWT signing; it never trusts
+    a client-supplied tenant.
     """
     if req.provider != "github":
         raise HTTPException(status_code=400, detail=f"unsupported provider: {req.provider}")
-    gh = (req.github_login or "").strip()
-    emails = sorted({e.strip().lower() for e in (req.verified_emails or []) if e and e.strip()})
+
+    # WO-7 #3: prefer server-side verification when the access_token is
+    # present. Legacy client-trust path kept behind an explicit dev-only flag.
+    if req.access_token:
+        gh, emails = await _fetch_github_identity(req.access_token)
+    elif os.environ.get("SEDIMENT_TRUST_CLIENT_OAUTH") == "1":
+        log.warning("oauth_exchange.trusting_client_payload — dev-only flag set")
+        gh = (req.github_login or "").strip()
+        emails = sorted({e.strip().lower() for e in (req.verified_emails or []) if e and e.strip()})
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "oauth-exchange requires access_token (server-side verification). "
+                "For dev/test, set SEDIMENT_TRUST_CLIENT_OAUTH=1 to fall back to "
+                "client-supplied github_login + verified_emails."
+            ),
+        )
+
     if not gh and not emails:
         raise HTTPException(status_code=400, detail="github_login or verified_emails required")
 

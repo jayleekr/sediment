@@ -62,14 +62,37 @@ fn load() -> Result<Creds> {
 fn save(creds: &Creds) -> Result<()> {
     let path = creds_path()?;
     let body = serde_json::to_string_pretty(creds)?;
-    // Write to a temp file in the same dir, then atomic rename. Set perms
-    // BEFORE rename so the live file never appears world-readable.
+    // Write to a temp file in the same dir, then atomic rename.
+    //
+    // 2026-05-23 FIX-D (REPORT.md CRIT #9): previously this called
+    // `fs::write` first then `fs::set_permissions` second — a TOCTOU window
+    // during which the JWT was world-readable (0644 default) on multi-user
+    // boxes. Now: open with O_CREAT | O_EXCL and mode 0o600 in a single
+    // syscall, then write into the already-restrictive file. No window.
     let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, body).with_context(|| format!("writing {}", tmp.display()))?;
+    // Best-effort cleanup of any stale tmp from a crashed prior write —
+    // create_new fails if the file exists, so we must clear it first.
+    let _ = fs::remove_file(&tmp);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+            .with_context(|| format!("creating {} (mode 0600)", tmp.display()))?;
+        f.write_all(body.as_bytes())
+            .with_context(|| format!("writing {}", tmp.display()))?;
+        f.sync_all().ok();
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows: no POSIX perms; rely on user-profile ACL of the parent
+        // dir. fs::write atomically (-ish) creates the file with default
+        // perms, same as before.
+        fs::write(&tmp, body).with_context(|| format!("writing {}", tmp.display()))?;
     }
     fs::rename(&tmp, &path)
         .with_context(|| format!("renaming {} → {}", tmp.display(), path.display()))?;

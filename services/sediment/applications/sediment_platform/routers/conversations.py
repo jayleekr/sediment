@@ -38,12 +38,21 @@ _TEST_TITLE_PATTERNS = [
 ]
 
 
-def _exclude_test_sql() -> str:
-    """SQL fragment to AND in: filters test-prefix titles."""
-    or_clauses = " OR ".join(
-        f"title ILIKE '{p}%'" for p in _TEST_TITLE_PATTERNS
-    )
-    return f" AND NOT ({or_clauses})"
+def _exclude_test_sql() -> tuple[str, dict]:
+    """Return (SQL fragment, params) to AND in: filters test-prefix titles.
+
+    2026-05-23 FIX-C (REPORT.md CRIT #12): previously this interpolated each
+    pattern as an f-string into the SQL — today's values are alphanumeric so
+    it was safe, but the pattern teaches "constants don't need binds", the
+    exact mechanism behind multiple LEARNINGS recurrences. Now we use a
+    single bound array via PostgreSQL ANY() so a future test-prefix change
+    can never bypass the lint guard.
+    """
+    # Postgres ILIKE supports % wildcards on the value side; pre-append the
+    # wildcard to each pattern and bind as an array. The dollar-sign
+    # placeholder matches the route's existing :param style for asyncpg.
+    patterns_with_wild = [f"{p}%" for p in _TEST_TITLE_PATTERNS]
+    return (" AND NOT (title ILIKE ANY(:test_title_patterns))", {"test_title_patterns": patterns_with_wild})
 
 
 @router.get("")
@@ -53,7 +62,11 @@ async def list_convs(
     include_test: bool = Query(default=False, alias="include_test"),
     include_archived: bool = Query(default=False, alias="include_archived"),
 ):
-    test_filter = "" if include_test else _exclude_test_sql()
+    # FIX-C 2026-05-23: filter fragment + bound params (was f-string interp).
+    if include_test:
+        test_filter, test_params = "", {}
+    else:
+        test_filter, test_params = _exclude_test_sql()
     # Per design 15: hide archived convs by default
     archived_filter = "" if include_archived else " AND archived_at IS NULL"
     sql = f"""
@@ -64,8 +77,9 @@ async def list_convs(
         WHERE 1=1{test_filter}{archived_filter}
         ORDER BY pinned DESC, updated_at DESC LIMIT :limit
     """
+    params = {"limit": limit, **test_params}
     async with app_session(identity.tenant_id) as s:
-        r = await s.execute(text(sql), {"limit": limit})
+        r = await s.execute(text(sql), params)
         return {"items": [dict(row._mapping) for row in r]}
 
 

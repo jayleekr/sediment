@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-ENV_FILE="$REPO_ROOT/products/sediment/.env"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ENV_FILE="$REPO_ROOT/.env"
 
 DRY_RUN=0
 for arg in "$@"; do [[ "$arg" == "--dry-run" ]] && DRY_RUN=1; done

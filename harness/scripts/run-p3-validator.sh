@@ -20,9 +20,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-SVC="$REPO_ROOT/products/sediment/services/sediment"
-VAL_DIR="$REPO_ROOT/products/sediment/output/validation"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SVC="$REPO_ROOT/services/sediment"
+VAL_DIR="$REPO_ROOT/output/validation"
 NOTIFY="$HOME/CodeWorkspace/hypeproof/cron-prompts/notify-discord.sh"
 
 # Strip parent Claude Code env if any (consistent with ralph supervisor)

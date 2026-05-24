@@ -7,9 +7,27 @@ set -e
 : "${DATABASE_URL:?DATABASE_URL must be set (Fly Postgres URL or external)}"
 : "${JWT_SECRET:?JWT_SECRET must be set (used by lab_lib.auth)}"
 
+# FIX-B 2026-05-23: fail loud on missing webhook secrets in prod.
+# Previously silent fallbacks made these high-blast-radius gaps invisible
+# (REPORT.md infra HIGH: GITHUB_WEBHOOK_SECRET fail-open; CRIT #3: open
+# Anthropic relay). Both now refuse to boot a vulnerable container.
+: "${GITHUB_WEBHOOK_SECRET:?GITHUB_WEBHOOK_SECRET must be set — webhook signature is the only gate against forged payloads}"
+: "${ANTHROPIC_PROXY_SECRET:?ANTHROPIC_PROXY_SECRET must be set — /proxy/anthropic/ would be an open relay otherwise}"
+
 # Optional but warned — log a clear message instead of silent failure.
 [ -z "$ANTHROPIC_API_KEY" ] && echo "WARN: ANTHROPIC_API_KEY unset — langgraph will return offline-mock answers"
-[ -z "$GITHUB_WEBHOOK_SECRET" ] && echo "WARN: GITHUB_WEBHOOK_SECRET unset — webhook endpoint will skip signature check"
+
+# Render nginx.conf — substitute the proxy secret. nginx doesn't read env
+# vars at runtime; envsubst at boot is the standard zero-dep pattern.
+NGINX_CONF_SRC="/etc/nginx/nginx.conf.tmpl"
+NGINX_CONF_DST="/etc/nginx/nginx.conf"
+if [ -f "$NGINX_CONF_SRC" ]; then
+    # Only substitute the variables we control — leave nginx's own
+    # ${remote_addr} etc untouched.
+    # ALLOW_PUBLIC_DOCS defaults to "" → /docs returns 404 in prod.
+    export ALLOW_PUBLIC_DOCS="${ALLOW_PUBLIC_DOCS:-}"
+    envsubst '${ANTHROPIC_PROXY_SECRET} ${ALLOW_PUBLIC_DOCS}' < "$NGINX_CONF_SRC" > "$NGINX_CONF_DST"
+fi
 
 # SQLAlchemy needs `postgresql+asyncpg://` (not `postgres+asyncpg://`).
 # Fly Postgres sets DATABASE_URL=postgres://...?sslmode=disable; normalize both

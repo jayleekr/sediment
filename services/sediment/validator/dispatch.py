@@ -25,10 +25,20 @@ from .types import CheckResult, Severity
 
 log = get_logger("validator.dispatch")
 
-# Rubric bash cmds use repo-root-relative paths (e.g. "products/sediment/...").
-# Validator runs from SVC_DIR, so we must set cwd explicitly.
-# dispatch.py is at: .../products/sediment/services/sediment/validator/dispatch.py
-_REPO_ROOT = str(Path(__file__).resolve().parents[5])
+# Rubric bash cmds use repo-root-relative paths. Validator runs from SVC_DIR,
+# so we must set cwd explicitly. Anchor on init.sql to survive structure
+# changes (2026-05-23 fix — parents[5] resolved to /Users/jaylee after the
+# products/sediment → repo-root rename, breaking every bash check).
+def _find_repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        if (p / "infra" / "init.sql").is_file():
+            return p
+    env = os.environ.get("SEDIMENT_REPO_ROOT")
+    return Path(env) if env else here.parents[3]
+
+
+_REPO_ROOT = str(_find_repo_root())
 
 
 async def dispatch(spec: dict) -> CheckResult:

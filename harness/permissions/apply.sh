@@ -9,11 +9,11 @@
 #   does NOT need these — but the wrapper that starts/stops/inspects it does.
 #
 # Usage:
-#   ./products/sediment/harness/permissions/apply.sh
+#   ./harness/permissions/apply.sh
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-RECOMMENDED="$REPO_ROOT/products/sediment/harness/permissions/recommended.local.json"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+RECOMMENDED="$REPO_ROOT/harness/permissions/recommended.local.json"
 TARGET="$REPO_ROOT/.claude/settings.local.json"
 
 if ! command -v jq >/dev/null 2>&1; then

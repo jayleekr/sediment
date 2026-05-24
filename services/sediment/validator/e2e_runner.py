@@ -129,6 +129,29 @@ async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
     seed_member = env_cfg.get("seed_member") or full.get("seed_member", {}) or {}
     ctx_vars = {"seed_member": seed_member}
 
+    # WO-7 #6 2026-05-24 — make `lab_conv_id` available to flows that need a
+    # real (not nonexistent) lab conversation UUID (E2E-08 cross-tenant
+    # negative test). Previously E2E-08 used `00000000-...-deadbeef0000` —
+    # a UUID that does not exist for any tenant, so the test passed whether
+    # RLS worked or not (404 either way). We pick the most-recently created
+    # hypeproof-lab conversation. Best-effort: if DB unreachable / no lab
+    # convs seeded, leave the var empty and let the assertion below catch it.
+    try:
+        # Import locally to avoid pulling DB deps when running E2E in a
+        # pure browser-only env (e.g. PR-preview check).
+        from lab_lib.db import service_session
+        from sqlalchemy import text as _sql
+        async with service_session() as _s:
+            r = await _s.execute(_sql(
+                "SELECT id::text FROM conversations "
+                "WHERE tenant_id = (SELECT id FROM tenants WHERE slug='hypeproof-lab') "
+                "ORDER BY created_at DESC LIMIT 1"
+            ))
+            row = r.first()
+            ctx_vars["lab_conv_id"] = row[0] if row else ""
+    except Exception:
+        ctx_vars["lab_conv_id"] = ""
+
     artifacts: list[str] = []
     console_errors: list[str] = []
 
@@ -193,7 +216,9 @@ async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
                 action = step["action"]
 
                 if action == "navigate":
-                    url = base_url + step["url"]
+                    # WO-7 #6 — resolve template vars in URL so flows can use
+                    # {{lab_conv_id}} etc. without per-action template plumbing.
+                    url = base_url + _resolve_template(step["url"], ctx_vars)
                     await page.goto(url, timeout=timeout)
                     if wf := step.get("wait_for"):
                         await page.wait_for_selector(wf, timeout=timeout)

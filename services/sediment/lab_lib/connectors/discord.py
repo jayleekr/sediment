@@ -24,7 +24,9 @@ Watermark:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,9 +34,55 @@ import httpx
 
 from .base import ConnectorABC, NormalizedEvent, Resource
 
+log = logging.getLogger(__name__)
+
 
 _DISCORD_BASE = "https://discord.com/api/v10"
 _USER_AGENT = "Sediment-Collector/0.1 (+https://sediment.hypeproof-ai.xyz)"
+
+
+# WO-7 #4 2026-05-24: per-channel circuit breaker. Previously 5 retries
+# exhausted by 429 → RuntimeError → caller aborted the WHOLE tenant pull
+# (REPORT.md HIGH — one bad channel takes out everyone else's). Now we
+# trip a per-channel breaker after sustained 429s; subsequent calls to
+# that channel skip immediately until cooldown expires. The connector
+# still pulls every other channel.
+_CIRCUIT_COOLDOWN_S = 300.0       # 5 min open-state cooldown
+_CIRCUIT_FAIL_THRESHOLD = 3        # consecutive 429-exhaustions trip
+_CHANNEL_BREAKERS: dict[str, dict] = {}  # channel_id → {fails:int, open_until:float}
+
+
+class DiscordRateLimitedError(Exception):
+    """Raised when a per-channel breaker is open or the request exhausted retries.
+
+    Caller treats this as "skip this channel, continue with others" rather
+    than aborting the entire tenant pull.
+    """
+
+
+def _breaker_open(channel_id: str) -> bool:
+    state = _CHANNEL_BREAKERS.get(channel_id)
+    if not state:
+        return False
+    return time.monotonic() < state.get("open_until", 0)
+
+
+def _breaker_record_failure(channel_id: str) -> None:
+    state = _CHANNEL_BREAKERS.setdefault(channel_id, {"fails": 0, "open_until": 0})
+    state["fails"] = state.get("fails", 0) + 1
+    if state["fails"] >= _CIRCUIT_FAIL_THRESHOLD:
+        state["open_until"] = time.monotonic() + _CIRCUIT_COOLDOWN_S
+        state["fails"] = 0  # reset counter on trip
+        log.warning(
+            "discord.circuit_breaker.tripped channel=%s cooldown_s=%s",
+            channel_id, _CIRCUIT_COOLDOWN_S,
+        )
+
+
+def _breaker_record_success(channel_id: str) -> None:
+    state = _CHANNEL_BREAKERS.get(channel_id)
+    if state:
+        state["fails"] = 0
 
 
 def _resolve_token(explicit: str | None = None) -> str:
@@ -92,7 +140,19 @@ class DiscordConnector(ConnectorABC):
     # Rate-limit-aware request helper
     # -----------------------------------------------------------------
 
-    async def _request(self, method: str, path: str, **kw) -> httpx.Response:
+    async def _request(self, method: str, path: str, *, channel_id: str | None = None, **kw) -> httpx.Response:
+        """Issue a Discord API request with retry + per-channel circuit breaker.
+
+        When ``channel_id`` is supplied, the breaker logic applies: 3
+        consecutive retry-exhausted 429s open the breaker for 5 min.
+        Subsequent calls during the open window raise
+        :class:`DiscordRateLimitedError` immediately so the caller can skip
+        this channel and keep pulling the others (WO-7 #4 2026-05-24).
+        """
+        if channel_id and _breaker_open(channel_id):
+            raise DiscordRateLimitedError(
+                f"discord channel {channel_id}: circuit breaker open, skipping"
+            )
         for attempt in range(5):
             r = await self._client.request(method, path, **kw)
             if r.status_code == 429:
@@ -100,9 +160,16 @@ class DiscordConnector(ConnectorABC):
                 retry = float(r.headers.get("Retry-After", "1"))
                 await asyncio.sleep(min(retry + 0.05, 30.0))
                 continue
+            if channel_id:
+                _breaker_record_success(channel_id)
             return r
-        # All retries exhausted — return the last response so caller decides.
-        return r
+        # All retries exhausted. Record the failure for the breaker and
+        # surface as a "skip-this-channel" signal rather than a fatal raise.
+        if channel_id:
+            _breaker_record_failure(channel_id)
+        raise DiscordRateLimitedError(
+            f"discord {path}: 5 retries exhausted on 429"
+        )
 
     # -----------------------------------------------------------------
     # ConnectorABC implementation
@@ -167,9 +234,18 @@ class DiscordConnector(ConnectorABC):
         if after_external_id:
             params["after"] = after_external_id
 
-        r = await self._request(
-            "GET", f"/channels/{resource.id}/messages", params=params,
-        )
+        try:
+            r = await self._request(
+                "GET", f"/channels/{resource.id}/messages",
+                channel_id=resource.id,
+                params=params,
+            )
+        except DiscordRateLimitedError as e:
+            # Skip-this-channel signal (WO-7 #4). Caller pulls other channels;
+            # this channel resumes after breaker cooldown. Return an empty
+            # batch instead of bubbling — partial-pull resilience.
+            log.warning("discord.fetch.skip channel=%s reason=%s", resource.id, e)
+            return []
         if r.status_code != 200:
             raise RuntimeError(
                 f"discord fetch failed: {r.status_code} {r.text[:200]}"

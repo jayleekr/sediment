@@ -29,7 +29,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Pattern: a colon, identifier, double-colon, type identifier.
 # Examples that match: :p::jsonb, :tid::uuid, :qvec::vector
@@ -47,8 +47,8 @@ else
   while IFS= read -r f; do
     files+=("$f")
   done < <(
-    find "$REPO_ROOT/products/sediment/services/sediment" \
-         "$REPO_ROOT/products/sediment/harness" \
+    find "$REPO_ROOT/services/sediment" \
+         "$REPO_ROOT/harness" \
          -type d \( -name .venv -o -name __pycache__ -o -name node_modules -o -name .next -o -name .git \) -prune \
          -o -type f -name '*.py' -print 2>/dev/null
   )
@@ -89,7 +89,7 @@ Use CAST(:NAME AS TYPE) instead. Example:
 
 Background: SQLAlchemy parses :tid::uuid as two params (:tid, :uuid) which
 breaks at runtime with PostgresSyntaxError. See:
-  products/sediment/harness/ralph/LEARNINGS.md (2026-05-05 #test-04,
+  harness/ralph/LEARNINGS.md (2026-05-05 #test-04,
   2026-05-08 ai_coder_dispatch_real).
 EOF
   exit 1

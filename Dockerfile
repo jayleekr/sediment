@@ -32,7 +32,7 @@ COPY services/sediment/ services/sediment/
 FROM python:3.11-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx supervisor libpq5 curl \
+    nginx supervisor libpq5 curl gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -40,9 +40,13 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# Process manager + nginx routing + entrypoint
+# Process manager + nginx routing + entrypoint.
+# 2026-05-23 FIX-B: nginx.conf becomes a template — start.sh envsubst's
+# ${ANTHROPIC_PROXY_SECRET} into it at container boot before launching nginx
+# (closes REPORT.md CRIT #3 — open Anthropic relay). gettext-base above
+# provides envsubst.
 COPY infra/deploy/supervisord.conf /etc/supervisor/conf.d/sediment.conf
-COPY infra/deploy/nginx.conf       /etc/nginx/nginx.conf
+COPY infra/deploy/nginx.conf       /etc/nginx/nginx.conf.tmpl
 COPY infra/deploy/start.sh         /start.sh
 COPY infra/deploy/release.sh       /release.sh
 COPY infra/deploy/run-with-db.sh   /run-with-db.sh

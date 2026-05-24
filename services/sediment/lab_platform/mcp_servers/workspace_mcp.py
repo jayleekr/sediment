@@ -1,9 +1,9 @@
-"""Workspace MCP Server :8888
+"""Workspace MCP Server :8888 (INTERNAL — 127.0.0.1 only).
 
-Tenant-aware tools exposed to the LangGraph agent.
-Tenant context is passed by the caller (langgraph) as `tenant_id` argument
-on every call — FastMCP doesn't propagate session state across tools cleanly,
-so we go explicit.
+Tenant-aware tools exposed to the LangGraph agent. Tenant context is
+passed by the caller (langgraph) as ``tenant_id`` argument on every call —
+FastMCP doesn't propagate session state across tools cleanly, so we go
+explicit.
 
 12 tools (matches SPEC §8.2):
   vault_search, vault_read,
@@ -13,6 +13,34 @@ so we go explicit.
   decisions_open, actions_by_owner,
   lens_explain, lens_apply,
   events_recent
+
+============================================================================
+TRUST MODEL — read before adding tools or changing the bind address
+============================================================================
+
+This server differs from ``applications/sediment_mcp/server.py`` (the
+*external* claude.ai-facing MCP shim) in TWO important ways:
+
+  1. **Tenant comes from a tool argument**, not from a JWT. Any caller
+     that can reach :8888 can pass any tenant_id and get that tenant's
+     data. This is by design — the LangGraph agent is the only intended
+     caller, and it already has the tenant from its parent request scope.
+  2. **No auth.** There is no bearer token, no API key, no signature.
+
+Both choices are SAFE IF AND ONLY IF the bind address is 127.0.0.1 and
+nothing else on the host can reach the port. The startup guard below
+enforces this — any future "just bind to 0.0.0.0 for the Studio Worker"
+PR is a CRITICAL security regression that turns this into a cross-tenant
+data exfiltration endpoint.
+
+If you need a real external MCP surface, use ``sediment_mcp/server.py``
+(which derives tenant from the JWT, the correct trust model for that
+direction). DO NOT widen workspace_mcp's bind.
+
+WO-7 #1 2026-05-24 — trust model documented + bind guard added. Future
+hardening: replace the ``tenant_id`` argument with a short-lived service
+JWT (``lab_lib.auth.mint_service_token``) so even a compromised localhost
+process can't pivot across tenants without first stealing the JWT secret.
 """
 from __future__ import annotations
 import asyncio
@@ -25,6 +53,7 @@ from fastmcp import FastMCP
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import configure_logging, get_logger
+from lab_lib.search_utils import build_ts_or_query, is_zero_vector
 from lab_lib.settings import settings
 
 configure_logging()
@@ -50,8 +79,18 @@ async def vault_search(
 ) -> list[dict]:
     """Hybrid search (BM25 + vector) over the tenant's vault.
     Returns chunks with citations sorted by RRF rank.
+
+    WO-7 2026-05-23 (REPORT.md HIGH): zero-vector guard added. Previously
+    this path called ``embed_one()`` and stuffed the result straight into
+    cosine distance — when no OpenAI/Gemini key is set, ``embed_one``
+    returns a zero vector that produces NaN under cosine and silently
+    yields empty results (the LEARNINGS-class regression that library.py
+    and lab_curator_graph.py both guarded against but this file did not).
+    Offline path now mirrors the other two: BM25-only with OR-joined
+    to_tsquery so short / multi-token queries still return real hits.
     """
     qvec = embed_one(query)
+    qvec_zero = is_zero_vector(qvec)
     qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
 
     # Build filters
@@ -71,6 +110,27 @@ async def vault_search(
         filters.append("a.date <= :dt"); params["dt"] = date_to
     where = " AND ".join(filters)
 
+    if qvec_zero:
+        # Offline mode — no real embeddings. BM25-only with OR-joined
+        # to_tsquery so the query still returns useful results.
+        ts_or = build_ts_or_query(query)
+        if not ts_or:
+            return []
+        params["ts_or"] = ts_or
+        sql = f"""
+        SELECT c.id AS chunk_id, c.artifact_id, c.seq, c.content,
+               ts_rank(c.tsv, to_tsquery('simple', :ts_or)) AS score,
+               a.ref, a.type, a.date, a.slug, a.frontmatter
+        FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
+        WHERE {where} AND c.tsv @@ to_tsquery('simple', :ts_or)
+        ORDER BY score DESC
+        LIMIT :limit;
+        """
+        async with app_session(tenant_id) as s:
+            r = await s.execute(text(sql), params)
+            return [dict(row._mapping) for row in r]
+
+    # Online hybrid path — RRF over BM25 + cosine.
     sql = f"""
     WITH bm25 AS (
       SELECT c.id, c.artifact_id, c.seq, c.content,
@@ -314,6 +374,21 @@ async def lens_apply(text_to_reframe: str, lens_id: str) -> dict:
 # ============================================================
 
 if __name__ == "__main__":
-    log.info("workspace_mcp.start", port=settings.workspace_mcp_port)
+    # WO-7 #1 2026-05-24: hard-coded loopback bind. The trust model above
+    # depends on this — see the module docstring. Reading from an env var
+    # would let a deploy config drift the bind to 0.0.0.0 silently.
+    host = "127.0.0.1"
+    # Belt-and-suspenders: refuse any attempt to override via env vars
+    # someone might add later. WORKSPACE_MCP_HOST is intentionally not read.
+    import os as _os
+    forbidden = _os.environ.get("WORKSPACE_MCP_HOST")
+    if forbidden and forbidden != host:
+        raise SystemExit(
+            f"FATAL: WORKSPACE_MCP_HOST={forbidden!r} ignored — this server "
+            f"must bind to 127.0.0.1 only (see module docstring trust model). "
+            f"To override, edit workspace_mcp.py directly + remove the no-auth "
+            f"tool surface FIRST."
+        )
+    log.info("workspace_mcp.start", host=host, port=settings.workspace_mcp_port)
     # FastMCP supports stdio + http transports. We run http for langgraph to consume.
-    mcp.run(transport="http", host="127.0.0.1", port=settings.workspace_mcp_port)
+    mcp.run(transport="http", host=host, port=settings.workspace_mcp_port)
