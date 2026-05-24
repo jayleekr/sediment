@@ -30,11 +30,13 @@ stage() { echo; printf "\033[1m── %s ──\033[0m\n" "$1"; }
 # ──────────────────────────────────────────────────────────────────────
 stage "1. Fly app status"
 if command -v fly >/dev/null 2>&1; then
-  state=$(fly status --app hypeproof-sediment 2>/dev/null | awk '/started/ {print "started"; exit} END {print "unknown"}')
-  if [ "$state" = "started" ]; then
+  # awk approach: scan for "started" anywhere in fly status output.
+  # 2026-05-24 fix: prior version printed both "started" AND "unknown"
+  # (END block always fired even after a match) — false negative.
+  if fly status --app hypeproof-sediment 2>/dev/null | grep -qE '\bstarted\b'; then
     pass "fly machine state: started"
   else
-    fail "fly machine state: $state"
+    fail "fly machine state: not started"
   fi
 else
   warn "flyctl not installed — skipping fly status"
