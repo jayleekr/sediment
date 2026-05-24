@@ -50,6 +50,12 @@ COPY infra/deploy/nginx.conf       /etc/nginx/nginx.conf.tmpl
 COPY infra/deploy/start.sh         /start.sh
 COPY infra/deploy/release.sh       /release.sh
 COPY infra/deploy/run-with-db.sh   /run-with-db.sh
+
+# Ship the migration files so release.sh can apply them. Lives at
+# /app/infra/migrations/ to match the path apply_migrations.py expects
+# (Path(__file__).resolve().parents[3] = /app from
+# /app/services/sediment/scripts/apply_migrations.py).
+COPY infra/migrations/            /app/infra/migrations/
 RUN chmod +x /start.sh /release.sh /run-with-db.sh
 
 # Default ports (override via Fly env). Public port is 8080 (nginx).
