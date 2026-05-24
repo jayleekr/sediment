@@ -29,5 +29,13 @@ export DATABASE_URL_APP="$(normalize_pg_url "${DATABASE_URL_APP:-$DATABASE_URL}"
 export DATABASE_URL_SERVICE="$(normalize_pg_url "${DATABASE_URL_SERVICE:-$DATABASE_URL}")"
 
 cd /app/services/sediment
+
+# 2026-05-24: apply forward-only SQL migrations BEFORE seed.
+# Migration 003 (stripe_event_log) lands here. apply_migrations.py is
+# idempotent — only applies files whose NNN id isn't already in
+# schema_migrations. Failing here MUST fail the deploy.
+echo "→ release: apply pending migrations"
+PYTHONPATH=. python -m scripts.apply_migrations
+
 echo "→ release: idempotent seed (github_login migrate + tenant/member upsert)"
 exec python -m scripts.seed_lab
