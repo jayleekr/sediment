@@ -28,3 +28,9 @@ CREATE INDEX IF NOT EXISTS stripe_event_log_received_at_idx
 -- Optional: retention. Stripe's 3-day retry window means anything older than
 -- ~7 days will never replay. Truncate by hand or via a daily cron later.
 -- Not enforced here.
+
+-- Self-record so apply_migrations.py skips us on the next run.
+-- Mirrors the pattern in 001 + 002 (apply_migrations doesn't track this
+-- itself — each migration is responsible for its own bookkeeping row).
+INSERT INTO schema_migrations(name) VALUES ('003_stripe_event_log')
+  ON CONFLICT (name) DO NOTHING;
