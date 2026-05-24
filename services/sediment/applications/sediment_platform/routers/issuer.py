@@ -229,6 +229,8 @@ class RotateReq(BaseModel):
     confirm: bool = False
     days: int = 60
     max_hours: int = 12
+    can_start_session: bool = False
+    max_session_hours: int = 4
 
 
 class HealthResp(BaseModel):
@@ -299,6 +301,8 @@ async def rotate_token(
 
     if not req.confirm:
         raise HTTPException(400, detail="set confirm:true in body to acknowledge rotation")
+    if req.can_start_session and not (1 <= req.max_session_hours <= 24):
+        raise HTTPException(400, detail="max_session_hours must be 1..24 when can_start_session=true")
 
     rate_key = f"POST:{name}"
     allowed, retry = _check_rate(rate_key, *_POST_BUDGET)
@@ -310,16 +314,23 @@ async def rotate_token(
         raise HTTPException(503, detail="HPS_SIGNING_SECRET not configured on this sediment instance")
 
     # Scope mirror — same scope template the 5/20 batch used.
+    session_extras = (
+        {"can_start_session": True, "max_session_hours": req.max_session_hours}
+        if req.can_start_session
+        else {}
+    )
     scopes = [
         {
             "cohort": "boah-dental-2026-a",
             "profiles": ["boah-dental-teaser-2026-s1", "sk-biopharm-kids-2026-grade-3-4-s1"],
             "max_hours": req.max_hours,
+            **session_extras,
         },
         {
             "cohort": "sk-biopharm-2026-a",
             "profiles": ["boah-dental-teaser-2026-s1", "sk-biopharm-kids-2026-grade-3-4-s1"],
             "max_hours": req.max_hours,
+            **session_extras,
         },
     ]
     hours = req.days * 24
