@@ -221,12 +221,10 @@ pub async fn perform_update(info: &UpdateInfo) -> Result<PathBuf> {
             let dest = extract_dir.join(&path_in_tar);
             // Resolve dest's parent (must exist or be creatable inside extract_dir).
             if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!("creating dir {}", parent.display())
-                })?;
-                let parent_canon = fs::canonicalize(parent).with_context(|| {
-                    format!("canonicalize {}", parent.display())
-                })?;
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("creating dir {}", parent.display()))?;
+                let parent_canon = fs::canonicalize(parent)
+                    .with_context(|| format!("canonicalize {}", parent.display()))?;
                 if !parent_canon.starts_with(&extract_dir_canon) {
                     return Err(anyhow!(
                         "tar entry would write outside extract dir: {} → {}",
