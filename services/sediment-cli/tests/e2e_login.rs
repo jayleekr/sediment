@@ -6,7 +6,7 @@
 //   make up                                       # postgres + redis
 //   cd services/sediment && uvicorn ... --port 10101 &     # platform
 //   SEDIMENT_E2E_BASE_URL=http://localhost:10101 \
-//   SEDIMENT_E2E_EMAIL=jay.lee@sonatus.com \
+//   SEDIMENT_E2E_EMAIL=jayleekr0125@gmail.com \
 //     cargo test --test e2e_login -- --nocapture
 //
 // What it exercises:
@@ -38,7 +38,7 @@ fn e2e_device_login_against_running_platform() {
             return;
         }
     };
-    let email = env::var("SEDIMENT_E2E_EMAIL").unwrap_or_else(|_| "jay.lee@sonatus.com".into());
+    let email = env::var("SEDIMENT_E2E_EMAIL").unwrap_or_else(|_| "jayleekr0125@gmail.com".into());
 
     // Tempdir to isolate XDG_CONFIG_HOME — accounts index lives here, but
     // the keychain is OS-native, so this is only a partial isolation. The

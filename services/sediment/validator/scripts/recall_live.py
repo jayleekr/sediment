@@ -30,7 +30,7 @@ import httpx
 import yaml
 
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
-EMAIL = os.environ.get("SEDIMENT_EMAIL", "jay.lee@sonatus.com")
+EMAIL = os.environ.get("SEDIMENT_EMAIL", "jayleekr0125@gmail.com")
 MIN_PASS = int(os.environ.get("RECALL_MIN_PASS", "20"))  # default = hypeproof-lab baseline
 
 # Default queries file = hypeproof-lab. Override with RECALL_QUERIES env or

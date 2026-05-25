@@ -130,13 +130,13 @@ async def run_phase(phase_id: str) -> PhaseResult:
 # validator/e2e_spec.yaml
 base_url: "http://localhost:3000"
 seed_member:
-  email: "jay.lee@sonatus.com"
+  email: "jayleekr0125@gmail.com"
 
 environments:
   dev:
     base_url: "http://localhost:3000"
     auth_method: dev_token
-    seed_member: { email: "jay.lee@sonatus.com" }
+    seed_member: { email: "jayleekr0125@gmail.com" }
   prod:
     base_url: "https://sediment.hypeproof-ai.xyz"
     auth_method: none

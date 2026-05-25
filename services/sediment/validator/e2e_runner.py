@@ -272,7 +272,7 @@ async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
                         await page.goto(base_url + "/sediment", timeout=timeout)
                     has_token = await page.evaluate("() => localStorage.getItem('curator.token')")
                     if not has_token:
-                        await signin_with(seed_member.get("email", "jay.lee@sonatus.com"))
+                        await signin_with(seed_member.get("email", "jayleekr0125@gmail.com"))
 
                 elif action == "signin_as":
                     # Clear prior token, then sign in. Navigate first so

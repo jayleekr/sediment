@@ -30,7 +30,7 @@ jobs:
         run: |
           TOK=$(curl -s -X POST "$BASE_URL/api/v1/auth/dev-token" \
             -H 'Content-Type: application/json' \
-            -d '{"email":"jay.lee@sonatus.com"}' | jq -r .token)
+            -d '{"email":"jayleekr0125@gmail.com"}' | jq -r .token)
           TOK_ACME=$(curl -s -X POST "$BASE_URL/api/v1/auth/dev-token" \
             -H 'Content-Type: application/json' \
             -d '{"email":"admin@acme.test"}' | jq -r .token)

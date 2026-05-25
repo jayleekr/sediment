@@ -287,7 +287,7 @@ phases:
         type: sql
         sql: |
           SELECT 1 FROM members m JOIN tenants t ON t.id = m.tenant_id
-          WHERE t.slug='hypeproof-lab' AND m.email='jay.lee@sonatus.com' AND m.role='admin'
+          WHERE t.slug='hypeproof-lab' AND m.email='jayleekr0125@gmail.com' AND m.role='admin'
         expected_rows: 1
         role: service
 

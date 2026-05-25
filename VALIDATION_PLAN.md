@@ -355,7 +355,7 @@ flows:
             value: "Sign in"
       - action: fill
         selector: "input[placeholder='member email']"
-        value: "jay.lee@sonatus.com"
+        value: "jayleekr0125@gmail.com"
         screenshot: "02-filled"
       - action: click
         selector: "button:has-text('Mint dev token')"

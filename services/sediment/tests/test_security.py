@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_DB") == "1", reason="DB not available"
 )
 
-HL_EMAIL = "jay.lee@sonatus.com"
+HL_EMAIL = "jayleekr0125@gmail.com"
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ async def test_dev_token_gated_when_dev_mode_off(client, monkeypatch):
     MUST 403 — without this gate, anyone who knows a member email could
     mint an admin JWT (auth bypass)."""
     monkeypatch.delenv("SEDIMENT_DEV_MODE", raising=False)
-    r = await client.post("/api/v1/auth/dev-token", json={"email": "jay.lee@sonatus.com"})
+    r = await client.post("/api/v1/auth/dev-token", json={"email": "jayleekr0125@gmail.com"})
     assert r.status_code == 403, f"dev-token must 403 in prod mode, got {r.status_code}: {r.text}"
 
 

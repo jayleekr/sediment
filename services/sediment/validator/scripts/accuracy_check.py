@@ -204,7 +204,7 @@ async def check_cross_tenant_isolation(
 # ---------------------------------------------------------------------------
 
 _TENANT_EMAILS = {
-    "hypeproof-lab": "jay.lee@sonatus.com",
+    "hypeproof-lab": "jayleekr0125@gmail.com",
     "kids-edu":      "jayleekr0125@gmail.com",
 }
 

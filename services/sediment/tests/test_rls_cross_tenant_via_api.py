@@ -29,7 +29,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-HL_EMAIL = "jay.lee@sonatus.com"        # hypeproof-lab tenant
+HL_EMAIL = "jayleekr0125@gmail.com"        # hypeproof-lab tenant
 ACME_EMAIL = "admin@acme.test"           # acme-test tenant
 
 

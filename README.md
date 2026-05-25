@@ -245,7 +245,7 @@ sediment/                              # repo root (was: products/sediment/)
 
 ## 5 Validation Queries (MVP gate, SPEC §6.3)
 
-After `make ingest`, sign in as Jay (`jay.lee@sonatus.com`) and ask:
+After `make ingest`, sign in as Jay (`jayleekr0125@gmail.com`) and ask:
 
 1. **"라이언이 4월에 쓴 mirror-loop 칼럼"** → filtered library + RAG
 2. **"Daily research 중 Claude Code 관련 high-confidence 결론"** → frontmatter filter + RAG
