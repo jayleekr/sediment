@@ -51,3 +51,10 @@ output/reviews/
 # Cloned via: git clone --depth 1 https://github.com/garrytan/gstack.git \
 #   .claude/skills/gstack/  (per review session 2026-05-23).
 .claude/skills/gstack/
+
+# Git worktrees created for parallel branches — never commit these.
+.claude/worktrees/
+
+# Personal asset dumps (KakaoTalk photos, internal docs) — local only.
+assets/
+

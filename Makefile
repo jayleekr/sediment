@@ -8,7 +8,8 @@
         monitor monitor-tail monitor-dashboard \
         bounce-services lint-sql p3-cron-install p3-cron-status p3-cron-uninstall \
         push prod-run \
-        preflight smoke-tests deploy-check verify-deploy doctor
+        preflight smoke-tests deploy-check verify-deploy doctor \
+        check-secrets check-secrets-history install-hooks uninstall-hooks
 
 SHELL := /bin/bash
 SVC_DIR := services/sediment
@@ -56,11 +57,17 @@ help:
 	@echo "  make prod-run SCRIPT=retention_sweep ARGS=--dry-run  — with args"
 	@echo ""
 	@echo " harness gates (after any code change):"
-	@echo "  make doctor          — one-shot: preflight + smoke + deploy-check (run me FIRST)"
+	@echo "  make doctor          — one-shot: preflight + smoke + check-secrets + deploy-check (run me FIRST)"
 	@echo "  make preflight       — local stack ready? (docker, venv, ports, .env, lint)"
 	@echo "  make smoke-tests     — fast Python canaries (JWT, fixer 4-tier, search_utils, chunker, ...)"
 	@echo "  make deploy-check    — pre-push gate (fly secrets, migrations, nginx envsubst, P0)"
 	@echo "  make verify-deploy   — post-deploy prod check (healthz, OAuth, proxy guard, headers)"
+	@echo ""
+	@echo " secret-scan (run before going public):"
+	@echo "  make check-secrets         — scan working tree (current uncommitted state)"
+	@echo "  make check-secrets-history — scan EVERY commit (~minute, before make repo public)"
+	@echo "  make install-hooks         — wire pre-commit + pre-push hooks (block bad commits)"
+	@echo "  make uninstall-hooks       — remove the hooks"
 
 # ================ infra ================
 up:
@@ -357,17 +364,33 @@ deploy-check-offline:
 verify-deploy:
 	@bash harness/scripts/verify-deploy.sh
 
+# Secret scan — run before commit/push manually, or rely on installed git hooks.
+check-secrets:
+	@bash harness/scripts/check-secrets.sh --working-tree
+
+check-secrets-history:
+	@bash harness/scripts/check-secrets.sh --history
+
+install-hooks:
+	@bash harness/scripts/install-git-hooks.sh
+
+uninstall-hooks:
+	@bash harness/scripts/install-git-hooks.sh --uninstall
+
 # Doctor — the "I just made changes, am I OK?" single command.
-# Runs in this order: preflight-quick → smoke-tests → deploy-check-offline.
+# Runs: preflight-quick → smoke-tests → check-secrets (working tree) → deploy-check-offline.
 # Stops at first FAIL so the user can fix one thing at a time.
 doctor:
-	@echo "── 1/3 preflight (quick) ──"
+	@echo "── 1/4 preflight (quick) ──"
 	@bash harness/scripts/preflight.sh --quick || (echo; echo "✗ preflight failed — fix above before continuing"; exit 1)
 	@echo
-	@echo "── 2/3 smoke-tests ──"
+	@echo "── 2/4 smoke-tests ──"
 	@bash harness/scripts/smoke-tests.sh || (echo; echo "✗ smoke tests failed — fix above before continuing"; exit 1)
 	@echo
-	@echo "── 3/3 deploy-check (offline mode — re-run with flyctl auth for full check) ──"
+	@echo "── 3/4 check-secrets (working tree — staged + untracked) ──"
+	@bash harness/scripts/check-secrets.sh --working-tree || (echo; echo "✗ secret found — remove before committing"; exit 1)
+	@echo
+	@echo "── 4/4 deploy-check (offline mode — re-run with flyctl auth for full check) ──"
 	@bash harness/scripts/deploy-check.sh --skip-fly || (echo; echo "✗ deploy-check failed"; exit 1)
 	@echo
 	@echo "✓ doctor: ALL GREEN. To ship: make deploy-check (with fly auth) then git push origin main."

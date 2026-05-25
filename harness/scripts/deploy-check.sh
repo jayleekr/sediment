@@ -126,7 +126,9 @@ stage "5. Dockerfile + nginx envsubst placeholders"
 NGINX="$REPO_ROOT/infra/deploy/nginx.conf"
 START_SH="$REPO_ROOT/infra/deploy/start.sh"
 if [ -f "$NGINX" ] && [ -f "$START_SH" ]; then
-  placeholders=$(grep -oE '\$\{[A-Z_]+\}' "$NGINX" | sort -u)
+  # Strip nginx comment lines first — they often quote placeholder syntax
+  # in docs ("the ${X} expansion") without actually using a variable.
+  placeholders=$(grep -v '^\s*#' "$NGINX" | grep -oE '\$\{[A-Z_]+\}' | sort -u)
   whitelist=$(grep -oE 'envsubst.*' "$START_SH" | grep -oE '\$\{[A-Z_]+\}' | sort -u)
   missing=""
   for p in $placeholders; do

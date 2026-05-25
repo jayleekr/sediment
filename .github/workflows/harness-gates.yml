@@ -46,6 +46,28 @@ jobs:
       - name: Run lint
         run: bash harness/scripts/lint-sql-cast.sh
 
+  check-secrets:
+    name: Scan PR diff for secrets / credentials / private keys
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need history to diff against the base branch.
+          fetch-depth: 0
+      - name: Pick base ref
+        id: base
+        run: |
+          if [ -n "$GITHUB_BASE_REF" ]; then
+            echo "ref=origin/$GITHUB_BASE_REF" >> "$GITHUB_OUTPUT"
+          else
+            # Push event — diff against the previous commit. For force-pushes
+            # this is intentionally narrow; the pre-push hook catches the rest.
+            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Scan diff for secrets
+        run: bash harness/scripts/check-secrets.sh --diff "${{ steps.base.outputs.ref }}"
+
   smoke-tests:
     name: Python smoke tests (JWT, fixer 4-tier, search_utils, chunker, ...)
     runs-on: ubuntu-latest
