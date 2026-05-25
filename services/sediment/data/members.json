@@ -1,24 +1,24 @@
 {
   "version": 1,
-  "updatedAt": "2026-03-25",
+  "updatedAt": "2026-05-25",
+  "_note": "Public OSS seed — owner only. For private deployments, replace with your own team roster. seed_lab.py reads this file at install time.",
   "members": [
     {
       "id": "1186944844401225808",
       "username": "jayleekr",
       "displayName": "Jay",
-      "realName": "이재원",
-      "email": "jay.lee@sonatus.com",
+      "realName": "Jay Lee",
+      "email": "jayleekr0125@gmail.com",
       "role": "admin",
       "title": "AI Architect / PM",
       "expertise": [
-        "AI에이전트",
-        "차량SW",
-        "PM",
-        "OpenClaw"
+        "AI agents",
+        "automotive software",
+        "PM"
       ],
       "interests": [
-        "AI자동화",
-        "오픈소스"
+        "AI automation",
+        "open source"
       ],
       "weeklyHours": 10,
       "joinDate": "2025-12-01",
@@ -26,211 +26,6 @@
       "columnType": "A",
       "status": "active",
       "githubLogin": "jayleekr"
-    },
-    {
-      "id": "390511709019832330",
-      "username": "jysin",
-      "displayName": "JY",
-      "realName": "신진용",
-      "email": "jysin0102@gmail.com",
-      "role": "creator",
-      "title": "AI/ML Engineer",
-      "expertise": [
-        "AI/ML",
-        "퀀트",
-        "물리학"
-      ],
-      "interests": [
-        "AI코딩",
-        "Claude Code"
-      ],
-      "weeklyHours": 5,
-      "joinDate": "2025-12-01",
-      "articles": [],
-      "columnType": "A",
-      "status": "active",
-      "githubLogin": "JinyongShin"
-    },
-    {
-      "id": "",
-      "username": "kiwonam96",
-      "displayName": "Kiwon",
-      "realName": "남기원",
-      "email": "kiwonam96@gmail.com",
-      "role": "creator",
-      "title": "Global Marketing Specialist",
-      "expertise": [
-        "글로벌마케팅",
-        "심리학",
-        "GWU"
-      ],
-      "interests": [
-        "마케팅AI",
-        "소비자분석"
-      ],
-      "weeklyHours": 5,
-      "joinDate": "2025-12-01",
-      "articles": [],
-      "columnType": "B",
-      "status": "active"
-    },
-    {
-      "id": "",
-      "username": "",
-      "displayName": "TJ",
-      "realName": "강태진",
-      "email": "tj456852@gmail.com",
-      "role": "creator",
-      "title": "Media Producer / Content Planner",
-      "expertise": [
-        "미디어제작",
-        "콘텐츠기획",
-        "창업"
-      ],
-      "interests": [
-        "콘텐츠워크플로우",
-        "영상AI"
-      ],
-      "weeklyHours": 5,
-      "joinDate": "2025-12-01",
-      "articles": [],
-      "columnType": "B",
-      "status": "active"
-    },
-    {
-      "id": "",
-      "username": "",
-      "displayName": "Ryan",
-      "realName": "김지웅",
-      "email": "jkimak1124@gmail.com",
-      "role": "creator",
-      "title": "Quant Researcher / Physicist",
-      "expertise": [
-        "퀀트리서치",
-        "물리학",
-        "CERN",
-        "데이터분석"
-      ],
-      "interests": [
-        "AI교육",
-        "데이터파이프라인"
-      ],
-      "weeklyHours": 5,
-      "joinDate": "2025-12-01",
-      "articles": [],
-      "columnType": "A",
-      "status": "active"
-    },
-    {
-      "id": "",
-      "username": "",
-      "displayName": "BH",
-      "realName": "태봉호",
-      "email": "xoqhdgh@gmail.com",
-      "role": "creator",
-      "title": "Particle Physicist (CERN CMS)",
-      "expertise": [
-        "입자물리학",
-        "CERN CMS",
-        "실험물리"
-      ],
-      "interests": [
-        "양자",
-        "데이터분석"
-      ],
-      "weeklyHours": 5,
-      "joinDate": "2025-12-01",
-      "articles": [],
-      "columnType": "B",
-      "status": "active",
-      "githubLogin": "xoqhdgh1002"
-    },
-    {
-      "id": "",
-      "username": "",
-      "displayName": "Sebastian",
-      "realName": "Sebastian",
-      "email": "",
-      "role": "creator",
-      "title": "Engineering Manager",
-      "expertise": [
-        "엔지니어링매니지먼트",
-        "전자공학",
-        "실리콘밸리"
-      ],
-      "interests": [
-        "아키텍처",
-        "확장성"
-      ],
-      "weeklyHours": 0,
-      "joinDate": "2025-12-01",
-      "articles": [],
-      "columnType": "C",
-      "status": "active"
-    },
-    {
-      "id": "1476570176773292076",
-      "username": "",
-      "displayName": "정우",
-      "realName": "김정우",
-      "email": "kimjungwoo0716@gmail.com",
-      "role": "creator",
-      "title": "",
-      "expertise": [],
-      "interests": [],
-      "weeklyHours": 5,
-      "joinDate": "2026-01-01",
-      "articles": [],
-      "columnType": "C",
-      "status": "active"
-    },
-    {
-      "id": "122584189",
-      "username": "JeHyeong2",
-      "displayName": "JeHyeong",
-      "realName": "신제형",
-      "email": "tlswpgud22@nate.com",
-      "role": "admin",
-      "title": "Platform Lead",
-      "expertise": [
-        "Next.js",
-        "React",
-        "TypeScript",
-        "Web Development"
-      ],
-      "interests": [
-        "frontend architecture",
-        "UI/UX",
-        "performance optimization"
-      ],
-      "weeklyHours": 5,
-      "joinDate": "2026-01-01",
-      "articles": [],
-      "columnType": "C",
-      "status": "active",
-      "githubLogin": "JeHyeong2"
-    },
-    {
-      "id": "457247482993442816",
-      "username": "",
-      "displayName": "Simon",
-      "realName": "김상호",
-      "email": "",
-      "role": "creator",
-      "title": "",
-      "expertise": [
-        "OpenClaw",
-        "테스트"
-      ],
-      "interests": [
-        "OpenClaw",
-        "학습"
-      ],
-      "weeklyHours": 0,
-      "joinDate": "2026-03-24",
-      "articles": [],
-      "columnType": "C",
-      "status": "active"
     }
   ]
 }

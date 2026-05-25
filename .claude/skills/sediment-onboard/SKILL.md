@@ -177,7 +177,7 @@ Display a short summary card:
 ```
 ✅ Sediment CLI is ready
 
-  Account:      jay.lee@sonatus.com
+  Account:      jayleekr0125@gmail.com
   Tenant:       hypeproof-lab
   CLI path:     /opt/homebrew/bin/sediment
   Shim path:    /opt/homebrew/bin/sediment-mcp

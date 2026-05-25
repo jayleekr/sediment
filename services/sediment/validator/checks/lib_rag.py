@@ -26,10 +26,10 @@ async def _make_token() -> str:
     async with service_session() as s:
         r = await s.execute(text("""
             SELECT m.id::text, t.id::text FROM members m JOIN tenants t ON t.id=m.tenant_id
-            WHERE t.slug='hypeproof-lab' AND m.email='jay.lee@sonatus.com'
+            WHERE t.slug='hypeproof-lab' AND m.email='jayleekr0125@gmail.com'
         """))
         mid, tid = r.first()
-    return mint_token(member_id=mid, tenant_id=tid, role="admin", email="jay.lee@sonatus.com")
+    return mint_token(member_id=mid, tenant_id=tid, role="admin", email="jayleekr0125@gmail.com")
 
 
 async def _run_golden(token: str) -> tuple[list[dict], list[float]]:

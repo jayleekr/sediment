@@ -160,7 +160,7 @@ docker run --rm -p 8080:8080 \
 curl http://localhost:8080/healthz
 curl -X POST http://localhost:8080/api/v1/auth/dev-token \
   -H 'Content-Type: application/json' \
-  -d '{"email":"jay.lee@sonatus.com"}'
+  -d '{"email":"jayleekr0125@gmail.com"}'
 ```
 
 ---

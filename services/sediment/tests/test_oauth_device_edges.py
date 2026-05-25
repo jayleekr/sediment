@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_DB") == "1", reason="DB not available"
 )
 
-SEED_EMAIL = "jay.lee@sonatus.com"
+SEED_EMAIL = "jayleekr0125@gmail.com"
 
 
 @pytest.fixture

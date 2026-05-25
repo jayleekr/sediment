@@ -1,8 +1,8 @@
 # Sediment
 
 > HypeProof Lab's evidence-grounded memory layer — "where doing becomes knowing".
-> Built from the AI Technician (Sonatus) architecture pattern: LangGraph + pgvector + domain MCP + tenant-aware everything.
-> Designed to scale into a multi-tenant SaaS.
+> A LangGraph + pgvector + domain-MCP stack with tenant-aware everything,
+> designed to scale into a multi-tenant SaaS.
 
 **Live (2026-05-20):**
 - UI → https://sediment.hypeproof-ai.xyz/sediment (standalone Next.js on Vercel)
@@ -21,7 +21,7 @@
 | 3. Ingest automation | ✅ | APScheduler in-VM (`config/cron.yaml`, 8 Discord channels every 30 min), webhook endpoints (`/webhook/ingest`, `/webhook/discord-ingest`), `consolidate_memory.py`, `distill.py` |
 | 4. Memory consolidation | ✅ | dream.py (archive + boost + decision/action extraction + usage rollup) |
 | 5. Auth + RBAC + RLS test | ✅ | dev-token + GitHub OAuth (prod), pytest cross-tenant verify |
-| 5.5. Dogfood gate | 🟢 active | `PHASE_5_5_DOGFOOD_GATE.md` — 10 criteria, measurement begins on `feature_flags.dogfood_gate_active = true` |
+| 5.5. Dogfood gate | 🟢 active | 10 measurable criteria; gated by `feature_flags.dogfood_gate_active` |
 | 6. Tenant onboarding | 🟡 stub | UI wizard + onboarding API endpoint |
 | 7. Stripe + quota | 🟡 stub | webhook handler + checkout endpoint stub |
 | 8. Beta launch | 🟡 stub | pricing page |
@@ -128,12 +128,11 @@ For prod deploy: just `git push origin main` — see `.github/workflows/fly-depl
 ## Directory Map (post 2026-05-18 repo split — this is the live layout)
 
 ```
-sediment/                              # repo root (was: products/sediment/)
+sediment/                              # repo root
 ├── SPEC.md                            # full design doc
-├── DECISIONS.md                       # §11 questions answered + ongoing
-├── NEXT.md                            # post-MVP roadmap + ops baseline
-├── PHASE_5_5_DOGFOOD_GATE.md          # dogfood gate criteria
+├── DECISIONS.md                       # design decisions + rationale
 ├── CLAUDE.md                          # per-project AI-agent guardrails
+├── LICENSE                            # MIT
 ├── Dockerfile                         # multi-svc image (nginx + 5 uvicorns)
 ├── README.md                          # this file
 │
@@ -245,7 +244,7 @@ sediment/                              # repo root (was: products/sediment/)
 
 ## 5 Validation Queries (MVP gate, SPEC §6.3)
 
-After `make ingest`, sign in as Jay (`jay.lee@sonatus.com`) and ask:
+After `make ingest`, sign in as Jay (`jayleekr0125@gmail.com`) and ask:
 
 1. **"라이언이 4월에 쓴 mirror-loop 칼럼"** → filtered library + RAG
 2. **"Daily research 중 Claude Code 관련 high-confidence 결론"** → frontmatter filter + RAG

@@ -192,9 +192,9 @@ async def check_hybrid_search_works(spec: dict, **_) -> dict:
     tid = await _get_lab_tenant()
     async with service_session() as s:
         mid = (await s.execute(text(
-            "SELECT id::text FROM members WHERE tenant_id=:tid AND email='jay.lee@sonatus.com'"),
+            "SELECT id::text FROM members WHERE tenant_id=:tid AND email='jayleekr0125@gmail.com'"),
             {"tid": tid})).scalar_one()
-    token = mint_token(member_id=mid, tenant_id=tid, role="admin", email="jay.lee@sonatus.com")
+    token = mint_token(member_id=mid, tenant_id=tid, role="admin", email="jayleekr0125@gmail.com")
     url = f"http://localhost:{settings.sediment_platform_port}/api/v1/library/search?q=lens"
     async with httpx.AsyncClient() as client:
         r = await client.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=30)

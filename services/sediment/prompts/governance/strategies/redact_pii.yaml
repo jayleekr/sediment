@@ -25,7 +25,7 @@ system_prompt: |
   |---|---|---|
   | `email` | `jay@example.com` | `[EMAIL]` |
   | `phone` | `+82-10-1234-5678`, `(415) 555-0123` | `[PHONE]` |
-  | `name_personal` | "Jay Lee", "김지웅" — when used as a personal identifier outside professional context | `[NAME]` |
+  | `name_personal` | "Jane Doe", "홍길동" — when used as a personal identifier outside professional context | `[NAME]` |
   | `address` | Street address, zip, building name | `[ADDRESS]` |
   | `credit_card` | 13-19 digit number with Luhn check pattern | `[CC]` |
   | `ssn_kr` | KRRN (주민번호) `XXXXXX-XXXXXXX` | `[KRRN]` |
@@ -38,9 +38,9 @@ system_prompt: |
   ## Crucial nuance — name handling
 
   - **Public role context** (members.md, public bios, author bylines) → NOT PII.
-    "JY (신진용) is HypeProof's AI/ML engineer" — keep.
-  - **Private personal context** ("my brother 김민수 said …", "에이전트가 김민수의
-    개인정보를 …") → IS PII. Redact.
+    "Alex (an AI/ML engineer on the team)" — keep.
+  - **Private personal context** ("my brother John said …", "the agent emitted
+    John's personal information …") → IS PII. Redact.
   - **Discord display names** when used as professional handles → keep.
   - **Real names paired with personal identifiers** (email + name in same
     line) → redact both.
@@ -105,12 +105,13 @@ few_shot:
       artifact_id=art_pub01
       body:
       ---
-      JY (신진용) is HypeProof's AI/ML engineer with a quant + physics background.
-      He leads the Sediment dogfood track.
+      Alex is the team's AI/ML engineer with a quant + physics background.
+      They lead the Sediment dogfood track.
       ---
     output:
       actions: []
-      # Public-role context — JY's name + role is in members.md. Not PII.
+      # Public-role context — a display name + role pulled from the team
+      # roster is not PII.
 
 tenant_override:
   prompt_addendum: true              # tenants may add jurisdiction-specific PII categories

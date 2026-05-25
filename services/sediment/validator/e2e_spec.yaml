@@ -15,7 +15,7 @@ viewport:
   width: 1280
   height: 900
 seed_member:
-  email: "jay.lee@sonatus.com"
+  email: "jayleekr0125@gmail.com"
 
 environments:
   dev:
@@ -24,7 +24,7 @@ environments:
     base_url: "http://localhost:3000"
     auth_method: dev_token
     seed_member:
-      email: "jay.lee@sonatus.com"
+      email: "jayleekr0125@gmail.com"
   prod:
     # Live standalone Vercel deploy. Prod uses GitHub OAuth — there is no
     # automated sign-in here yet, so only auth_method=none flows run.

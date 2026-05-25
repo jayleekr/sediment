@@ -40,7 +40,7 @@ jobs:
         working-directory: services/sediment
         env:
           SEDIMENT_API: https://hypeproof-sediment.fly.dev
-          SEDIMENT_EMAIL: jay.lee@sonatus.com
+          SEDIMENT_EMAIL: jayleekr0125@gmail.com
           RECALL_MIN_PASS: "20"
           RECALL_JSON_OUT: ${{ github.workspace }}/recall.json
         run: python -m validator.scripts.recall_live

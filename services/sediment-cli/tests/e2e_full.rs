@@ -51,11 +51,11 @@ fn e2e_whoami_returns_seeded_identity() {
         eprintln!("SKIP");
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, _) = run(&["--format", "json", "whoami"], &token, &base);
     assert_eq!(code, 0, "{}", out);
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(v["email"], "jay.lee@sonatus.com");
+    assert_eq!(v["email"], "jayleekr0125@gmail.com");
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn e2e_search_returns_items() {
     let Some(base) = base_url() else {
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, _) = run(
         &["--format", "json", "search", "research", "--limit", "3"],
         &token,
@@ -82,7 +82,7 @@ fn e2e_search_with_unicode_query() {
     let Some(base) = base_url() else {
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, stderr) = run(
         &["--format", "json", "search", "한국어", "--limit", "5"],
         &token,
@@ -97,7 +97,7 @@ fn e2e_read_returns_philosophy() {
     let Some(base) = base_url() else {
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, _) = run(
         &["--format", "json", "read", "PHILOSOPHY.md"],
         &token,
@@ -114,7 +114,7 @@ fn e2e_read_404_clean_envelope() {
     let Some(base) = base_url() else {
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, _) = run(
         &["--format", "json", "read", "definitely-not-a-real-file.md"],
         &token,
@@ -130,7 +130,7 @@ fn e2e_recent_returns_items_for_last_year() {
     let Some(base) = base_url() else {
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, _) = run(
         &[
             "--format", "json", "recent", "--days", "365", "--limit", "5",
@@ -148,7 +148,7 @@ fn e2e_recent_page_all_emits_ndjson_lines() {
     let Some(base) = base_url() else {
         return;
     };
-    let token = mint_token(&base, "jay.lee@sonatus.com").expect("mint");
+    let token = mint_token(&base, "jayleekr0125@gmail.com").expect("mint");
     let (code, out, _) = run(
         &[
             "--format",
@@ -196,7 +196,7 @@ fn e2e_two_tenants_in_parallel_get_disjoint_results() {
     let Some(base) = base_url() else {
         return;
     };
-    let t_hl = mint_token(&base, "jay.lee@sonatus.com").expect("mint hl");
+    let t_hl = mint_token(&base, "jayleekr0125@gmail.com").expect("mint hl");
     let t_acme = mint_token(&base, "admin@acme.test").expect("mint acme");
 
     let (c1, o1, _) = run(&["--format", "json", "whoami"], &t_hl, &base);

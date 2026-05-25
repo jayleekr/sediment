@@ -281,7 +281,7 @@ async def _collect_results(spec: dict) -> list[FaithfulnessResult]:
         # Mint a dev-token locally
         async with httpx.AsyncClient(base_url=base_url, timeout=10) as client:
             r = await client.post("/api/v1/auth/dev-token",
-                                   json={"email": spec.get("email", "jay.lee@sonatus.com")})
+                                   json={"email": spec.get("email", "jayleekr0125@gmail.com")})
             r.raise_for_status()
             token = r.json()["token"]
 
