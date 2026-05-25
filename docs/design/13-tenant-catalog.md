@@ -35,7 +35,7 @@ subscription:
   storage_quota_gb: 5
 
 members:                                 # source: services/sediment/data/members.json
-  - { display_name: Jay,         role: admin,   github_login: jayleekr,     email: jay.lee@sonatus.com }
+  - { display_name: Jay,         role: admin,   github_login: jayleekr,     email: jayleekr0125@gmail.com }
   - { display_name: JY,          role: creator, github_login: <pending>,    email: ... }
   - { display_name: Ryan,        role: creator, github_login: <pending>,    email: ... }
   - { display_name: Kiwon,       role: creator, github_login: <pending>,    email: ... }

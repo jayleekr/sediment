@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def _mint_token(email: str = "jay.lee@sonatus.com") -> str:
+async def _mint_token(email: str = "jayleekr0125@gmail.com") -> str:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         r = await c.post("/api/v1/auth/dev-token", json={"email": email})

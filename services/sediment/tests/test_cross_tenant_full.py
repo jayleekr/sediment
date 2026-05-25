@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
     os.environ.get("SKIP_DB") == "1", reason="DB not available"
 )
 
-HL_EMAIL = "jay.lee@sonatus.com"
+HL_EMAIL = "jayleekr0125@gmail.com"
 ACME_EMAIL = "admin@acme.test"
 
 

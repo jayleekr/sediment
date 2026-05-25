@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-SEED_EMAIL = "jay.lee@sonatus.com"
+SEED_EMAIL = "jayleekr0125@gmail.com"
 
 
 @pytest.fixture

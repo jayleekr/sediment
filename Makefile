@@ -145,7 +145,7 @@ test-cli-all: test-cli-py test-cli-shim test-cli-rust
 # E2E — requires a running platform on :10101 with SEDIMENT_DEV_MODE=1
 test-cli-e2e:
 	cd services/sediment-cli && SEDIMENT_E2E_BASE_URL=http://localhost:10101 cargo test --test e2e_login --test e2e_full -- --nocapture
-	@TOK=$$(curl -s -X POST http://localhost:10101/api/v1/auth/dev-token -H 'Content-Type: application/json' -d '{"email":"jay.lee@sonatus.com"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])"); \
+	@TOK=$$(curl -s -X POST http://localhost:10101/api/v1/auth/dev-token -H 'Content-Type: application/json' -d '{"email":"jayleekr0125@gmail.com"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])"); \
 	  cd services/sediment-mcp && SEDIMENT_E2E_BASE_URL=http://localhost:10101 SEDIMENT_E2E_TOKEN="$$TOK" PYTHONPATH=src $(abspath $(PYTEST)) tests/test_shim_e2e.py tests/test_shim_e2e_full.py -v
 
 # ================ services ================

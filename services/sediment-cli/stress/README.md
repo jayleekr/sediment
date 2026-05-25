@@ -16,7 +16,7 @@ cd services/sediment && SEDIMENT_DEV_MODE=1 .venv/bin/uvicorn applications.sedim
 # 2. Mint a JWT (or two for tenant-fairness scenarios)
 JWT=$(curl -s -X POST http://localhost:10101/api/v1/auth/dev-token \
   -H 'Content-Type: application/json' \
-  -d '{"email":"jay.lee@sonatus.com"}' | jq -r .token)
+  -d '{"email":"jayleekr0125@gmail.com"}' | jq -r .token)
 JWT_ACME=$(curl -s -X POST http://localhost:10101/api/v1/auth/dev-token \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@acme.test"}' | jq -r .token)

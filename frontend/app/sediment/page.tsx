@@ -7,7 +7,7 @@ import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } 
 
 // FIX-B 2026-05-23: previously this also accepted NEXT_PUBLIC_SEDIMENT_DEV_AUTH=1
 // which is inlined into the production bundle — a single Vercel env misconfig
-// opened auth bypass (default email in input is jay.lee@sonatus.com, backend
+// opened auth bypass (default email in input is jayleekr0125@gmail.com, backend
 // accepts /api/v1/auth/dev-token and returns a real admin JWT).
 // Now: only NODE_ENV=development enables the dev-token flow. There is no
 // production-side toggle. To re-enable for staging, gate via server-only env
@@ -18,7 +18,7 @@ export default function CuratorHome() {
   const [mounted, setMounted] = useState(false);
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [signedInAs, setSignedInAs] = useState<string | null>(null);
-  const [email, setEmail] = useState("jay.lee@sonatus.com");
+  const [email, setEmail] = useState("jayleekr0125@gmail.com");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 

@@ -67,7 +67,7 @@ jobs:
         run: |
           cd services/sediment-cli
           SEDIMENT_E2E_BASE_URL=http://localhost:10101 \
-          SEDIMENT_E2E_EMAIL=jay.lee@sonatus.com \
+          SEDIMENT_E2E_EMAIL=jayleekr0125@gmail.com \
             cargo test --test e2e_login --test e2e_full -- --nocapture
 
       - name: Mint token for shim E2E
@@ -75,7 +75,7 @@ jobs:
         run: |
           TOK=$(curl -s -X POST http://localhost:10101/api/v1/auth/dev-token \
             -H 'Content-Type: application/json' \
-            -d '{"email":"jay.lee@sonatus.com"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+            -d '{"email":"jayleekr0125@gmail.com"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
           echo "token=$TOK" >> $GITHUB_OUTPUT
 
       - name: MCP shim E2E

@@ -121,7 +121,7 @@ async def _make_token(email: str) -> tuple[str, str, str]:
 async def check_conversation_tenant_match(spec: dict, **_) -> dict:
     import httpx
     from lab_lib.settings import settings
-    token, mid, tid = await _make_token("jay.lee@sonatus.com")
+    token, mid, tid = await _make_token("jayleekr0125@gmail.com")
     base = f"http://localhost:{settings.sediment_platform_port}/api/v1"
     async with httpx.AsyncClient() as client:
         r = await client.post(f"{base}/conversations", json={"title": "rls-check"},
@@ -144,7 +144,7 @@ async def check_cross_tenant_conversation_blocked(spec: dict, **_) -> dict:
     from lab_lib.settings import settings
     base = f"http://localhost:{settings.sediment_platform_port}/api/v1"
 
-    lab_token, _, _ = await _make_token("jay.lee@sonatus.com")
+    lab_token, _, _ = await _make_token("jayleekr0125@gmail.com")
     # Create acme test member if missing
     async with service_session() as s:
         row = (await s.execute(text(

@@ -28,7 +28,7 @@ async def _admin_token() -> tuple[str, str, str]:
     if not row:
         raise RuntimeError("no admin member in hypeproof-lab")
     mid, tid = row
-    token = mint_token(member_id=mid, tenant_id=tid, role="admin", email="jay.lee@sonatus.com")
+    token = mint_token(member_id=mid, tenant_id=tid, role="admin", email="jayleekr0125@gmail.com")
     return token, mid, tid
 
 
@@ -37,7 +37,7 @@ async def _admin_token() -> tuple[str, str, str]:
 async def check_dev_token_mints(spec: dict, **_) -> dict:
     async with httpx.AsyncClient() as client:
         r = await client.post(f"{_platform_base()}/api/v1/auth/dev-token",
-                              json={"email": "jay.lee@sonatus.com"}, timeout=10)
+                              json={"email": "jayleekr0125@gmail.com"}, timeout=10)
     ok = r.status_code == 200 and "token" in r.json()
     return {"passed": ok, "actual": {"status": r.status_code},
             "message": "" if ok else r.text[:200]}
