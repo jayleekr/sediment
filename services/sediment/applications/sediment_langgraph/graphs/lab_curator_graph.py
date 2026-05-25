@@ -272,24 +272,50 @@ async def node_library_search(state: CuratorState) -> dict:
         # alone can't recover on short Korean entity queries, so the BM25
         # branch must do its share. ts_or="" (no tokens) → bm25 CTE returns 0
         # rows and the fused result falls back to vec-only naturally.
+        # P0 perf fix (sediment#58): two-stage CTEs so LIMIT push-down works.
+        #
+        # Previous structure put `row_number() OVER (ORDER BY ts_rank(...))` and
+        # `row_number() OVER (ORDER BY embedding <=> qvec)` INSIDE the bm25/vec
+        # CTE, BEFORE the outer LIMIT 50. Postgres semantics force the window
+        # function to run over EVERY row that matched WHERE — full ts_rank
+        # compute + full sort, then chop to 50. With OR-joined Korean BM25 the
+        # matching set explodes; with no ANN index hit on the vec path the
+        # tenant-wide vector scan blows up identically.
+        #
+        # Splitting into *_top (predicate + ORDER BY + LIMIT 50) and then *_ranked
+        # (row_number assigned to the already-truncated 50 rows) lets the planner
+        # push LIMIT to GIN/HNSW top-K. ts_rank runs on the LIMIT-truncated set,
+        # not the full match list. Identical RRF math, no semantic change.
         ts_or = _build_ts_or_query(q)
         qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
         sql = """
-        WITH bm25 AS (
+        WITH bm25_top AS (
           SELECT c.id, c.artifact_id, c.seq, c.content,
-                 row_number() OVER (ORDER BY ts_rank(c.tsv, to_tsquery('simple', :tsq)) DESC) AS rank
+                 ts_rank(c.tsv, to_tsquery('simple', :tsq))::float AS score
           FROM chunks c
           WHERE CAST(:tsq AS text) <> ''
             AND c.tsv @@ to_tsquery('simple', :tsq)
             AND c.tenant_id = CAST(:tid AS uuid)
+          ORDER BY score DESC
+          LIMIT 50
+        ),
+        bm25 AS (
+          SELECT id, artifact_id, seq, content,
+                 row_number() OVER (ORDER BY score DESC) AS rank
+          FROM bm25_top
+        ),
+        vec_top AS (
+          SELECT c.id, c.artifact_id, c.seq, c.content,
+                 c.embedding <=> CAST(:qvec AS vector) AS dist
+          FROM chunks c
+          WHERE c.tenant_id = CAST(:tid AS uuid)
+          ORDER BY dist
           LIMIT 50
         ),
         vec AS (
-          SELECT c.id, c.artifact_id, c.seq, c.content,
-                 row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rank
-          FROM chunks c
-          WHERE c.tenant_id = CAST(:tid AS uuid)
-          ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT 50
+          SELECT id, artifact_id, seq, content,
+                 row_number() OVER (ORDER BY dist) AS rank
+          FROM vec_top
         ),
         fused AS (
           SELECT id, artifact_id, seq, content, sum(rrf) AS score FROM (
