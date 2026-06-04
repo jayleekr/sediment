@@ -8,34 +8,27 @@ The Router/Memory paths are stubs that future phases will fill in.
 """
 from __future__ import annotations
 import json
-import re
 from typing import Optional, TypedDict
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import get_logger
-
-log = get_logger("graph")
-
-
 # WO-7 2026-05-23: search helpers extracted to lab_lib.search_utils.
 # The 130 lines previously here were verbatim-duplicated with library.py
 # (and the workspace_mcp.py zero-vector guard was MISSING — a confirmed
 # LEARNINGS-class drift). Local underscore aliases preserved so any
 # remaining call sites continue to resolve without further edits.
 from lab_lib.search_utils import (
-    _STOP_WORDS,
-    _KO_PARTICLE_SUFFIXES,
-    strip_korean_particles as _strip_korean_particles,
-    _TYPE_HINT_MAP,
     detect_query_type as _detect_query_type,
-    _PROJECT_HINT_MAP,
     detect_project_path as _detect_project_path,
     slug_regex as _slug_regex,
     build_ts_or_query as _build_ts_or_query,
+    prefer_bm25_first,
     is_zero_vector,
 )
+
+log = get_logger("graph")
 
 
 def _normalize_citation_row(row: dict) -> dict:
@@ -179,8 +172,9 @@ async def node_library_search(state: CuratorState) -> dict:
     from lab_lib.db import app_session
 
     q = state["query"]
-    qvec = embed_one(q)
-    qvec_is_zero = is_zero_vector(qvec)
+    bm25_first = prefer_bm25_first(q)
+    qvec = [0.0] if bm25_first else embed_one(q)
+    qvec_is_zero = bm25_first or is_zero_vector(qvec)
 
     # Defense-in-depth: every retrieval query carries an explicit tenant_id
     # filter (in addition to RLS, which SHOULD also apply via app_session).
@@ -257,7 +251,12 @@ async def node_library_search(state: CuratorState) -> dict:
                 "tid": tid,
             })
             citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
-            log.info("node.library.search", n=len(citations), mode="bm25_only_or")
+            log.info(
+                "node.library.search",
+                n=len(citations),
+                mode="bm25_only_or",
+                bm25_first=bm25_first,
+            )
             return {"citations": citations}
 
         # Hybrid path (vector + BM25 + RRF rerank)
@@ -274,13 +273,12 @@ async def node_library_search(state: CuratorState) -> dict:
         # rows and the fused result falls back to vec-only naturally.
         # P0 perf fix (sediment#58): two-stage CTEs so LIMIT push-down works.
         #
-        # Previous structure put `row_number() OVER (ORDER BY ts_rank(...))` and
-        # `row_number() OVER (ORDER BY embedding <=> qvec)` INSIDE the bm25/vec
-        # CTE, BEFORE the outer LIMIT 50. Postgres semantics force the window
-        # function to run over EVERY row that matched WHERE — full ts_rank
-        # compute + full sort, then chop to 50. With OR-joined Korean BM25 the
-        # matching set explodes; with no ANN index hit on the vec path the
-        # tenant-wide vector scan blows up identically.
+        # Previous structure assigned window ranks inside the bm25/vec CTEs,
+        # before the outer LIMIT 50. Postgres semantics force that window work
+        # over EVERY row that matched WHERE: full ts_rank compute + full sort,
+        # then chop to 50. With OR-joined Korean BM25 the matching set explodes;
+        # with no ANN index hit on the vec path the tenant-wide vector scan
+        # blows up identically.
         #
         # Splitting into *_top (predicate + ORDER BY + LIMIT 50) and then *_ranked
         # (row_number assigned to the already-truncated 50 rows) lets the planner

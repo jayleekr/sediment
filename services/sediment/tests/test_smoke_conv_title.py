@@ -8,6 +8,10 @@ on 2026-05-22. These tests verify:
 """
 from __future__ import annotations
 
+import httpx
+import pytest
+
+from scripts import _test_helpers as helpers
 from scripts._test_helpers import smoke_conv_title
 from applications.sediment_platform.routers.conversations import _TEST_TITLE_PATTERNS
 
@@ -37,3 +41,63 @@ def test_prefix_matches_router_filter():
 def test_empty_base_still_safe():
     """Edge: empty base shouldn't crash; returns the bare prefix."""
     assert smoke_conv_title("") == "test:"
+
+
+@pytest.mark.asyncio
+async def test_mint_token_posts_tenant_slug():
+    seen: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["json"] = request.read().decode()
+        return httpx.Response(200, json={"token": "tok"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        token = await helpers._mint_token(
+            client,
+            "https://sediment.example",
+            "jayleekr0125@gmail.com",
+            "kids-edu",
+        )
+
+    assert token == "tok"
+    assert seen["url"] == "https://sediment.example/api/v1/auth/dev-token"
+    assert '"tenant_slug":"kids-edu"' in seen["json"].replace(" ", "")
+
+
+@pytest.mark.asyncio
+async def test_ask_question_uses_pre_minted_token_without_dev_token(monkeypatch):
+    async def fail_mint(*_args, **_kwargs):
+        raise AssertionError("_mint_token must not run when token is provided")
+
+    async def fake_new_conv(_client, _api, token, title):
+        assert token == "provided-token"
+        assert title == "test:kids-edu-smoke"
+        return "conv-1"
+
+    async def fake_save_user_msg(_client, _api, token, conv_id, query):
+        assert token == "provided-token"
+        assert conv_id == "conv-1"
+        assert query == "AI Native 마인드 7종 설명해줘"
+
+    async def fake_stream_sse(*_args, **kwargs):
+        assert kwargs["headers"] == {"Authorization": "Bearer provided-token"}
+        yield "citation", {"v": {"ref": "kids_edu_vault/wiki/ai-native-assets.md"}}
+        yield "delta", {"v": "answer"}
+
+    monkeypatch.setattr(helpers, "_mint_token", fail_mint)
+    monkeypatch.setattr(helpers, "_new_conv", fake_new_conv)
+    monkeypatch.setattr(helpers, "_save_user_msg", fake_save_user_msg)
+    monkeypatch.setattr(helpers, "stream_sse", fake_stream_sse)
+
+    result = await helpers.ask_question(
+        api="https://sediment.example",
+        email="jayleekr0125@gmail.com",
+        tenant_slug="kids-edu",
+        token="provided-token",
+        query="AI Native 마인드 7종 설명해줘",
+        title_base="kids-edu-smoke",
+    )
+
+    assert result["answer"] == "answer"
+    assert result["citations"] == [{"ref": "kids_edu_vault/wiki/ai-native-assets.md"}]

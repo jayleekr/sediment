@@ -30,6 +30,11 @@ comes with citations. Designed to scale into a multi-tenant SaaS. See
 `SPEC.md` for full design and `DECISIONS.md` for the 20+ resolved
 product/commercial decisions.
 
+Claude-specific note: `AGENTS.md` is the canonical cross-agent operating
+contract. Follow it first for PR close-out, dirty worktree discipline, branch
+protection, and production validation evidence. This file adds Claude-specific
+harness and project-memory details only.
+
 ---
 
 ## Read-before-edit
@@ -149,6 +154,14 @@ Per `services/sediment/validator/recipes.yaml`:
 
 To add a pattern: edit `recipes.yaml` directly (parent session) and document
 the why in the commit message.
+
+---
+
+## Session Close-Out Protocol
+
+See `AGENTS.md`. Do not say a session can be closed until the completed work
+is in a focused PR with validation evidence and linked issue updates. Do not
+direct-push to `main`.
 
 ---
 

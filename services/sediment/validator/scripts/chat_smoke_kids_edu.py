@@ -13,6 +13,9 @@ No browser, no Playwright — pure HTTP. Run anywhere.
 Env:
   SEDIMENT_API       https://hypeproof-sediment.fly.dev (default)
   KIDS_EDU_EMAIL     jayleekr0125@gmail.com (default — seeded admin)
+  KIDS_EDU_TENANT    kids-edu (default)
+  KIDS_EDU_TOKEN     pre-minted kids-edu JWT; skips /dev-token when set
+  SEDIMENT_E2E_JWT   fallback pre-minted JWT name used by other E2E scripts
   CHAT_QUERY         "AI Native 마인드 7종 설명해줘" (default)
   EXPECT_REF         partial substring required in at least one citation ref
                      (default: "ai-native-assets")
@@ -31,21 +34,25 @@ from scripts._test_helpers import ask_question  # noqa: E402
 
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
 EMAIL = os.environ.get("KIDS_EDU_EMAIL", "jayleekr0125@gmail.com")
+TENANT = os.environ.get("KIDS_EDU_TENANT", "kids-edu")
+TOKEN = os.environ.get("KIDS_EDU_TOKEN") or os.environ.get("SEDIMENT_E2E_JWT")
 QUERY = os.environ.get("CHAT_QUERY", "AI Native 마인드 7종 설명해줘")
 EXPECT = os.environ.get("EXPECT_REF", "ai-native-assets")
 TIMEOUT_S = float(os.environ.get("CHAT_TIMEOUT_S", "60"))
 
 
 async def main() -> int:
-    print(f"== kids-edu chat smoke ==")
+    print("== kids-edu chat smoke ==")
     print(f"API:    {API}")
     print(f"EMAIL:  {EMAIL}")
+    print(f"TENANT: {TENANT}")
+    print(f"TOKEN:  {'provided' if TOKEN else 'dev-token'}")
     print(f"QUERY:  {QUERY!r}")
     print(f"EXPECT: ref contains {EXPECT!r}")
     print()
     try:
         result = await ask_question(
-            api=API, email=EMAIL, query=QUERY,
+            api=API, email=EMAIL, tenant_slug=TENANT, token=TOKEN, query=QUERY,
             title_base="kids-edu-smoke", timeout_s=TIMEOUT_S,
         )
     except httpx.HTTPStatusError as e:

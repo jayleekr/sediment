@@ -12,12 +12,8 @@ Coverage:
 """
 from __future__ import annotations
 
-import asyncio
 import importlib
 import inspect
-import logging
-
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +40,46 @@ def test_library_search_has_explicit_tenant_filter_hybrid():
     # (we count occurrences as a sanity check)
     assert src.count("c.tenant_id = CAST(:tid AS uuid)") >= 2, \
         "Both CTEs in hybrid retrieval need tenant filter"
+
+
+def test_hybrid_retrieval_assigns_rank_after_topk_pushdown():
+    src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
+
+    assert "WITH bm25_top AS" in src
+    assert "vec_top AS" in src
+    assert "FROM bm25_top" in src
+    assert "FROM vec_top" in src
+    assert "row_number() OVER (ORDER BY ts_rank" not in src, \
+        "BM25 ranking must happen after ORDER BY/LIMIT top-K pushdown"
+    assert "row_number() OVER (ORDER BY c.embedding <=>" not in src, \
+        "Vector ranking must happen after ORDER BY/LIMIT top-K pushdown"
+
+
+def test_platform_search_hybrid_matches_topk_pushdown_shape():
+    src = _read_source("applications.sediment_platform.routers.library")
+
+    assert "WITH bm25_top AS" in src
+    assert "vec_top AS" in src
+    assert "WHERE a.tenant_id = CAST(:tid AS uuid)" in src
+    assert "row_number() OVER (ORDER BY ts_rank" not in src
+    assert "row_number() OVER (ORDER BY c.embedding <=>" not in src
+
+
+def test_platform_search_bm25_has_tenant_filters_and_timeout():
+    src = _read_source("applications.sediment_platform.routers.library")
+
+    assert "SET LOCAL statement_timeout = '8s'" in src
+    assert "AND c.tenant_id = CAST(:tid AS uuid)" in src
+    assert "AND a.tenant_id = CAST(:tid AS uuid)" in src
+
+
+def test_search_utils_prefers_bm25_for_korean_and_long_queries():
+    from lab_lib.search_utils import prefer_bm25_first
+
+    assert prefer_bm25_first("AI Native 마인드 7종이 뭐야?")
+    assert prefer_bm25_first("LLM provider scaling 40명 동시 접속 대응 전략")
+    assert prefer_bm25_first("retrieval latency regression hybrid search natural language")
+    assert not prefer_bm25_first("BH")
 
 
 def test_member_lookup_has_tenant_filter():

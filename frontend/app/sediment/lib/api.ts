@@ -75,11 +75,14 @@ export async function api<T = unknown>(
 }
 
 /* Mint a dev token (local only) */
-export async function mintDevToken(email: string): Promise<{ token: string; display_name: string }> {
+export async function mintDevToken(
+  email: string,
+  tenantSlug?: string
+): Promise<{ token: string; display_name: string }> {
   const res = await fetch(`${PLATFORM_BASE}/api/v1/auth/dev-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, tenant_slug: tenantSlug || undefined }),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
