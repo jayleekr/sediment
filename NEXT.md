@@ -64,7 +64,12 @@ tool goes stale the moment the team starts relying on it.
 >   consolidator) runs `15 */12 * * *` (09:15 + 21:15 KST, tenant hypeproof-lab) — `cron.yaml:49`;
 >   `distill` (`5 * * * *`) is active too. Caveat: only `github_repo_sync` carries a literal
 >   `enabled: true`; `consolidate`/`distill` rely on the loader's default-on (no-flag) convention.
-> - **Freshness metric is the genuine remaining gap** (still not started) → TODO.md **T4**.
+> - **Freshness metric is ALSO already built — not "not started".** `GET /api/v1/vault/freshness`
+>   (`sediment_platform/routers/vault.py:64`, tenant-scoped, returns `last_ingest_ts`/`seconds_ago`/`stale`
+>   + signals/violations) is live on prod (HTTP 401 = route up, auth-gated), and `FreshnessBadge` is
+>   mounted in `frontend/app/sediment/layout.tsx:36` rendering "vault Nh ago". Verified 2026-06-04:
+>   55 vault/freshness tests pass + ruff clean. So **all of P1's L1 / L2 / freshness are shipped** →
+>   TODO.md **T4 = DONE**. The only genuine P1 gap left is operational tuning, not net-new build.
 >
 > (cron.yaml / vault_ingester / nginx.conf are byte-identical on `origin/main`, so this holds post-rebase.)
 

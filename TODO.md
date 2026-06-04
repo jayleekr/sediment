@@ -32,11 +32,13 @@
 - **Tier:** cross-repo.
 
 ### T3 — [ux] Fly root `/` → Vercel UI 302 (kill the 404 dead-end)
+- **✅ DONE (verified 2026-06-04)** — already shipped: `nginx.conf:195` does `location / { return 302 …sediment.hypeproof-ai.xyz }`. Prod `/` → 302→UI, `/healthz` 200. No change needed.
 - **근거:** `infra/deploy/nginx.conf` (`location / { return 404; }`); `NEXT.md` §P4.
 - **완료조건:** Fly `/` 브라우저 GET → UI 302; API 경로는 현행 유지; post-deploy E2E-12 green.
 - **Tier:** 2 (ai_propose_review_commit — nginx, non-RLS).
 
 ### T4 — [data] Vault freshness metric ("updated N h ago")
+- **✅ DONE (verified 2026-06-04)** — already shipped: `GET /api/v1/vault/freshness` (`vault.py:64`, tenant-scoped) + `FreshnessBadge` mounted in `frontend/app/sediment/layout.tsx:36` ("vault Nh ago"). Live on prod (401 auth-gated); 55 vault/freshness tests pass + ruff clean. No change needed.
 - **근거:** `NEXT.md` §P1 freshness row; `services/sediment/config/cron.yaml` (github_repo_sync/consolidate).
 - **완료조건:** `/healthz`(혹은 sibling)가 vault last-updated를 보고; UI 노출. 머지→반영이 보일 것.
 - **Tier:** 2.
