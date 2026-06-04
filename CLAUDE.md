@@ -219,9 +219,10 @@ class of failure forever after.
 
 ## Phase 5.5 dogfood gate
 
-See `PHASE_5_5_DOGFOOD_GATE.md` for the 10 measurable criteria. Spec is
-locked. Measurement begins when `feature_flags.dogfood_gate_active = true`.
+10 measurable criteria gated by `feature_flags.dogfood_gate_active`. The
+criteria themselves were maintained in an internal-only spec; the gating
+mechanism (flag + measurement endpoints) is part of the public surface.
 
 ---
 
-*Last updated: 2026-05-09 — covers harness state through commit `8e3ca9f`*
+*Last updated: 2026-05-25*
