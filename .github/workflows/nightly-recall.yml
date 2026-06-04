@@ -4,9 +4,10 @@
 # is up. This tells you the retrieval QUALITY hasn't drifted. RAG quality
 # can degrade silently when chunking, embedding, or index params change.
 #
-# No secrets — recall_live.py mints its own dev token via the public API
-# (same path E2E-12 uses). Threshold is intentionally generous (≥20/40)
-# so genuine breakage trips the alarm, normal noise doesn't.
+# Auth: /dev-token is gated off in prod (SEDIMENT_DEV_MODE), so recall_live
+# uses the SEDIMENT_CI_TOKEN secret as the bearer token (set it in repo
+# secrets). Threshold is intentionally generous (≥20/40) so genuine breakage
+# trips the alarm, normal noise doesn't.
 #
 # If quality drops below threshold, the job fails — workflow_dispatch a
 # re-run after fixing, or open an issue tracking the regression.
@@ -40,6 +41,7 @@ jobs:
         working-directory: services/sediment
         env:
           SEDIMENT_API: https://hypeproof-sediment.fly.dev
+          SEDIMENT_CI_TOKEN: ${{ secrets.SEDIMENT_CI_TOKEN }}
           SEDIMENT_EMAIL: jayleekr0125@gmail.com
           RECALL_MIN_PASS: "20"
           RECALL_JSON_OUT: ${{ github.workspace }}/recall.json

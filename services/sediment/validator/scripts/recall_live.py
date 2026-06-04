@@ -8,8 +8,14 @@ Unlike `validator.checks.regression_rag` (which runs from the same process as
 the API and uses internal token minting), this one only needs the public
 surface — so it can run from CI without DB credentials.
 
+Auth:
+    /api/v1/auth/dev-token is gated by SEDIMENT_DEV_MODE and 403s in prod/CI,
+    so set SEDIMENT_CI_TOKEN to a valid bearer token there. Locally (with
+    SEDIMENT_DEV_MODE=1) the script falls back to minting a dev token.
+
 Usage:
-    python -m validator.scripts.recall_live
+    SEDIMENT_CI_TOKEN=<jwt> python -m validator.scripts.recall_live   # prod/CI
+    python -m validator.scripts.recall_live                            # local dev
     SEDIMENT_API=https://other.example python -m validator.scripts.recall_live
     SEDIMENT_EMAIL=alt@member python -m validator.scripts.recall_live
 
@@ -49,7 +55,22 @@ def _recall_at_k(hits, ideal, k):
 
 
 async def _mint_token(client: httpx.AsyncClient) -> str:
+    """Obtain a bearer token for the recall queries.
+
+    Prefer an injected SEDIMENT_CI_TOKEN — required in prod/CI, where the
+    /api/v1/auth/dev-token endpoint is gated by SEDIMENT_DEV_MODE and 403s
+    (a deliberate auth-bypass fix). Fall back to minting via dev-token only
+    when running locally with SEDIMENT_DEV_MODE=1.
+    """
+    ci_token = os.environ.get("SEDIMENT_CI_TOKEN")
+    if ci_token:
+        return ci_token
     r = await client.post(f"{API}/api/v1/auth/dev-token", json={"email": EMAIL})
+    if r.status_code == 403:
+        raise RuntimeError(
+            "dev-token 403: SEDIMENT_DEV_MODE is off (prod/CI). "
+            "Set SEDIMENT_CI_TOKEN to a valid bearer token instead."
+        )
     r.raise_for_status()
     return r.json()["token"]
 
