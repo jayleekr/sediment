@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn as githubSignIn } from "next-auth/react";
 import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } from "./lib/api";
+import { EmptyState, SectionHeader, Surface, TrustBadge } from "./components/ui";
 
 // FIX-B 2026-05-23: previously this also accepted NEXT_PUBLIC_SEDIMENT_DEV_AUTH=1
 // which is inlined into the production bundle — a single Vercel env misconfig
@@ -96,7 +97,7 @@ export default function CuratorHome() {
 
   if (!getToken() && !signedInAs) {
     return (
-      <div className="mx-auto max-w-md rounded-xl border bg-white p-6 shadow-sm">
+      <Surface className="mx-auto max-w-md p-6">
         <h2 className="mb-2 text-lg font-semibold">Sign in</h2>
         <p className="mb-4 text-sm text-neutral-600">
           Sign in with the GitHub account that has access to this repo. Your
@@ -134,7 +135,7 @@ export default function CuratorHome() {
           </>
         )}
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      </div>
+      </Surface>
     );
   }
 
@@ -149,8 +150,8 @@ export default function CuratorHome() {
         </div>
       )}
       <aside className="col-span-12 md:col-span-4">
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
+        <Surface as="aside" className="p-4">
+          <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold">Conversations</h3>
             {convs.length > 0 && (
               <button
@@ -163,50 +164,59 @@ export default function CuratorHome() {
             )}
           </div>
           {convs.length === 0 ? (
-            <div className="mt-3 flex flex-col gap-3">
-              <p className="text-base font-semibold">Start your first conversation</p>
-              <p className="text-sm text-slate-600">
-                Ask anything from the lab&apos;s memory — research, columns, decisions.
-              </p>
-              <div className="flex flex-col gap-2">
-                {EXAMPLES.slice(0, 2).map((ex) => (
+            <EmptyState
+              title="Start your first conversation"
+              description="Ask anything from the lab's memory: research, columns, decisions, and recent operating context."
+              action={
+                <div className="flex flex-col gap-2">
+                  {EXAMPLES.slice(0, 2).map((ex) => (
+                    <button
+                      key={ex}
+                      onClick={() => newConversation(ex)}
+                      className="rounded border border-neutral-300 px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-white"
+                    >
+                      {ex}
+                    </button>
+                  ))}
                   <button
-                    key={ex}
-                    onClick={() => newConversation(ex)}
-                    className="rounded border border-neutral-300 px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-50"
+                    onClick={() => newConversation()}
+                    className="w-full rounded bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
                   >
-                    {ex}
+                    + New conversation
                   </button>
-                ))}
-              </div>
-              <button
-                onClick={() => newConversation()}
-                className="w-full rounded bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
-              >
-                + New conversation
-              </button>
-            </div>
+                </div>
+              }
+            />
           ) : (
             <ul className="space-y-1">
               {convs.map((c) => (
                 <li key={c.id}>
                   <Link
                     href={`/sediment/c/${c.id}`}
-                    className="block truncate rounded px-2 py-1 text-sm hover:bg-neutral-100"
+                    className="block rounded px-2 py-2 text-sm hover:bg-neutral-100"
                   >
-                    {c.title || "(untitled)"}
+                    <span className="block truncate font-medium">{c.title || "(untitled)"}</span>
+                    <span className="text-xs text-neutral-500">
+                      updated {new Date(c.updated_at).toLocaleDateString()}
+                    </span>
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </Surface>
       </aside>
 
       <main className="col-span-12 md:col-span-8">
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold">Ask the lab&apos;s memory</h2>
-          <QuickAsk onSubmit={(q) => newConversation(q)} />
+        <Surface className="p-6">
+          <SectionHeader
+            title="Ask the lab's memory"
+            description="Use Sediment when you need a cited answer you can carry into work."
+            action={<TrustBadge tone="info">evidence first</TrustBadge>}
+          />
+          <div className="mt-5">
+            <QuickAsk onSubmit={(q) => newConversation(q)} />
+          </div>
 
           <div className="mt-6">
             <h3 className="mb-2 text-sm font-semibold text-neutral-600">Try one</h3>
@@ -223,7 +233,7 @@ export default function CuratorHome() {
               ))}
             </ul>
           </div>
-        </div>
+        </Surface>
       </main>
     </div>
   );
@@ -237,16 +247,18 @@ function QuickAsk({ onSubmit }: { onSubmit: (q: string) => void }) {
         e.preventDefault();
         if (q.trim()) onSubmit(q.trim());
       }}
-      className="flex gap-2"
+      className="flex flex-col gap-2 sm:flex-row"
     >
       <input
-        className="flex-1 rounded border px-3 py-2"
+        className="min-h-11 flex-1 rounded border border-neutral-300 px-3 py-2"
         placeholder="e.g., 라이언(ryan)의 4월 mirror-loop 칼럼"
         data-testid="ask-input"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      <button className="rounded bg-blue-600 px-4 py-2 text-white">Ask</button>
+      <button className="min-h-11 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+        Ask
+      </button>
     </form>
   );
 }
