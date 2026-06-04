@@ -39,6 +39,7 @@ export default function ConversationPage() {
   const [conv, setConv] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stream, setStream] = useState<StreamState>({ status: "", citations: [], buffer: "", done: true });
   // S3(a) signal: when on, queries are tagged task_tag='owned'. The concierge
   // sets this for the member's one owned task; persisted per browser.
@@ -50,18 +51,30 @@ export default function ConversationPage() {
   }, []);
 
   async function load() {
-    const data = await api<{ conversation: any; messages: Message[] }>(
-      `/api/v1/conversations/${id}`
-    );
-    setConv(data.conversation);
-    setMessages(data.messages);
-    return data.messages;
+    try {
+      const data = await api<{ conversation: any; messages: Message[] }>(
+        `/api/v1/conversations/${id}`
+      );
+      setLoadError(null);
+      setConv(data.conversation);
+      setMessages(data.messages);
+      return data.messages;
+    } catch (e: unknown) {
+      if (e instanceof Error) setLoadError(e.message);
+      else setLoadError(String(e));
+      throw e;
+    }
   }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const msgs = await load();
+      let msgs: Message[];
+      try {
+        msgs = await load();
+      } catch {
+        return;
+      }
       if (cancelled) return;
       if (autoAsk && msgs.length && msgs[msgs.length - 1].role === "user") {
         ask(msgs[msgs.length - 1].content, /*alreadySaved*/ true);
@@ -76,15 +89,26 @@ export default function ConversationPage() {
 
   async function ask(q: string, alreadySaved = false) {
     if (!q.trim()) return;
-    if (!alreadySaved) {
-      await api(`/api/v1/conversations/${id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ content: q, role: "user" }),
+    try {
+      if (!alreadySaved) {
+        await api(`/api/v1/conversations/${id}/messages`, {
+          method: "POST",
+          body: JSON.stringify({ content: q, role: "user" }),
+        });
+        setMessages((m) => [
+          ...m,
+          { id: "tmp-" + Date.now(), role: "user", content: q, citations: [], ts: new Date().toISOString() },
+        ]);
+      }
+    } catch (e: unknown) {
+      setStream({
+        status: "failed",
+        citations: [],
+        buffer: "",
+        done: true,
+        error: e instanceof Error ? e.message : String(e),
       });
-      setMessages((m) => [
-        ...m,
-        { id: "tmp-" + Date.now(), role: "user", content: q, citations: [], ts: new Date().toISOString() },
-      ]);
+      return;
     }
     setInput("");
     setStream({ status: "thinking…", citations: [], buffer: "", done: false });
@@ -97,10 +121,18 @@ export default function ConversationPage() {
         onCitation: (c) => setStream((s) => ({ ...s, citations: [...s.citations, c] })),
         onDelta: (t) => setStream((s) => ({ ...s, buffer: s.buffer + t })),
         onAnswerEnd: () => setStream((s) => ({ ...s, done: true, status: "done" })),
-        onError: (e) => setStream((s) => ({ ...s, error: e.message, done: true })),
+        onError: (e) => setStream((s) => ({ ...s, error: e.message, done: true, status: "failed" })),
         onDone: async () => {
-          setStream({ status: "done", citations: [], buffer: "", done: true });
-          await load(); // re-pull messages so citations are persisted
+          setStream((s) => ({
+            ...s,
+            status: s.error ? "failed" : "done",
+            done: true,
+          }));
+          try {
+            await load(); // re-pull messages so citations are persisted
+          } catch {
+            // Keep the stream error visible instead of replacing it with a blank shell.
+          }
         },
       },
       aborter.current.signal,
@@ -124,6 +156,27 @@ export default function ConversationPage() {
   const shownCitations = stream.citations.length
     ? stream.citations
     : (messages.flatMap((m) => m.citations || []) as Citation[]);
+
+  if (loadError) {
+    return (
+      <Surface className="mx-auto max-w-2xl p-6">
+        <h1 className="mb-2 text-xl font-semibold">Sediment</h1>
+        <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">Conversation could not be loaded.</p>
+          <p className="mt-1">{loadError}</p>
+          {loadError.startsWith("401") && (
+            <p className="mt-2">Sign in again, then reopen this conversation.</p>
+          )}
+        </div>
+        <Link
+          href="/sediment"
+          className="mt-4 inline-flex rounded bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+        >
+          Back to Sediment
+        </Link>
+      </Surface>
+    );
+  }
 
   return (
     <div className="grid grid-cols-12 gap-6">
@@ -162,7 +215,12 @@ export default function ConversationPage() {
                   )}
               </>
             ) : null}
-            {stream.error && <p className="text-sm text-red-600">error: {stream.error}</p>}
+            {stream.error && (
+              <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                <p className="font-semibold">Answer generation failed.</p>
+                <p className="mt-1">{stream.error}</p>
+              </div>
+            )}
           </div>
         </Surface>
 
