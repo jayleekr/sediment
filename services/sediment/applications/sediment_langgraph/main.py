@@ -75,6 +75,10 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
     # Per-invocation accumulator — avoids the module-global race condition
     # that corrupts token lists when two requests overlap.
     accumulator: list[str] = []
+    citations: list[dict] = []
+    intent = "library"
+    retrieval_ms: int | None = None
+    compose_ms: int | None = None
     try:
         # Emit status immediately — client measures TTFT from first event, not
         # from graph completion. Without this, TTFT = full graph latency (2–10s).
@@ -187,8 +191,34 @@ async def _stream(state: dict, identity: Identity) -> AsyncIterator[str]:
         log.info("stream.done", conv=state["conv_id"], elapsed_ms=elapsed, intent=intent)
     except Exception as e:
         log.exception("stream.error")
-        yield _sse("message", {"v": f"error: {e}", "metadata": {"tag": "error"}})
+        msg = _user_facing_stream_error(e)
+        try:
+            await _persist_message(
+                identity.tenant_id,
+                state["conv_id"],
+                citations,
+                [msg],
+                intent=intent,
+                retrieval_ms=retrieval_ms,
+                compose_ms=compose_ms,
+                grounding={"status": "error", "valid_refs": [], "invalid_refs": []},
+                task_tag=state.get("task_tag"),
+            )
+        except Exception:
+            log.exception("stream.error_persist_failed")
+        yield _sse("message", {"v": msg, "metadata": {"tag": "error"}})
         yield "data: [DONE]\n\n"
+
+
+def _user_facing_stream_error(exc: Exception) -> str:
+    text = str(exc)
+    lower = text.lower()
+    if "resource_exhausted" in lower or "prepayment credits" in lower or "429" in lower:
+        return (
+            "Answer generation failed because the configured LLM provider quota is exhausted. "
+            "The retrieved evidence may be available, but no grounded assistant answer was generated."
+        )
+    return "Answer generation failed before a grounded response could be completed."
 
 
 async def _load_history(tenant_id: str, conv_id: str, limit: int = 10) -> list[dict]:
