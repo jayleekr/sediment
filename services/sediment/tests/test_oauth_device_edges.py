@@ -195,9 +195,12 @@ async def test_whoami_with_wrong_issuer_rejected(client):
 
 async def test_whoami_with_modified_signature_rejected(client):
     token = _mint_with({})
-    # Flip the last char of the signature
-    last = "A" if token[-1] != "A" else "B"
-    tampered = token[:-1] + last
+    # Flip the first signature char. The last base64url char can encode only
+    # padding bits for HS256 signatures, so changing it is not guaranteed to
+    # change the decoded signature bytes.
+    header, payload, signature = token.split(".")
+    first = "A" if signature[0] != "A" else "B"
+    tampered = ".".join([header, payload, first + signature[1:]])
     r = await client.get("/api/v1/auth/whoami",
                          headers={"Authorization": f"Bearer {tampered}"})
     assert r.status_code == 401

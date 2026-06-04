@@ -164,6 +164,18 @@ def _build_ts_or_query(q: str) -> str:
     return " | ".join(result)
 
 
+def _prefer_bm25_first(q: str) -> bool:
+    tokens = re.findall(r"[A-Za-z0-9가-힣_]+", q)
+    if any(any("가" <= c <= "힣" for c in tok) for tok in tokens):
+        return True
+    signal_tokens = [
+        tok.lower()
+        for tok in tokens
+        if len(tok) >= 2 and tok.lower() not in _STOP_WORDS
+    ]
+    return len(signal_tokens) >= 4
+
+
 @router.get("")
 async def browse(
     type: Optional[str] = None,
@@ -186,11 +198,14 @@ async def browse(
     if not include_test:
         sql += " AND NOT (a.ref ~ '^validator/(idem|sample)-')"
     if type:
-        sql += " AND a.type = :type"; params["type"] = type
+        sql += " AND a.type = :type"
+        params["type"] = type
     if author_external_id:
-        sql += " AND m.external_id = :eid"; params["eid"] = author_external_id
+        sql += " AND m.external_id = :eid"
+        params["eid"] = author_external_id
     if lens:
-        sql += " AND a.frontmatter -> 'lens' ? :lens"; params["lens"] = lens
+        sql += " AND a.frontmatter -> 'lens' ? :lens"
+        params["lens"] = lens
     # asyncpg infers a.date's column type as DATE and refuses raw strings —
     # parse to datetime.date here so the bind is type-correct.
     if date_from:
@@ -228,10 +243,12 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
     knowledge queries). Detect zero-vector and switch to BM25-only with
     OR-joined to_tsquery — mirrors lab_curator_graph.node_library_search.
     """
-    qvec = embed_one(q)
-    qvec_is_zero = not any(abs(x) > 1e-9 for x in qvec)
+    bm25_first = _prefer_bm25_first(q)
+    qvec = [0.0] if bm25_first else embed_one(q)
+    qvec_is_zero = bm25_first or not any(abs(x) > 1e-9 for x in qvec)
 
     async with app_session(identity.tenant_id) as s:
+        await s.execute(text("SET LOCAL statement_timeout = '8s'"))
         if qvec_is_zero:
             # Offline path: BM25 only, OR-joined for permissive matching.
             ts_or = _build_ts_or_query(q)
@@ -276,6 +293,8 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                        a.ref, a.type, a.date, a.slug
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)
+                  AND c.tenant_id = CAST(:tid AS uuid)
+                  AND a.tenant_id = CAST(:tid AS uuid)
             ),
             deduped AS (
                 SELECT DISTINCT ON (artifact_id)
@@ -294,24 +313,46 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             params_bm25 = {
                 "tsq": ts_or, "limit": limit, "type_hint": type_hint,
                 "project_hint": project_hint, "slug_re": slug_re,
+                "tid": str(identity.tenant_id),
             }
             if type:
                 params_bm25["type_strict"] = type
             r = await s.execute(text(sql_bm25), params_bm25)
             return {"q": q, "items": [dict(row._mapping) for row in r]}
 
-        # Online path: hybrid BM25 + vector with RRF rerank (unchanged).
+        # Online path: hybrid BM25 + vector with RRF rerank. Keep the
+        # ORDER BY/LIMIT work inside *_top CTEs and assign row_number only
+        # after truncation, matching the LangGraph retrieval P0 perf fix.
+        ts_or = _build_ts_or_query(q)
         qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
         sql = """
-        WITH bm25 AS (
+        WITH bm25_top AS (
           SELECT c.id, c.artifact_id, c.seq, c.content,
-                 row_number() OVER (ORDER BY ts_rank(c.tsv, plainto_tsquery('simple', :q)) DESC) AS rank
-          FROM chunks c WHERE c.tsv @@ plainto_tsquery('simple', :q) LIMIT 50
+                 ts_rank(c.tsv, to_tsquery('simple', :tsq))::float AS score
+          FROM chunks c
+          WHERE CAST(:tsq AS text) <> ''
+            AND c.tsv @@ to_tsquery('simple', :tsq)
+            AND c.tenant_id = CAST(:tid AS uuid)
+          ORDER BY score DESC
+          LIMIT 50
+        ),
+        bm25 AS (
+          SELECT id, artifact_id, seq, content,
+                 row_number() OVER (ORDER BY score DESC) AS rank
+          FROM bm25_top
+        ),
+        vec_top AS (
+          SELECT c.id, c.artifact_id, c.seq, c.content,
+                 c.embedding <=> CAST(:qvec AS vector) AS dist
+          FROM chunks c
+          WHERE c.tenant_id = CAST(:tid AS uuid)
+          ORDER BY dist
+          LIMIT 50
         ),
         vec AS (
-          SELECT c.id, c.artifact_id, c.seq, c.content,
-                 row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS rank
-          FROM chunks c ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT 50
+          SELECT id, artifact_id, seq, content,
+                 row_number() OVER (ORDER BY dist) AS rank
+          FROM vec_top
         ),
         fused AS (
           SELECT id, artifact_id, seq, content, sum(rrf) AS score FROM (
@@ -323,13 +364,19 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content, f.score,
                a.ref, a.type, a.date, a.slug
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        WHERE a.tenant_id = CAST(:tid AS uuid)
         {type_filter}
         ORDER BY f.score DESC LIMIT :limit;
         """.replace(
             "{type_filter}",
-            "WHERE a.type = :type_strict" if type else ""
+            "AND a.type = :type_strict" if type else ""
         )
-        params_hyb = {"q": q, "qvec": qvec_str, "limit": limit}
+        params_hyb = {
+            "tsq": ts_or,
+            "qvec": qvec_str,
+            "limit": limit,
+            "tid": str(identity.tenant_id),
+        }
         if type:
             params_hyb["type_strict"] = type
         r = await s.execute(text(sql), params_hyb)

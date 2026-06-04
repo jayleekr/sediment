@@ -11,13 +11,12 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-import string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import bindparam, text
+from sqlalchemy import text
 
 from lab_lib.auth import Identity, mint_token, require_identity
 from lab_lib.db import service_session
@@ -30,6 +29,7 @@ router = APIRouter()
 
 class DevTokenReq(BaseModel):
     email: str
+    tenant_slug: str | None = None
 
 
 class TokenResp(BaseModel):
@@ -53,10 +53,18 @@ async def dev_token(req: DevTokenReq):
     if os.environ.get("SEDIMENT_DEV_MODE") != "1":
         raise HTTPException(status_code=403, detail="dev mode disabled")
     async with service_session() as s:
-        r = await s.execute(text("""
+        sql = """
             SELECT m.id::text, m.tenant_id::text, m.role, m.display_name
-            FROM members m WHERE m.email = :email LIMIT 1
-        """), {"email": req.email})
+            FROM members m
+            JOIN tenants t ON t.id = m.tenant_id
+            WHERE m.email = :email
+        """
+        params = {"email": req.email}
+        if req.tenant_slug:
+            sql += " AND t.slug = :tenant_slug"
+            params["tenant_slug"] = req.tenant_slug
+        sql += " ORDER BY t.slug LIMIT 1"
+        r = await s.execute(text(sql), params)
         row = r.first()
         if not row:
             raise HTTPException(status_code=404, detail="member not found — run `make seed`")
@@ -69,6 +77,7 @@ class OAuthExchangeReq(BaseModel):
     provider: str                       # "github"
     github_login: str | None = None
     verified_emails: list[str] = []
+    tenant_slug: str | None = None
     # WO-7 #3 2026-05-24: GitHub OAuth access token from the NextAuth flow.
     # Previously the backend trusted whatever ``github_login`` /
     # ``verified_emails`` the client posted — anyone with a JS console
@@ -79,11 +88,11 @@ class OAuthExchangeReq(BaseModel):
     access_token: str | None = None
 
 
-async def _fetch_github_identity(access_token: str) -> tuple[str, list[str]]:
+async def _fetch_github_identity(access_token: str) -> str:
     """Server-side verification of GitHub identity via the access_token.
 
-    Returns ``(login, verified_emails)``. Anything client-supplied is
-    discarded — we trust only GitHub's response.
+    Returns the verified GitHub login. Anything client-supplied is discarded;
+    we trust only GitHub's response.
 
     Raises HTTPException(401) if the token is invalid / expired / lacks
     required scope (``read:user``, ``user:email``).
@@ -108,24 +117,13 @@ async def _fetch_github_identity(access_token: str) -> tuple[str, list[str]]:
                             detail=f"github /user returned {r_user.status_code}")
     if r_emails.status_code != 200:
         # /user/emails needs user:email scope. Fail clearly so the operator
-        # can fix the NextAuth scope config rather than silently fall back
-        # to public email (which would re-open the trust gap).
+        # can fix the NextAuth scope config without re-opening the trust gap.
         raise HTTPException(status_code=403,
                             detail="github access_token missing user:email scope")
     login = (r_user.json().get("login") or "").strip()
-    raw_emails = r_emails.json() or []
-    # GitHub returns objects like {"email": "...", "verified": true, "primary": true}.
-    # We only accept verified addresses — unverified ones can be set to
-    # someone else's address without proof of ownership.
-    verified = sorted({
-        (e.get("email") or "").strip().lower()
-        for e in raw_emails
-        if isinstance(e, dict) and e.get("verified")
-        and isinstance(e.get("email"), str)
-    } - {""})
     if not login:
         raise HTTPException(status_code=403, detail="github /user returned no login")
-    return login, verified
+    return login
 
 
 @router.post("/oauth-exchange", response_model=TokenResp)
@@ -137,61 +135,46 @@ async def oauth_exchange(req: OAuthExchangeReq):
     were trusted verbatim, which meant any JS console could mint a JWT for
     any tenant member whose github_login it knew. Now: the client posts
     its NextAuth-issued ``access_token`` and the backend re-fetches the
-    real identity from GitHub. Client-supplied ``github_login`` /
-    ``verified_emails`` are accepted only when ``access_token`` is absent
-    AND ``SEDIMENT_TRUST_CLIENT_OAUTH=1`` is set (dev-only escape hatch).
+    real identity from GitHub. Client-supplied ``github_login`` and
+    ``verified_emails`` are metadata only; they are never used to mint a
+    token.
 
-    Resolution: github_login first — GitHub account emails are frequently
-    private and differ from the seeded member email, so email is only a
-    fallback for members not yet github-mapped. The backend remains the
-    single source of truth for tenant/role and JWT signing; it never trusts
-    a client-supplied tenant.
+    Resolution is by github_login only. The backend remains the single
+    source of truth for tenant/role and JWT signing; it never trusts a
+    client-supplied tenant.
     """
     if req.provider != "github":
         raise HTTPException(status_code=400, detail=f"unsupported provider: {req.provider}")
 
-    # WO-7 #3: prefer server-side verification when the access_token is
-    # present. Legacy client-trust path kept behind an explicit dev-only flag.
-    if req.access_token:
-        gh, emails = await _fetch_github_identity(req.access_token)
-    elif os.environ.get("SEDIMENT_TRUST_CLIENT_OAUTH") == "1":
-        log.warning("oauth_exchange.trusting_client_payload — dev-only flag set")
-        gh = (req.github_login or "").strip()
-        emails = sorted({e.strip().lower() for e in (req.verified_emails or []) if e and e.strip()})
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "oauth-exchange requires access_token (server-side verification). "
-                "For dev/test, set SEDIMENT_TRUST_CLIENT_OAUTH=1 to fall back to "
-                "client-supplied github_login + verified_emails."
-            ),
-        )
+    if not req.access_token:
+        raise HTTPException(status_code=400, detail="oauth-exchange requires access_token")
 
-    if not gh and not emails:
-        raise HTTPException(status_code=400, detail="github_login or verified_emails required")
+    gh = await _fetch_github_identity(req.access_token)
 
     async with service_session() as s:
-        row = None
-        if gh:
-            r = await s.execute(text("""
-                SELECT m.id::text, m.tenant_id::text, m.role, m.display_name, m.email
-                FROM members m
-                WHERE lower(m.github_login) = lower(:gh) LIMIT 1
-            """), {"gh": gh})
-            row = r.first()
-        if row is None and emails:
-            q = text("""
-                SELECT m.id::text, m.tenant_id::text, m.role, m.display_name, m.email
-                FROM members m
-                WHERE lower(m.email) IN :emails LIMIT 1
-            """).bindparams(bindparam("emails", expanding=True))
-            r = await s.execute(q, {"emails": emails})
-            row = r.first()
+        sql = """
+            SELECT m.id::text, m.tenant_id::text, m.role, m.display_name, m.email
+            FROM members m
+            JOIN tenants t ON t.id = m.tenant_id
+            WHERE lower(m.github_login) = lower(:gh)
+        """
+        params = {"gh": gh}
+        if req.tenant_slug:
+            sql += " AND t.slug = :tenant_slug"
+            params["tenant_slug"] = req.tenant_slug
+        sql += """
+            ORDER BY
+              CASE WHEN t.slug = 'hypeproof-lab' THEN 0 ELSE 1 END,
+              t.slug
+            LIMIT 1
+        """
+        r = await s.execute(text(sql), params)
+        row = r.first()
         if row is None:
+            suffix = f" for tenant {req.tenant_slug!r}" if req.tenant_slug else ""
             raise HTTPException(
                 status_code=403,
-                detail=("GitHub account is not a Sediment member — an admin must "
+                detail=(f"GitHub account is not a Sediment member{suffix} — an admin must "
                         "set your github_login in data/members.json and run `make seed`"),
             )
         mid, tid, role, name, email = row

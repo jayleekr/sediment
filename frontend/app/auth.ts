@@ -10,42 +10,36 @@ const API_BASE =
   process.env.SEDIMENT_DEV_API_PROXY ||
   process.env.NEXT_PUBLIC_CURATOR_PLATFORM_URL ||
   "http://localhost:10100";
+const AUTH_TENANT_SLUG =
+  process.env.SEDIMENT_AUTH_TENANT_SLUG ||
+  process.env.NEXT_PUBLIC_SEDIMENT_AUTH_TENANT_SLUG ||
+  "";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
-    // Auth.js GitHub provider defaults to scope "read:user user:email",
-    // which is what we need to read the verified-email list.
-    GitHub,
+    GitHub({
+      authorization: {
+        params: {
+          scope: "read:user user:email",
+        },
+      },
+    }),
   ],
   callbacks: {
     // Runs server-side. On the initial sign-in `profile` + `account` are set;
-    // we resolve the Sediment member via the backend and stash the backend
-    // JWT on the NextAuth token so the client bridge can mirror it into the
-    // existing localStorage `curator.token` (keeps the 11 UI files unchanged).
+    // we pass the GitHub access token to the backend for server-side identity
+    // verification, then stash the Sediment JWT on the NextAuth token.
     async jwt({ token, profile, account }) {
       if (account?.provider !== "github" || !profile) return token;
 
       const ghLogin = (profile as { login?: string }).login ?? "";
-      const emails: string[] = [];
-      if (account.access_token) {
-        try {
-          const r = await fetch("https://api.github.com/user/emails", {
-            headers: {
-              Authorization: `Bearer ${account.access_token}`,
-              Accept: "application/vnd.github+json",
-              "User-Agent": "sediment-auth",
-            },
-          });
-          if (r.ok) {
-            const list = (await r.json()) as Array<{ email: string; verified: boolean }>;
-            for (const e of list) if (e.verified) emails.push(e.email);
-          }
-        } catch {
-          /* fall back to profile.email below */
-        }
+      const accessToken = typeof account.access_token === "string" ? account.access_token : "";
+      if (!accessToken) {
+        token.curatorToken = undefined;
+        token.curatorError = "github access_token missing from NextAuth account";
+        return token;
       }
-      if (typeof profile.email === "string" && profile.email) emails.push(profile.email);
 
       try {
         const ex = await fetch(`${API_BASE}/api/v1/auth/oauth-exchange`, {
@@ -54,7 +48,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           body: JSON.stringify({
             provider: "github",
             github_login: ghLogin,
-            verified_emails: emails,
+            verified_emails: [],
+            tenant_slug: AUTH_TENANT_SLUG || undefined,
+            access_token: accessToken,
           }),
         });
         if (ex.ok) {

@@ -16,6 +16,7 @@ would drift and HAS drifted: `_STOP_WORDS` lived independently in
   - ``detect_project_path``       return matching substring or ''
   - ``slug_regex``                tokens regex for filename match boost
   - ``build_ts_or_query``         the OR-joined to_tsquery expression
+  - ``prefer_bm25_first``         skip slow online embeddings for lexical-heavy queries
   - ``is_zero_vector``            offline-mode embedding detector
 
 When you find yourself copy-pasting any of the above into a new retrieval
@@ -176,6 +177,26 @@ def build_ts_or_query(q: str) -> str:
     if not result:
         return ""
     return " | ".join(result)
+
+
+def prefer_bm25_first(q: str) -> bool:
+    """True when lexical retrieval should run before external embeddings.
+
+    Korean entity/curriculum questions and long multi-token questions have
+    strong BM25 signal in this corpus, while the external embedding call can
+    dominate latency or hang the user-facing "thinking" state. This is a
+    fail-fast guard for sediment#58: return a grounded lexical answer quickly
+    instead of blocking on vector search.
+    """
+    tokens = re.findall(r"[A-Za-z0-9가-힣_]+", q)
+    if any(any("가" <= c <= "힣" for c in tok) for tok in tokens):
+        return True
+    signal_tokens = [
+        tok.lower()
+        for tok in tokens
+        if len(tok) >= 2 and tok.lower() not in _STOP_WORDS
+    ]
+    return len(signal_tokens) >= 4
 
 
 def is_zero_vector(vec: Sequence[float], tol: float = 1e-9) -> bool:

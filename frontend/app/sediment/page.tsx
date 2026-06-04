@@ -13,6 +13,9 @@ import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } 
 // production-side toggle. To re-enable for staging, gate via server-only env
 // (SEDIMENT_DEV_AUTH without NEXT_PUBLIC_ prefix) read in a route handler.
 const ENABLE_DEV_AUTH = process.env.NODE_ENV === "development";
+const AUTH_TENANT_SLUG =
+  process.env.NEXT_PUBLIC_SEDIMENT_AUTH_TENANT_SLUG ||
+  "";
 
 export default function CuratorHome() {
   const [mounted, setMounted] = useState(false);
@@ -55,7 +58,7 @@ export default function CuratorHome() {
     setLoading(true);
     setError(null);
     try {
-      const r = await mintDevToken(email);
+      const r = await mintDevToken(email, AUTH_TENANT_SLUG || undefined);
       setSignedInAs(r.display_name);
       await refresh();
     } catch (e: any) {

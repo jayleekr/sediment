@@ -92,6 +92,6 @@ primary_region = "nrt"   # Tokyo — closest Fly region to Korea
 
 [[vm]]
   size = "shared-cpu-1x"          # cheapest tier
-  memory = "1024mb"               # 4 uvicorn (platform+langgraph 2 workers each) + nginx; 512mb OOM'd under concurrency
+  memory = "2048mb"               # 4 uvicorn services + scheduler/nginx + ad-hoc validation; 1024mb recycled workers during kids-edu smoke
   cpu_kind = "shared"
   cpus = 1

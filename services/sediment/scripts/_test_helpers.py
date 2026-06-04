@@ -49,8 +49,16 @@ def smoke_conv_title(base: str) -> str:
     return f"{_PREFIX}{base}"
 
 
-async def _mint_token(client: httpx.AsyncClient, api: str, email: str) -> str:
-    r = await client.post(f"{api}/api/v1/auth/dev-token", json={"email": email})
+async def _mint_token(
+    client: httpx.AsyncClient,
+    api: str,
+    email: str,
+    tenant_slug: str | None = None,
+) -> str:
+    r = await client.post(
+        f"{api}/api/v1/auth/dev-token",
+        json={"email": email, "tenant_slug": tenant_slug},
+    )
     r.raise_for_status()
     return r.json()["token"]
 
@@ -82,6 +90,8 @@ async def ask_question(
     *,
     api: str,
     email: str,
+    tenant_slug: str | None = None,
+    token: str | None = None,
     query: str,
     title_base: str = "smoke",
     timeout_s: float = 60.0,
@@ -109,7 +119,7 @@ async def ask_question(
     owned_client = client is None
     c = client or httpx.AsyncClient()
     try:
-        token = await _mint_token(c, api, email)
+        token = token or await _mint_token(c, api, email, tenant_slug)
         title = smoke_conv_title(title_base)
         conv_id = await _new_conv(c, api, token, title)
         await _save_user_msg(c, api, token, conv_id, query)
