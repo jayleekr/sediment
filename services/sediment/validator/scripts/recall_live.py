@@ -62,8 +62,17 @@ async def _mint_token(client: httpx.AsyncClient) -> str:
     (a deliberate auth-bypass fix). Fall back to minting via dev-token only
     when running locally with SEDIMENT_DEV_MODE=1.
     """
-    ci_token = os.environ.get("SEDIMENT_CI_TOKEN")
-    if ci_token:
+    raw = os.environ.get("SEDIMENT_CI_TOKEN")
+    if raw is not None:
+        # Distinguish unset (fall back to dev-token) from set-but-blank (operator
+        # error). Strip whitespace so a copy-pasted/CI-injected trailing newline
+        # doesn't produce a malformed Authorization header that silently 401s.
+        ci_token = raw.strip()
+        if not ci_token:
+            raise RuntimeError(
+                "SEDIMENT_CI_TOKEN is set but empty/blank. Unset it to use the "
+                "local dev-token path, or set a valid bearer token."
+            )
         return ci_token
     r = await client.post(f"{API}/api/v1/auth/dev-token", json={"email": EMAIL})
     if r.status_code == 403:

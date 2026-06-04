@@ -37,6 +37,15 @@ jobs:
           cache: pip
       - name: Install minimal deps
         run: pip install --quiet pyyaml httpx
+      - name: Verify SEDIMENT_CI_TOKEN secret is set
+        env:
+          SEDIMENT_CI_TOKEN: ${{ secrets.SEDIMENT_CI_TOKEN }}
+        run: |
+          if [ -z "$SEDIMENT_CI_TOKEN" ]; then
+            echo "::error::SEDIMENT_CI_TOKEN secret is not set. Add it in repo settings — "\
+                 "recall_live.py needs it because /api/v1/auth/dev-token 403s in prod."
+            exit 1
+          fi
       - name: Run recall@3
         working-directory: services/sediment
         env:
