@@ -13,10 +13,10 @@ import asyncio
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 import asyncpg
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 # Resolve data/members.json by walking up from this script. The old hardcoded
 # parents[5] assumed the pre-split monorepo layout
@@ -149,6 +149,44 @@ async def upsert_tenant(s, slug: str, name: str) -> str:
 
 
 async def upsert_member(s, tenant_id: str, m: dict) -> str:
+    params = {
+        "tid": tenant_id,
+        "eid": (m.get("id") or None) or None,  # empty string -> NULL (NULL is exempt from UNIQUE)
+        "gh": (m.get("githubLogin") or None),  # GitHub OAuth identity (SSO); NULL if unmapped
+        "email": m["email"],
+        "dn": m["displayName"],
+        "rn": m.get("realName"),
+        "role": "admin" if m.get("role") == "admin" else "creator",
+        "title": m.get("title"),
+        "exp": json.dumps(m.get("expertise", [])),
+        "int": json.dumps(m.get("interests", [])),
+    }
+
+    for column, value_key in (
+        ("external_id", "eid"),
+        ("github_login", "gh"),
+        ("email", "email"),
+    ):
+        if params[value_key] is None:
+            continue
+        r = await s.execute(text(f"""
+            UPDATE members SET
+              external_id = COALESCE(:eid, external_id),
+              github_login = COALESCE(:gh, github_login),
+              email = :email,
+              display_name = :dn,
+              real_name = :rn,
+              role = :role,
+              title = :title,
+              expertise = CAST(:exp AS jsonb),
+              interests = CAST(:int AS jsonb)
+            WHERE tenant_id = CAST(:tid AS uuid) AND {column} = :match_value
+            RETURNING id
+        """), {**params, "match_value": params[value_key]})
+        row = r.first()
+        if row:
+            return str(row[0])
+
     r = await s.execute(text("""
         INSERT INTO members (tenant_id, external_id, github_login, email, display_name, real_name, role, title, expertise, interests)
         VALUES (:tid, :eid, :gh, :email, :dn, :rn, :role, :title, CAST(:exp AS jsonb), CAST(:int AS jsonb))
@@ -162,19 +200,76 @@ async def upsert_member(s, tenant_id: str, m: dict) -> str:
           expertise = EXCLUDED.expertise,
           interests = EXCLUDED.interests
         RETURNING id
-    """), {
-        "tid": tenant_id,
-        "eid": (m.get("id") or None) or None,  # empty string → NULL (NULL is exempt from UNIQUE)
-        "gh": (m.get("githubLogin") or None),   # GitHub OAuth identity (SSO); NULL if unmapped
-        "email": m["email"],
-        "dn": m["displayName"],
-        "rn": m.get("realName"),
-        "role": "admin" if m.get("role") == "admin" else "creator",
-        "title": m.get("title"),
-        "exp": json.dumps(m.get("expertise", [])),
-        "int": json.dumps(m.get("interests", [])),
-    })
+    """), params)
     return str(r.scalar_one())
+
+
+async def seed_public_demo_artifacts(s, tenant_id: str, author_id: str) -> None:
+    """Small public fixtures that keep local CLI E2E meaningful without private vault content."""
+    artifacts = [
+        {
+            "ref": "PHILOSOPHY.md",
+            "type": "note",
+            "date": date(2026, 1, 1),
+            "slug": "philosophy",
+            "lang": "en",
+            "body": (
+                "Sediment is a public demo workspace for auditable team memory. "
+                "The product philosophy is that useful AI answers should be grounded "
+                "in inspectable sources, reusable decisions, and clear provenance. "
+                "This synthetic fixture replaces private vault content so CLI read "
+                "and search tests can run safely in public repositories."
+            ),
+        },
+        {
+            "ref": "research/public-demo.md",
+            "type": "research",
+            "date": date(2026, 1, 2),
+            "slug": "public-demo-research",
+            "lang": "en",
+            "body": (
+                "Public research fixture for Sediment CLI E2E. It discusses research "
+                "workflows, source freshness, citation review, and evidence-backed "
+                "team memory without exposing private customer or team data."
+            ),
+        },
+    ]
+    for artifact in artifacts:
+        r = await s.execute(text("""
+            INSERT INTO artifacts (tenant_id, ref, type, author_id, date, slug, lang, frontmatter, body)
+            VALUES (
+              CAST(:tid AS uuid), :ref, :type, CAST(:author_id AS uuid), CAST(:date AS date),
+              :slug, :lang, CAST(:frontmatter AS jsonb), :body
+            )
+            ON CONFLICT (tenant_id, ref) DO UPDATE SET
+              type = EXCLUDED.type,
+              author_id = EXCLUDED.author_id,
+              date = EXCLUDED.date,
+              slug = EXCLUDED.slug,
+              lang = EXCLUDED.lang,
+              frontmatter = EXCLUDED.frontmatter,
+              body = EXCLUDED.body,
+              updated_at = now()
+            RETURNING id
+        """), {
+            "tid": tenant_id,
+            "author_id": author_id,
+            "frontmatter": json.dumps({"seed": True, "public": True}),
+            **artifact,
+        })
+        artifact_id = str(r.scalar_one())
+        await s.execute(text("""
+            DELETE FROM chunks
+            WHERE tenant_id = CAST(:tid AS uuid) AND artifact_id = CAST(:artifact_id AS uuid)
+        """), {"tid": tenant_id, "artifact_id": artifact_id})
+        await s.execute(text("""
+            INSERT INTO chunks (tenant_id, artifact_id, seq, content, boost)
+            VALUES (CAST(:tid AS uuid), CAST(:artifact_id AS uuid), 0, :content, 1.0)
+        """), {
+            "tid": tenant_id,
+            "artifact_id": artifact_id,
+            "content": artifact["body"],
+        })
 
 
 async def main():
@@ -189,9 +284,13 @@ async def main():
         await ensure_retention_columns(s)
         tid = await upsert_tenant(s, settings.default_tenant_slug, settings.default_tenant_name)
         log.info("seed.tenant", id=tid, slug=settings.default_tenant_slug)
+        owner_mid = None
         for m in members:
             mid = await upsert_member(s, tid, m)
+            owner_mid = owner_mid or mid
             log.info("seed.member", id=mid, name=m["displayName"])
+        if owner_mid:
+            await seed_public_demo_artifacts(s, tid, owner_mid)
 
         # Create a 2nd test tenant for cross-tenant verification
         tid2 = await upsert_tenant(s, "acme-test", "Acme Test (RLS verify)")
