@@ -98,6 +98,7 @@ export default function CuratorHome() {
   if (!getToken() && !signedInAs) {
     return (
       <Surface className="mx-auto max-w-md p-6">
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight">Sediment</h1>
         <h2 className="mb-2 text-lg font-semibold">Sign in</h2>
         <p className="mb-4 text-sm text-neutral-600">
           Sign in with the GitHub account that has access to this repo. Your
