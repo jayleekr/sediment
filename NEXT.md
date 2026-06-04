@@ -120,8 +120,8 @@ PASS count drops below 20/40 (currently 26). No secrets needed.
 >   (`raise_for_status` → exit 1) and fires a misleading "recall regression" Discord alert without
 >   ever reaching the queries. `fly-deploy.yml:131-138` already abandoned the same mint for this reason.
 >   Fix → TODO.md **T5**: inject a `SEDIMENT_CI_TOKEN` / device-flow auth — **NOT** by re-enabling
->   `SEDIMENT_DEV_MODE` in prod. (`SEDIMENT_EMAIL` is still `jay.lee@sonatus.com` on this worktree but
->   already `jayleekr0125@gmail.com` on `origin/main` via #60 — rebase before working T5.)
+>   `SEDIMENT_DEV_MODE` in prod. (`SEDIMENT_EMAIL` default was normalized to the HypeProof gmail on
+>   `origin/main` via #60's identity sweep — already correct on the rebased branch.)
 
 ---
 
