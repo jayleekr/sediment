@@ -50,6 +50,24 @@ tool goes stale the moment the team starts relying on it.
 | L3 | Discord ingest (`#daily-research`, `#인사이트-공유`) | Captures knowledge that never lands in git | not started |
 | — | Freshness metric | "vault last updated N hours ago" surfaced in UI/healthz so staleness is visible, not silent | not started |
 
+> **↳ 06-04 reconcile** — verified against the local repo, not assumed (one remote claim was wrong):
+> - **L1 is BUILT — not "NOT built".** A public, HMAC-verified ingest webhook exists:
+>   `POST /webhook/ingest` (`services/sediment/applications/vault_ingester/main.py:239`, verifies
+>   `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET`), fed by the GitHub Action
+>   `.github/workflows/vault-ingest.yml`; nginx publicly proxies `/webhook/` → ingester
+>   (`infra/deploy/nginx.conf:110`, upstream `127.0.0.1:11000`). A `/webhook/discord-ingest` sibling
+>   exists too. The old "ingester only exposes `/v1/ingest/*`, not publicly routed" note is stale.
+> - **A poll path ALSO exists** (belt-and-suspenders): `github_repo_sync` (`enabled: true`,
+>   `0 0-13 * * *`, hourly 09–22 KST) — `services/sediment/config/cron.yaml:60` — pulls md
+>   revisions for every tenant with an `integrations` kind='github' row.
+> - **L2 IS scheduled on prod — not "not scheduled".** The `consolidate` job (Phase 4 memory
+>   consolidator) runs `15 */12 * * *` (09:15 + 21:15 KST, tenant hypeproof-lab) — `cron.yaml:49`;
+>   `distill` (`5 * * * *`) is active too. Caveat: only `github_repo_sync` carries a literal
+>   `enabled: true`; `consolidate`/`distill` rely on the loader's default-on (no-flag) convention.
+> - **Freshness metric is the genuine remaining gap** (still not started) → TODO.md **T4**.
+>
+> (cron.yaml / vault_ingester / nginx.conf are byte-identical on `origin/main`, so this holds post-rebase.)
+
 **Acceptance:** a doc merged to `main` is answerable by Sediment within ~5 min,
 with a visible freshness indicator.
 
@@ -84,6 +102,21 @@ fly apps destroy hypeproof-sediment-db
 **Nightly recall check:** `.github/workflows/nightly-recall.yml` runs
 `validator.scripts.recall_live` daily at 18:30 UTC (03:30 KST). Fails if
 PASS count drops below 20/40 (currently 26). No secrets needed.
+
+> **↳ 06-04 reconcile** — verified:
+> - **Fly PG "~1 week stable" destroy precondition is MET.** Machine stopped 2026-05-21;
+>   today 2026-06-04 = **14 days** (2× the threshold). The destroy commands above are now
+>   actionable → TODO.md **T1** (operator-run only, irreversible — do NOT auto-execute).
+> - **"No secrets needed" is now FALSE — the nightly recall check is BROKEN in prod.**
+>   `recall_live.py` mints a JWT via `POST /api/v1/auth/dev-token` (`validator/scripts/recall_live.py:52`),
+>   but that endpoint is gated by `SEDIMENT_DEV_MODE` and **403s in prod** (`auth.py:53-54`,
+>   "dev mode disabled" — a deliberate CVE-class auth-bypass fix; gate is identical on `origin/main`).
+>   So `nightly-recall.yml` (runs against `…fly.dev`) fails at token-mint **every** run
+>   (`raise_for_status` → exit 1) and fires a misleading "recall regression" Discord alert without
+>   ever reaching the queries. `fly-deploy.yml:131-138` already abandoned the same mint for this reason.
+>   Fix → TODO.md **T5**: inject a `SEDIMENT_CI_TOKEN` / device-flow auth — **NOT** by re-enabling
+>   `SEDIMENT_DEV_MODE` in prod. (`SEDIMENT_EMAIL` is still `jay.lee@sonatus.com` on this worktree but
+>   already `jayleekr0125@gmail.com` on `origin/main` via #60 — rebase before working T5.)
 
 ---
 
