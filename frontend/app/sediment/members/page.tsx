@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { EmptyState, Surface, TrustBadge } from "../components/ui";
 
 type Member = {
   id: string;
@@ -24,14 +25,22 @@ export default function MembersPage() {
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {items.length === 0 && (
+        <div className="md:col-span-2 lg:col-span-3">
+          <EmptyState
+            title="No members loaded"
+            description="Members appear here after sign-in and tenant-scoped member retrieval succeed."
+          />
+        </div>
+      )}
       {items.map((m) => (
-        <div key={m.id} className="rounded-xl border bg-white p-4 shadow-sm">
+        <Surface key={m.id} className="p-4">
           <div className="flex items-baseline justify-between">
             <h3 className="text-lg font-semibold">{m.display_name}</h3>
-            <span className="text-xs text-neutral-500">{m.role}</span>
+            <TrustBadge>{m.role}</TrustBadge>
           </div>
-          <p className="text-sm text-neutral-600">{m.real_name}</p>
-          <p className="mt-1 text-xs">{m.title}</p>
+          {m.real_name && <p className="text-sm text-neutral-600">{m.real_name}</p>}
+          {m.title && <p className="mt-1 text-xs">{m.title}</p>}
           <div className="mt-3 flex flex-wrap gap-1">
             {m.expertise?.map((e) => (
               <span key={e} className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
@@ -39,7 +48,7 @@ export default function MembersPage() {
               </span>
             ))}
           </div>
-        </div>
+        </Surface>
       ))}
     </div>
   );

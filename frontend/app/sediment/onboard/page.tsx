@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TrustBadge } from "../components/ui";
 
 type Step = "workspace" | "invite" | "sources" | "ingest" | "done";
 
@@ -24,6 +25,12 @@ export default function OnboardPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="flex flex-wrap items-center gap-2">
+          <TrustBadge tone="warning">demo only</TrustBadge>
+          <span className="font-medium">No workspace or ingest job is created from this stub yet.</span>
+        </div>
+      </div>
       <Stepper current={step} />
 
       <div className="rounded-xl border bg-white p-6 shadow-sm">

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function PricingPage() {
   // Tenant-tier flat pricing (NOT per-seat). Internal rationale + cost math
   // lives in vault artifact `internal/pricing-strategy` (members-only).
@@ -141,15 +143,16 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            <button
+            <Link
+              href={`/sediment/onboard?tier=${encodeURIComponent(t.name.toLowerCase())}`}
               className={`mt-6 w-full rounded px-4 py-2 text-sm ${
                 t.featured
                   ? "bg-blue-600 text-white hover:bg-blue-700"
                   : "bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
-              }`}
+              } block text-center`}
             >
               {t.cta}
-            </button>
+            </Link>
           </div>
         ))}
       </div>
@@ -164,11 +167,12 @@ export default function PricingPage() {
           We charge flat per workspace — your bill stays the same as you scale.
         </p>
         <table className="mt-4 w-full text-sm">
+          <caption className="sr-only">Ten seat monthly cost comparison</caption>
           <thead className="text-left text-xs uppercase tracking-wide text-neutral-500">
             <tr>
-              <th className="py-2 pr-4">Tool</th>
-              <th className="py-2 pr-4">10-seat monthly</th>
-              <th className="py-2">vs Studio $99</th>
+              <th scope="col" className="py-2 pr-4">Tool</th>
+              <th scope="col" className="py-2 pr-4">10-seat monthly</th>
+              <th scope="col" className="py-2">vs Studio $99</th>
             </tr>
           </thead>
           <tbody>

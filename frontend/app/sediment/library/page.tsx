@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, type LibraryItem } from "../lib/api";
+import { EmptyState, SectionHeader, Surface } from "../components/ui";
 
 // useSearchParams() forces client-side bailout for static prerendering in
 // Next 15+, so the consuming component must be wrapped in <Suspense>. Keeping
@@ -62,7 +63,11 @@ function LibraryPageInner() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <Surface className="p-4">
+        <SectionHeader
+          title="Library"
+          description="Browse and search the vault behind Sediment answers."
+        />
         <div className="flex flex-wrap gap-2">
           {["", "column", "research", "novel", "note", "meeting"].map((t) => (
             <button
@@ -89,10 +94,10 @@ function LibraryPageInner() {
             </button>
           </div>
         </div>
-      </div>
+      </Surface>
 
       {search.length > 0 && (
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
+        <Surface className="p-4">
           <h3 className="mb-2 text-sm font-semibold">Search results</h3>
           <ul className="space-y-3 text-sm">
             {search.map((s, i) => (
@@ -103,36 +108,46 @@ function LibraryPageInner() {
               </li>
             ))}
           </ul>
-        </div>
+        </Surface>
       )}
 
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <Surface className="p-4">
         <h3 className="mb-2 text-sm font-semibold">
           Vault ({loading ? "…" : items.length})
         </h3>
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-neutral-500">
-            <tr>
-              <th className="py-1">ref</th>
-              <th>type</th>
-              <th>date</th>
-              <th>author</th>
-              <th>lang</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it) => (
-              <tr key={it.id} className="border-t">
-                <td className="py-1 font-mono text-xs">{it.ref}</td>
-                <td>{it.type}</td>
-                <td>{it.date}</td>
-                <td>{it.author_name}</td>
-                <td>{it.lang}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {items.length === 0 && !loading ? (
+          <EmptyState
+            title="No artifacts in this view"
+            description="Clear the filters or search for a specific ref, title, author, or phrase."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <caption className="sr-only">Vault artifacts</caption>
+              <thead className="text-left text-xs text-neutral-500">
+                <tr>
+                  <th scope="col" className="py-1">ref</th>
+                  <th scope="col">type</th>
+                  <th scope="col">date</th>
+                  <th scope="col">author</th>
+                  <th scope="col">lang</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it) => (
+                  <tr key={it.id} className="border-t">
+                    <td className="py-1 font-mono text-xs">{it.ref}</td>
+                    <td>{it.type}</td>
+                    <td>{it.date}</td>
+                    <td>{it.author_name}</td>
+                    <td>{it.lang}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Surface>
     </div>
   );
 }

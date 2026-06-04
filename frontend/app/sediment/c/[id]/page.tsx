@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { api, citeExport, getFreshness, type Citation, type Freshness, type Message } from "../../lib/api";
 import { streamCurator } from "../../lib/sse";
+import { EmptyState, SectionHeader, Surface, TrustBadge } from "../../components/ui";
 
 // Backend phrases emitted by lab_lib/grounding.no_evidence_answer when the
 // retriever returned 0 candidates. Detected here to render a richer empty
@@ -120,12 +121,26 @@ export default function ConversationPage() {
   // For the live streaming bubble, the most recent user turn is the source.
   const lastUserQuery: string =
     [...messages].reverse().find((m) => m.role === "user")?.content || "";
+  const shownCitations = stream.citations.length
+    ? stream.citations
+    : (messages.flatMap((m) => m.citations || []) as Citation[]);
 
   return (
     <div className="grid grid-cols-12 gap-6">
       <main className="col-span-12 md:col-span-8">
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold">{conv?.title || "(untitled)"}</h2>
+        <Surface className="p-5 md:p-6">
+          <SectionHeader
+            title={conv?.title || "(untitled)"}
+            description="Answers are only useful when the evidence can be inspected."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <TrustBadge tone="info">all vault</TrustBadge>
+                <TrustBadge tone={shownCitations.length ? "success" : "neutral"}>
+                  {shownCitations.length} citation{shownCitations.length === 1 ? "" : "s"}
+                </TrustBadge>
+              </div>
+            }
+          />
           <div className="space-y-4">
             {messages.map((m, i) => (
               <div key={m.id}>
@@ -149,31 +164,32 @@ export default function ConversationPage() {
             ) : null}
             {stream.error && <p className="text-sm text-red-600">error: {stream.error}</p>}
           </div>
-        </div>
+        </Surface>
 
         <form
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
-          className="mt-4 flex gap-2"
+          className="mt-4 flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm sm:flex-row"
         >
           <input
-            className="flex-1 rounded border px-3 py-2"
+            className="min-h-11 flex-1 rounded border border-neutral-300 px-3 py-2"
             placeholder="ask the lab…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={!stream.done}
           />
           <button
-            className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+            className="min-h-11 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
             disabled={!stream.done}
           >
             Send
           </button>
         </form>
-        <label className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+        <label className="mt-2 flex items-start gap-2 text-xs leading-5 text-neutral-600">
           <input
+            className="mt-1"
             type="checkbox"
             checked={ownedMode}
             onChange={(e) => {
@@ -181,28 +197,34 @@ export default function ConversationPage() {
               localStorage.setItem("sediment.owned_task", e.target.checked ? "1" : "0");
             }}
           />
-          🎯 This is my owned-task lookup (replacing grep / Drive / Discord)
+          <span>This is my owned-task lookup, replacing grep, Drive, or Discord scroll.</span>
         </label>
       </main>
 
       <aside className="col-span-12 md:col-span-4">
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold">Citations</h3>
-          {stream.citations.length === 0 && messages.length === 0 ? (
-            <p className="text-xs text-neutral-600">Will appear here as the agent searches.</p>
+        <Surface as="aside" className="sticky top-4 p-4">
+          <SectionHeader
+            title="Evidence"
+            description="Open a source before copying an answer into work."
+          />
+          {shownCitations.length === 0 ? (
+            <div className="mt-4">
+              <EmptyState
+                title="No citations yet"
+                description="Sources will appear here as retrieval finds support for the answer."
+              />
+            </div>
           ) : (
-            <ul className="space-y-3 text-sm">
-              {(stream.citations.length ? stream.citations : (messages.flatMap((m) => m.citations || []) as Citation[]))
-                .slice(0, 10)
-                .map((c, i) => (
-                  <CitationCard key={i} index={i + 1} citation={c} />
-                ))}
+            <ul className="mt-4 space-y-3 text-sm">
+              {shownCitations.slice(0, 10).map((c, i) => (
+                <CitationCard key={citationKey(c, i)} index={i + 1} citation={c} />
+              ))}
             </ul>
           )}
           <div className="mt-4 border-t pt-3 text-xs text-neutral-600">
             <div>status: {stream.status || "idle"}</div>
           </div>
-        </div>
+        </Surface>
       </aside>
     </div>
   );
@@ -246,8 +268,19 @@ const MD_COMPONENTS = {
   th: (p: any) => <th className="border border-neutral-300 bg-neutral-100 px-2 py-1 text-left font-semibold" {...p} />,
   td: (p: any) => <td className="border border-neutral-300 px-2 py-1 align-top" {...p} />,
   hr: () => <hr className="my-4 border-neutral-200" />,
-  img: (p: any) => <img className="my-2 max-w-full rounded" {...p} />,
+  img: (p: any) => (
+    <img
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      className="my-2 max-w-full rounded"
+      {...p}
+    />
+  ),
 };
+
+function citationKey(citation: Citation, index: number): string {
+  return citation.ref || citation.display_name || `${citation.type || "citation"}-${citation.date || index}`;
+}
 
 function CitationCard({ index, citation }: { index: number; citation: Citation }) {
   const [open, setOpen] = useState(false);
@@ -255,6 +288,7 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const hasRef = Boolean(citation.ref);
   const decisionProvenance =
@@ -315,6 +349,7 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     window.addEventListener("keydown", onKey);
+    closeButtonRef.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
@@ -376,20 +411,36 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
           onClick={() => setOpen(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`citation-title-${index}`}
             className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b px-5 py-3">
               <div>
                 <div className="font-mono text-xs text-neutral-500">[{index}]</div>
-                <div className="font-semibold">{citation.ref}</div>
+                <div id={`citation-title-${index}`} className="font-semibold">{citation.ref}</div>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {citation.type && <TrustBadge>{citation.type}</TrustBadge>}
+                  {citation.date && <TrustBadge>{citation.date}</TrustBadge>}
+                  {typeof citation.score === "number" && (
+                    <TrustBadge tone="info">score {citation.score.toFixed(3)}</TrustBadge>
+                  )}
+                  {citation.type === "decision" && (
+                    <TrustBadge tone={provenanceMissing ? "warning" : "success"}>
+                      {provenanceMissing ? "provenance missing" : "provenance linked"}
+                    </TrustBadge>
+                  )}
+                </div>
               </div>
               <button
+                ref={closeButtonRef}
                 onClick={() => setOpen(false)}
-                className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                className="min-h-10 min-w-10 rounded p-1 text-neutral-500 hover:bg-neutral-100"
                 aria-label="Close"
               >
-                ✕
+                Close
               </button>
             </div>
             <div className="overflow-y-auto px-6 py-4 text-sm text-neutral-900">
@@ -499,11 +550,17 @@ function Bubble({
   return (
     <div data-role={role} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+        className={`max-w-[92%] rounded-2xl px-4 py-2 text-sm md:max-w-[80%] ${
           isUser ? "bg-blue-600 text-white" : "bg-neutral-100 text-neutral-900"
         }`}
       >
-        <div className="whitespace-pre-wrap">{displayContent}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap">{displayContent}</div>
+        ) : (
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+            {displayContent}
+          </ReactMarkdown>
+        )}
         {streaming && <span className="ml-1 animate-pulse">▍</span>}
         {citations && citations.length > 0 && !isUser && (
           <div className="mt-2 text-xs text-neutral-600">

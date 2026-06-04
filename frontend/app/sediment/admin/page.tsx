@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { SectionHeader, Surface } from "../components/ui";
 
 export default function AdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
@@ -23,37 +24,43 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <h3 className="mb-3 text-sm font-semibold">Tenants</h3>
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-neutral-500">
-            <tr>
-              <th>slug</th>
-              <th>plan</th>
-              <th>status</th>
-              <th>members</th>
-              <th>artifacts</th>
-              <th>seats</th>
-              <th>quota/mo</th>
-              <th>created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tenants.map((t) => (
-              <tr key={t.id} className="border-t">
-                <td className="font-mono">{t.slug}</td>
-                <td>{t.plan}</td>
-                <td>{t.status}</td>
-                <td>{t.member_count}</td>
-                <td>{t.artifact_count}</td>
-                <td>{t.seat_count}</td>
-                <td>{t.query_quota_per_month}</td>
-                <td>{new Date(t.created_at).toLocaleDateString()}</td>
+      <Surface className="p-4">
+        <SectionHeader
+          title="Tenants"
+          description="Operational snapshot for tenant access, usage posture, and rollout readiness."
+        />
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <caption className="sr-only">Tenant administration overview</caption>
+            <thead className="text-left text-xs text-neutral-500">
+              <tr>
+                <th scope="col">slug</th>
+                <th scope="col">plan</th>
+                <th scope="col">status</th>
+                <th scope="col">members</th>
+                <th scope="col">artifacts</th>
+                <th scope="col">seats</th>
+                <th scope="col">quota/mo</th>
+                <th scope="col">created</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {tenants.map((t) => (
+                <tr key={t.id} className="border-t">
+                  <td className="font-mono">{t.slug}</td>
+                  <td>{t.plan}</td>
+                  <td>{t.status}</td>
+                  <td>{t.member_count}</td>
+                  <td>{t.artifact_count}</td>
+                  <td>{t.seat_count}</td>
+                  <td>{t.query_quota_per_month}</td>
+                  <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Surface>
       <p className="text-xs text-neutral-500">
         Phase 6+ adds: per-tenant detail, integrations, billing, audit log drill-down.
       </p>

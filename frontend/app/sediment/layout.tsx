@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import Providers from "./Providers";
 import FreshnessBadge from "./FreshnessBadge";
+import { TrustBadge } from "./components/ui";
 
 export const metadata = {
   title: "Sediment — HypeProof Lab",
@@ -24,10 +26,12 @@ export default function CuratorLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex items-center justify-between">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">Sediment</h1>
-            <span className="text-xs text-neutral-500 italic">
+        <header className="mb-6 flex flex-col gap-4 border-b border-neutral-200 pb-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3">
+            <Link href="/sediment" className="text-2xl font-bold tracking-tight">
+              Sediment
+            </Link>
+            <span className="text-xs italic text-neutral-500">
               where doing becomes knowing
             </span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
@@ -35,11 +39,20 @@ export default function CuratorLayout({ children }: { children: ReactNode }) {
             </span>
             <FreshnessBadge />
           </div>
-          <nav className="flex gap-4 text-sm">
-            <a href="/sediment" className="hover:underline">Chat</a>
-            <a href="/sediment/library" className="hover:underline">Library</a>
-            <a href="/sediment/members" className="hover:underline">Members</a>
-            <a href="/sediment/admin" className="hover:underline">Admin</a>
+          <nav aria-label="Sediment" className="flex flex-wrap items-center gap-2 text-sm">
+            <Link href="/sediment" className="rounded px-2.5 py-1.5 hover:bg-neutral-100">
+              Chat
+            </Link>
+            <Link href="/sediment/library" className="rounded px-2.5 py-1.5 hover:bg-neutral-100">
+              Library
+            </Link>
+            <Link href="/sediment/members" className="rounded px-2.5 py-1.5 hover:bg-neutral-100">
+              Members
+            </Link>
+            <Link href="/sediment/admin" className="rounded px-2.5 py-1.5 hover:bg-neutral-100">
+              Admin
+            </Link>
+            <TrustBadge tone="info">vault only</TrustBadge>
           </nav>
         </header>
         <Providers>{children}</Providers>
