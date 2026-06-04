@@ -266,9 +266,9 @@ async def node_library_search(state: CuratorState) -> dict:
         # BM25 uses to_tsquery + OR-joined tokens (same as offline path) instead
         # of plainto_tsquery (AND-joined). Why: AND between tokens silently
         # drops every multi-token query where no single chunk contains all
-        # tokens — e.g. "BH가 누구야?" / "태봉호는 뭐하는자식이야" returned 0 BM25
-        # hits even though the entity name is in the corpus (sediment#52). vec
-        # alone can't recover on short Korean entity queries, so the BM25
+        # tokens — e.g. a Korean entity-name query like "X는 누구야?" returned 0
+        # BM25 hits even though the entity name was in the corpus (sediment#52).
+        # vec alone can't recover on short Korean entity queries, so the BM25
         # branch must do its share. ts_or="" (no tokens) → bm25 CTE returns 0
         # rows and the fused result falls back to vec-only naturally.
         # P0 perf fix (sediment#58): two-stage CTEs so LIMIT push-down works.
@@ -350,18 +350,24 @@ async def node_library_search(state: CuratorState) -> dict:
     return {"citations": citations}
 
 
+# Routing hints for the member-intent classifier.
+#
+# Public OSS default is intentionally narrow — `jay` (project owner) plus two
+# token-style fixtures (`ryan`, `라이언`) that keep the routing-logic tests
+# meaningful without baking a real-world team roster into the source tree.
+# Private deployments should extend this with their own team's display names
+# (mirrors what's in data/members.json).
 _MEMBER_NAME_HINTS = [
-    "ryan", "jy", "kiwon", "tj", "bh", "sebastian", "jay",
-    "라이언", "지웅", "신진용", "남기원", "강태진", "태봉호",
+    "jay", "ryan", "라이언",
 ]
 
 
 def _extract_member_terms(q: str) -> list[str]:
     """Pull out likely member-name tokens from a free-text query.
 
-    "Ryan은 누구인가" -> ["ryan"]
-    "JY가 작성한 글" -> ["jy"]
-    "남기원의 마케팅 글" -> ["남기원"]
+    Examples (with the default OSS hints):
+      "Ryan은 누구인가" -> ["ryan"]
+      "라이언이 쓴 칼럼"  -> ["라이언"]
     Falls back to the whole query if nothing matches (legacy behavior).
     """
     ql = q.lower()

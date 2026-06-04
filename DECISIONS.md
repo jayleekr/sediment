@@ -40,17 +40,6 @@
 
 ---
 
-## §11.3 1차 외부 고객 — 도그푸딩 후 결정
-
-도그푸딩 4주 종료 시점(Phase 5.5, ~6/26)에 NPS/사용 패턴 데이터 기반 결정. 후보 우선순위 사전 정렬:
-
-1. **동아일보 / 미디어사** — donga-roi 연장선, sales motion 명확
-2. **Academy 졸업생** — 7-lens 노출, viral 채널, free tier 직결
-3. **컨설팅사 (작은)** — Sebastian 네트워크, knowledge mgmt 수요
-4. **CERN / 연구 그룹** — BH 네트워크, paper-lab 자산 재활용
-
----
-
 ## 추가 결정 (SPEC v0.2 작성 중 발생)
 
 | 항목 | 결정 | 근거 |

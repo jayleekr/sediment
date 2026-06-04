@@ -36,7 +36,7 @@
   prevent: always use CAST() form for parameter casts in SQLAlchemy text() queries. Add lint rule.
 
 [2026-05-05T14:03:15Z] iter=test-05 pattern=empty_external_id_unique_violation detail=members_unique_constraint_treats_blank_as_duplicate
-  cause: members.json has external_id = "" for some members (Sebastian, Kiwon). UNIQUE (tenant_id, external_id) treats '' as a regular value, so 2nd blank fails.
+  cause: members.json had external_id = "" for some members. UNIQUE (tenant_id, external_id) treats '' as a regular value, so the 2nd blank row failed insertion.
   fix: seed_lab.py converts "" → None. NULL is exempt from UNIQUE.
   prevent: at schema level, prefer NULLable external_id with `WHERE external_id IS NOT NULL` partial UNIQUE; or normalize blanks to NULL in ingest
 

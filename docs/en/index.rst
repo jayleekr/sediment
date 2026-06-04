@@ -49,7 +49,6 @@ Design
    ../design/10-frontend
    ../design/11-deployment
    ../design/12-source-kinds-catalog
-   ../design/13-tenant-catalog
    ../design/14-reliability-and-grounding
    ../design/15-conversation-retention
    ../design/15-self-improving-rag
@@ -60,21 +59,6 @@ Design
    ../design/cli-test-requirements
    ../design/voice-ocr-connector-spec
    ../integration/from-openclaw
-
-Dogfood
--------
-
-.. toctree::
-   :maxdepth: 1
-
-   ../dogfood/DOGFOOD_OVERNIGHT_SUMMARY
-   ../dogfood/DOGFOOD_OVERNIGHT_2_SUMMARY
-   ../dogfood/LOOP_RUNBOOK
-   ../dogfood/discord-ingest-mother-contract
-   ../dogfood/internal-loop
-   ../dogfood/owned-task-1on1
-   ../dogfood/sediment-dogfood-channel
-   ../dogfood/trigger-bot-spec
 
 Runbooks and Guides
 -------------------
