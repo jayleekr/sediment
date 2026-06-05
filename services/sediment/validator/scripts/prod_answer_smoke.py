@@ -111,7 +111,10 @@ async def _wait_for_answer_ready(page: Any, conv_id: str, *, timeout_ms: int) ->
             for text in last["alerts"]
         ):
             raise AssertionError(f"answer generation alert visible: {last}")
-        if last["assistant_count"] >= 1 or last["assistant_messages"] >= 1:
+        # The smoke's contract is reload-visible persistence. A live
+        # "thinking..." bubble is not enough; wait until the backend has saved
+        # the assistant turn before navigating away.
+        if last["assistant_messages"] >= 1:
             return last
         await page.wait_for_timeout(2_000)
     raise AssertionError(f"answer did not become ready after {timeout_ms}ms: {last}")
