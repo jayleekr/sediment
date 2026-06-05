@@ -73,3 +73,39 @@ async def test_dev_token_403_raises_actionable_error(monkeypatch):
     client = _FakeClient(resp=_FakeResp(403))
     with pytest.raises(RuntimeError, match="SEDIMENT_CI_TOKEN"):
         await recall_live._mint_token(client)
+
+
+def test_format_reports_http_errors_as_separate_failure_signal():
+    text, pass_n, error_rows = recall_live._format({
+        "latencies": [10, 20],
+        "rows": [
+            {"id": "GQ-001", "hits": [], "ideal_refs": [], "lat_ms": 10, "err": 500},
+            {"id": "GQ-002", "hits": ["vault/ref.md"], "ideal_refs": ["vault/"], "lat_ms": 20},
+        ],
+    })
+
+    assert pass_n == 2
+    assert error_rows == [{"id": "GQ-001", "hits": [], "ideal_refs": [], "lat_ms": 10, "err": 500}]
+    assert "HTTP errors 1" in text
+    assert "GQ-001" in text
+
+
+async def test_main_exits_on_http_errors_even_when_pass_threshold_met(monkeypatch, tmp_path):
+    async def fake_run():
+        return {
+            "latencies": [10],
+            "rows": [
+                {"id": "GQ-001", "hits": [], "ideal_refs": [], "lat_ms": 10, "err": 500},
+            ],
+        }
+
+    out = tmp_path / "recall.json"
+    monkeypatch.setenv("RECALL_JSON_OUT", str(out))
+    monkeypatch.setattr(recall_live, "_run", fake_run)
+    monkeypatch.setattr(recall_live, "MIN_PASS", 1)
+
+    with pytest.raises(SystemExit) as exc:
+        await recall_live.main()
+
+    assert exc.value.code == 1
+    assert '"error_n": 1' in out.read_text()

@@ -82,6 +82,17 @@ def test_search_utils_prefers_bm25_for_korean_and_long_queries():
     assert not prefer_bm25_first("BH")
 
 
+def test_platform_search_embedding_failure_falls_back_to_bm25(monkeypatch):
+    from applications.sediment_platform.routers import library
+
+    def boom(_q: str):
+        raise RuntimeError("provider quota exhausted")
+
+    monkeypatch.setattr(library, "embed_one", boom)
+
+    assert library._embed_for_search("Who is JY?", bm25_first=False) == [0.0]
+
+
 def test_member_lookup_has_tenant_filter():
     src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
     # Locate the member lookup function source

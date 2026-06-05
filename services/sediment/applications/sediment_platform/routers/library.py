@@ -8,6 +8,9 @@ from sqlalchemy import text
 from lab_lib.auth import Identity, require_identity
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
+from lab_lib.logging import get_logger
+
+log = get_logger("sediment.platform.library")
 
 # English stop-words filtered out of BM25 OR-tsquery. PostgreSQL's
 # to_tsquery('simple', ...) does NOT remove stop-words, so without this filter
@@ -176,6 +179,19 @@ def _prefer_bm25_first(q: str) -> bool:
     return len(signal_tokens) >= 4
 
 
+def _embed_for_search(q: str, *, bm25_first: bool) -> list[float]:
+    if bm25_first:
+        return [0.0]
+    try:
+        return embed_one(q)
+    except Exception as exc:
+        # Search should degrade to BM25 when the embedding provider is down,
+        # quota-exhausted, or otherwise unavailable. Raising here turns recall
+        # quality drift into HTTP 500s and makes the Library UI unusable.
+        log.warning("library.search.embed_failed_bm25_fallback", query=q, error=str(exc)[:300])
+        return [0.0]
+
+
 @router.get("")
 async def browse(
     type: Optional[str] = None,
@@ -244,7 +260,7 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
     OR-joined to_tsquery — mirrors lab_curator_graph.node_library_search.
     """
     bm25_first = _prefer_bm25_first(q)
-    qvec = [0.0] if bm25_first else embed_one(q)
+    qvec = _embed_for_search(q, bm25_first=bm25_first)
     qvec_is_zero = bm25_first or not any(abs(x) > 1e-9 for x in qvec)
 
     async with app_session(identity.tenant_id) as s:

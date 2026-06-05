@@ -1,0 +1,78 @@
+name: Prod answer smoke
+
+on:
+  schedule:
+    # 19:10 UTC = 04:10 KST, after nightly recall and deploy windows.
+    - cron: "10 19 * * *"
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Fly deploy
+      - Vercel deploy (frontend)
+    types:
+      - completed
+
+jobs:
+  answer-smoke:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PLAYWRIGHT_VERSION: "1.60.0"
+      SEDIMENT_API: https://hypeproof-sediment.fly.dev
+      SEDIMENT_WEB_URL: https://sediment.hypeproof-ai.xyz
+      # Must be a human member JWT. Service JWTs can read recall search but
+      # cannot create conversations because conversations.user_id is a UUID FK.
+      SEDIMENT_CI_TOKEN: ${{ secrets.SEDIMENT_CI_TOKEN }}
+      SEDIMENT_SMOKE_JSON_OUT: ${{ github.workspace }}/prod-answer-smoke.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Verify SEDIMENT_CI_TOKEN secret is set
+        run: |
+          if [ -z "$SEDIMENT_CI_TOKEN" ]; then
+            echo "::error::SEDIMENT_CI_TOKEN secret is not set"
+            exit 1
+          fi
+      - name: Cache Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Install deps
+        run: pip install --quiet "playwright==${PLAYWRIGHT_VERSION}" httpx
+      - name: Install chromium binary
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: playwright install --with-deps chromium
+      - name: Install chromium system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${SEDIMENT_API}/healthz" || true)
+            if [ "$code" = "200" ]; then
+              echo "API warmed up at attempt $i"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "FAIL: API did not become healthy"
+          exit 1
+      - name: Run authenticated answer smoke
+        working-directory: services/sediment
+        run: python -m validator.scripts.prod_answer_smoke
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-answer-smoke-${{ github.run_id }}
+          path: |
+            prod-answer-smoke.json
+            output/validation/screenshots/prod-answer-smoke/
+          if-no-files-found: ignore
+          retention-days: 14
