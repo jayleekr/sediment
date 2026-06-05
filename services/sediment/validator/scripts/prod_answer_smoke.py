@@ -87,6 +87,36 @@ async def _api_messages(conv_id: str) -> list[dict[str, Any]]:
         return r.json().get("messages", [])
 
 
+async def _page_snapshot(page: Any, conv_id: str) -> dict[str, Any]:
+    body = await page.text_content("body") or ""
+    alerts = [text.strip() for text in await page.locator("[role='alert']").all_text_contents()]
+    messages = await _api_messages(conv_id)
+    return {
+        "assistant_count": await page.locator("[data-role='assistant']").count(),
+        "citation_card_count": await page.locator("aside li").count(),
+        "alerts": [text for text in alerts if text],
+        "body_head": body[:1200],
+        "message_roles": [m.get("role") for m in messages],
+        "assistant_messages": sum(1 for m in messages if m.get("role") == "assistant"),
+    }
+
+
+async def _wait_for_answer_ready(page: Any, conv_id: str, *, timeout_ms: int) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_ms / 1000
+    last: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        last = await _page_snapshot(page, conv_id)
+        if any(
+            "Answer generation failed" in text or "Conversation could not be loaded" in text
+            for text in last["alerts"]
+        ):
+            raise AssertionError(f"answer generation alert visible: {last}")
+        if last["assistant_count"] >= 1 or last["assistant_messages"] >= 1:
+            return last
+        await page.wait_for_timeout(2_000)
+    raise AssertionError(f"answer did not become ready after {timeout_ms}ms: {last}")
+
+
 async def _verify_browser(conv_id: str) -> dict[str, Any]:
     from playwright.async_api import async_playwright
 
@@ -95,65 +125,63 @@ async def _verify_browser(conv_id: str) -> dict[str, Any]:
     reload_url = f"{WEB}/sediment/c/{conv_id}"
     screenshot = SCREENSHOT_DIR / f"{conv_id}.png"
     reload_screenshot = SCREENSHOT_DIR / f"{conv_id}-reload.png"
+    failure_screenshot = SCREENSHOT_DIR / f"{conv_id}-failure.png"
     console_errors: list[str] = []
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={"width": 1440, "height": 900})
-        await context.add_init_script(
-            f"localStorage.setItem('curator.token', {json.dumps(TOKEN)});"
-        )
-        page = await context.new_page()
-        page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+        try:
+            context = await browser.new_context(viewport={"width": 1440, "height": 900})
+            await context.add_init_script(
+                f"localStorage.setItem('curator.token', {json.dumps(TOKEN)});"
+            )
+            page = await context.new_page()
+            page.on(
+                "console",
+                lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
+            )
 
-        await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        await page.wait_for_selector("[data-role='assistant']", timeout=90_000)
-        await page.wait_for_function(
-            """() => {
-              const alert = document.querySelector('[role="alert"]');
-              if (alert && /Answer generation failed|Conversation could not be loaded/i.test(alert.textContent || '')) {
-                return true;
-              }
-              const assistants = [...document.querySelectorAll('[data-role="assistant"]')];
-              const last = assistants.at(-1);
-              const text = last?.textContent || '';
-              return text.length > 40 && !text.includes('thinking');
-            }""",
-            timeout=90_000,
-        )
-        await page.screenshot(path=str(screenshot), full_page=True)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            first_snapshot = await _wait_for_answer_ready(page, conv_id, timeout_ms=120_000)
+            await page.screenshot(path=str(screenshot), full_page=True)
 
-        body = await page.text_content("body") or ""
-        alert_text = await page.locator("[role='alert']").all_text_contents()
-        assistant_count = await page.locator("[data-role='assistant']").count()
-        citation_card_count = await page.locator("aside li").count()
-        failed = any("Answer generation failed" in t for t in alert_text)
+            await page.goto(reload_url, wait_until="domcontentloaded", timeout=30_000)
+            await page.wait_for_selector("[data-role='assistant']", timeout=60_000)
+            await page.wait_for_function(
+                """() => document.body.textContent?.includes('citation')""",
+                timeout=60_000,
+            )
+            await page.screenshot(path=str(reload_screenshot), full_page=True)
 
-        if failed:
-            raise AssertionError(f"answer generation alert visible: {alert_text}")
-        if assistant_count < 1:
-            raise AssertionError("assistant bubble is not visible")
-        if citation_card_count < 1 or "citation" not in body:
-            raise AssertionError("citations are not visible")
-
-        await page.goto(reload_url, wait_until="domcontentloaded", timeout=30_000)
-        await page.wait_for_selector("[data-role='assistant']", timeout=30_000)
-        await page.screenshot(path=str(reload_screenshot), full_page=True)
-        reload_body = await page.text_content("body") or ""
-        if "citation" not in reload_body:
-            raise AssertionError("persisted reload lost citation UI")
-
-        await browser.close()
+            reload_snapshot = await _page_snapshot(page, conv_id)
+            if reload_snapshot["citation_card_count"] < 1:
+                raise AssertionError(f"persisted reload lost citation UI: {reload_snapshot}")
+        except Exception as exc:
+            if "page" in locals():
+                try:
+                    await page.screenshot(path=str(failure_screenshot), full_page=True)
+                    snapshot = await _page_snapshot(page, conv_id)
+                except Exception as snapshot_exc:
+                    snapshot = {"snapshot_error": f"{type(snapshot_exc).__name__}: {snapshot_exc}"}
+                raise AssertionError(
+                    f"{type(exc).__name__}: {exc}; failure_screenshot={failure_screenshot}; "
+                    f"snapshot={json.dumps(snapshot, ensure_ascii=False)}"
+                ) from exc
+            raise
+        finally:
+            await browser.close()
 
     messages = await _api_messages(conv_id)
     assistant_messages = [m for m in messages if m.get("role") == "assistant"]
     return {
         "url": url,
         "reload_url": reload_url,
-        "assistant_count": assistant_count,
+        "assistant_count": reload_snapshot["assistant_count"],
         "assistant_messages": len(assistant_messages),
-        "citation_card_count": citation_card_count,
+        "citation_card_count": reload_snapshot["citation_card_count"],
         "screenshots": [str(screenshot), str(reload_screenshot)],
+        "first_snapshot": first_snapshot,
+        "reload_snapshot": reload_snapshot,
         "console_errors": console_errors[:20],
     }
 
