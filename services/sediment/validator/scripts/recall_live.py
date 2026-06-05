@@ -21,7 +21,7 @@ Usage:
 
 Exit codes:
     0  ok — no regression vs baseline
-    1  unrecoverable error (auth fail / network)
+    1  unrecoverable error (auth fail / network / search HTTP error)
     2  recall regression detected (drop in PASS count below threshold)
 """
 from __future__ import annotations
@@ -111,10 +111,11 @@ async def _run() -> dict:
     return {"rows": rows, "latencies": latencies}
 
 
-def _format(rep: dict) -> tuple[str, int]:
+def _format(rep: dict) -> tuple[str, int, list[dict]]:
     rows = rep["rows"]
     latencies = rep["latencies"]
     total = len(rows)
+    error_rows = [r for r in rows if r.get("err")]
     detail = []
     pass_n = part_n = miss_n = 0
     for r in rows:
@@ -134,7 +135,7 @@ def _format(rep: dict) -> tuple[str, int]:
 
     lines = [
         f"=== recall@3 against {API} ===",
-        f"total {total} | PASS {pass_n} | PART {part_n} | MISS {miss_n}",
+        f"total {total} | PASS {pass_n} | PART {part_n} | MISS {miss_n} | HTTP errors {len(error_rows)}",
         f"avg recall: {avg:.1f}%",
         f"latency p50/p95: {p50}/{p95} ms",
         "",
@@ -147,7 +148,7 @@ def _format(rep: dict) -> tuple[str, int]:
         extra = f" [HTTP {err}]" if err else ""
         lines.append(f"{qid:<8} {rec:>5.2f} {lat:>5}ms  {verdict:<6}  {top3}{extra}")
 
-    return "\n".join(lines), pass_n
+    return "\n".join(lines), pass_n, error_rows
 
 
 async def main():
@@ -157,7 +158,7 @@ async def main():
         print(f"FATAL: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    text, pass_n = _format(rep)
+    text, pass_n, error_rows = _format(rep)
     print(text)
 
     # Write machine-readable summary for CI consumption.
@@ -165,17 +166,23 @@ async def main():
         "api": API,
         "total": len(rep["rows"]),
         "pass_n": pass_n,
+        "error_n": len(error_rows),
         "threshold": MIN_PASS,
         "details": [
             {"id": r["id"],
              "recall_at_3": _recall_at_k(r["hits"], r["ideal_refs"], 3),
-             "lat_ms": r["lat_ms"]}
+             "lat_ms": r["lat_ms"],
+             "err": r.get("err")}
             for r in rep["rows"]
         ],
     }
     if os.environ.get("RECALL_JSON_OUT"):
         Path(os.environ["RECALL_JSON_OUT"]).write_text(json.dumps(summary, indent=2))
 
+    if error_rows:
+        ids = ", ".join(f"{r['id']}={r['err']}" for r in error_rows[:10])
+        print(f"\nFAIL: search HTTP errors: {ids}", file=sys.stderr)
+        sys.exit(1)
     if pass_n < MIN_PASS:
         print(f"\nFAIL: {pass_n} PASS < threshold {MIN_PASS}", file=sys.stderr)
         sys.exit(2)
