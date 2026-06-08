@@ -1,1 +1,154 @@
 @import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Sediment — "Editorial Archive" design system
+   Warm paper · ink · oxblood. Serif display (Fraunces), serif reading body
+   (Newsreader), typewriter mono (IBM Plex Mono) for refs/ledger metadata.
+   Fonts are loaded via <link> in app/layout.tsx (build stays network-free).
+   Tokens below become Tailwind utilities: bg-paper, text-ink, border-rule,
+   font-display, text-accent, ring-accent, …
+   ────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Paper & ink */
+  --color-paper:       #f1ebdd; /* page — warm bone */
+  --color-paper-2:     #e8dfcb; /* deeper inset / strata band */
+  --color-card:        #fcf8ef; /* a fresh sheet laid on the desk */
+  --color-card-2:      #f6efe1; /* secondary surface / table zebra */
+  --color-ink:         #221e16; /* near-black, warmed */
+  --color-ink-2:       #5b5345; /* secondary text */
+  --color-ink-3:       #8c8169; /* muted / metadata */
+
+  /* Rules (hairlines) */
+  --color-rule:        #ddd1bb;
+  --color-rule-2:      #c8b99c;
+
+  /* Accents */
+  --color-accent:      #8b3a2c; /* oxblood — links, primary actions */
+  --color-accent-ink:  #6f2a1e; /* oxblood, pressed */
+  --color-ochre:       #a67a1e; /* marginalia, highlights, warnings */
+  --color-ochre-soft:  #ecdcb4; /* pale gold wash */
+  --color-sage:        #4f6a52; /* fresh / success */
+  --color-claret-soft: #ead8cf; /* soft oxblood wash for selected chrome */
+
+  /* Type families (resolved by the <link> in layout) */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body:    "Newsreader", Georgia, "Times New Roman", serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-optical-sizing: auto;
+    /* Slightly larger reading size — this is a text-forward product. */
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Paper grain — a faint fixed overlay so cream surfaces feel like stock,
+     not flat fill. Kept very low so it never tints the palette. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+  }
+  /* Keep app content above the grain. */
+  body > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Display face gets a touch tighter tracking; it carries the "voice". */
+  .font-display {
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--color-ochre-soft);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Warm, slim scrollbars to match the stock. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-rule-2) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-rule-2);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Footnote-style dotted rule for the Evidence apparatus & section breaks. */
+  .rule-dotted {
+    border: 0;
+    border-top: 1px dotted var(--color-rule-2);
+  }
+
+  /* Staggered editorial page-load reveal. Put .reveal-item on children and
+     set --i for the cascade. */
+  .reveal-item {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: rise 0.55s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-item {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Blinking ink caret for the streaming answer. */
+  .ink-caret {
+    display: inline-block;
+    width: 0.5ch;
+    margin-left: 1px;
+    background: var(--color-accent);
+    color: transparent;
+    animation: ink-blink 1.05s step-end infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ink-caret { animation: none; opacity: 0.7; }
+  }
+}
+
+@keyframes rise {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ink-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}

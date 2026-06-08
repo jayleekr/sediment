@@ -49,10 +49,8 @@ export default function FreshnessBadge() {
           ? `violations: ${f.violations?.join(", ")}`
           : f.last_ingest_ts ?? f.note ?? ""
       }
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-        f.stale
-          ? "bg-amber-100 text-amber-800"
-          : "bg-emerald-100 text-emerald-800"
+      className={`font-mono text-[11px] uppercase tracking-[0.14em] ${
+        f.stale ? "text-ochre" : "text-sage"
       }`}
     >
       {f.stale ? "⚠ " : "● "}

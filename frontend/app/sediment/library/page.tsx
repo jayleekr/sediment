@@ -11,7 +11,7 @@ import { EmptyState, SectionHeader, Surface } from "../components/ui";
 // the URL-param-aware part hydrates on the client.
 export default function LibraryPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-neutral-500">Loading…</div>}>
+    <Suspense fallback={<div className="text-sm text-ink-3">Loading…</div>}>
       <LibraryPageInner />
     </Suspense>
   );
@@ -74,7 +74,7 @@ function LibraryPageInner() {
               key={t || "all"}
               onClick={() => setType(t)}
               className={`rounded px-3 py-1 text-sm ${
-                type === t ? "bg-neutral-900 text-white" : "bg-neutral-100"
+                type === t ? "bg-ink text-paper" : "bg-paper-2"
               }`}
             >
               {t || "all"}
@@ -89,7 +89,7 @@ function LibraryPageInner() {
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && doSearch()}
             />
-            <button onClick={() => doSearch()} className="rounded bg-blue-600 px-3 py-1 text-sm text-white">
+            <button onClick={() => doSearch()} className="rounded bg-accent px-3 py-1 text-sm text-paper">
               Search
             </button>
           </div>
@@ -103,8 +103,8 @@ function LibraryPageInner() {
             {search.map((s, i) => (
               <li key={i} className="border-b pb-2 last:border-0">
                 <div className="font-medium">{s.ref}</div>
-                <div className="line-clamp-3 text-xs text-neutral-700">{s.content}</div>
-                <div className="text-xs text-neutral-500">score {Number(s.score).toFixed(3)}</div>
+                <div className="line-clamp-3 text-xs text-ink-2">{s.content}</div>
+                <div className="text-xs text-ink-3">score {Number(s.score).toFixed(3)}</div>
               </li>
             ))}
           </ul>
@@ -124,7 +124,7 @@ function LibraryPageInner() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <caption className="sr-only">Vault artifacts</caption>
-              <thead className="text-left text-xs text-neutral-500">
+              <thead className="text-left text-xs text-ink-3">
                 <tr>
                   <th scope="col" className="py-1">ref</th>
                   <th scope="col">type</th>

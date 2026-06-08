@@ -39,11 +39,11 @@ export default function MembersPage() {
             <h3 className="text-lg font-semibold">{m.display_name}</h3>
             <TrustBadge>{m.role}</TrustBadge>
           </div>
-          {m.real_name && <p className="text-sm text-neutral-600">{m.real_name}</p>}
+          {m.real_name && <p className="text-sm text-ink-2">{m.real_name}</p>}
           {m.title && <p className="mt-1 text-xs">{m.title}</p>}
           <div className="mt-3 flex flex-wrap gap-1">
             {m.expertise?.map((e) => (
-              <span key={e} className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+              <span key={e} className="rounded-sm border border-rule bg-paper-2 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide text-ink-2">
                 {e}
               </span>
             ))}
