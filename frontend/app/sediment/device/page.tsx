@@ -88,7 +88,7 @@ function DeviceApproveInner() {
   if (phase === "loading") {
     return (
       <Wrapper title="Loading…">
-        <p className="text-neutral-600">Checking your sign-in status…</p>
+        <p className="text-ink-2">Checking your sign-in status…</p>
       </Wrapper>
     );
   }
@@ -100,14 +100,14 @@ function DeviceApproveInner() {
     const cb = typeof window !== "undefined" ? window.location.href : "/sediment/device";
     return (
       <Wrapper title="Sign in to approve">
-        <p className="mb-4 text-neutral-600">
+        <p className="mb-4 text-ink-2">
           You need to be signed in to Sediment before you can grant a new
           device access to your account.
         </p>
         {initialCode && (
-          <p className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="mb-4 rounded-md border border-ochre/30 bg-ochre-soft/40 p-3 text-sm text-ink-2">
             We&apos;ll bring you back here with the code{" "}
-            <code className="rounded bg-white px-1.5 py-0.5 font-mono text-amber-900">
+            <code className="rounded-sm bg-card px-1.5 py-0.5 font-mono text-ink">
               {initialCode}
             </code>{" "}
             pre-filled after sign-in.
@@ -120,7 +120,7 @@ function DeviceApproveInner() {
               signIn("github", { callbackUrl: cb });
             });
           }}
-          className="inline-flex items-center justify-center rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+          className="inline-flex items-center justify-center rounded-md bg-ink px-4 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink"
         >
           Sign in with GitHub
         </button>
@@ -131,11 +131,11 @@ function DeviceApproveInner() {
   if (phase === "approved") {
     return (
       <Wrapper title="✓ Device authorized">
-        <p className="text-neutral-700">
+        <p className="text-ink-2">
           You can close this tab. Your terminal should finish the login
           within a few seconds.
         </p>
-        <p className="mt-4 text-xs text-neutral-500">
+        <p className="mt-4 text-xs text-ink-3">
           The code <code className="font-mono">{code}</code> is now bound to{" "}
           <strong>{identity?.email}</strong>.
         </p>
@@ -145,11 +145,11 @@ function DeviceApproveInner() {
 
   return (
     <Wrapper title="Authorize a new device">
-      <p className="mb-4 text-neutral-600">
+      <p className="mb-4 text-ink-2">
         Signed in as <strong>{identity?.display_name}</strong> (
         <span className="font-mono">{identity?.email}</span>).
       </p>
-      <p className="mb-4 text-neutral-600">
+      <p className="mb-4 text-ink-2">
         The Sediment CLI you ran in your terminal printed an 8-character
         code. Type or paste it here to grant it access:
       </p>
@@ -161,19 +161,19 @@ function DeviceApproveInner() {
         autoFocus
         spellCheck={false}
         autoComplete="off"
-        className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-lg tracking-widest focus:border-neutral-900 focus:outline-none"
+        className="w-full rounded-md border border-rule bg-paper-2/30 px-3 py-2.5 font-mono text-lg tracking-[0.25em] text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card"
       />
       {errorMsg && (
-        <p className="mt-3 rounded-md bg-rose-50 p-3 text-sm text-rose-900">{errorMsg}</p>
+        <p className="mt-3 rounded-md border border-accent/30 bg-claret-soft/50 p-3 text-sm text-accent-ink">{errorMsg}</p>
       )}
       <button
         onClick={approve}
         disabled={phase === "approving"}
-        className="mt-4 inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="mt-4 inline-flex items-center justify-center rounded-md bg-sage px-4 py-2 text-[15px] font-medium text-paper transition-colors hover:brightness-95 disabled:opacity-60"
       >
         {phase === "approving" ? "Approving…" : "Approve device"}
       </button>
-      <p className="mt-6 text-xs text-neutral-500">
+      <p className="mt-6 text-xs text-ink-3">
         Codes expire 10 minutes after the CLI prints them. If your CLI
         already gave up, re-run <code className="font-mono">sediment auth login</code>{" "}
         to get a fresh one.
@@ -192,9 +192,12 @@ export default function DeviceApprovePage() {
 
 function Wrapper({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-md py-12">
-      <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-4 text-xl font-semibold">{title}</h1>
+    <div className="mx-auto max-w-md py-10">
+      <div className="reveal-item rounded-md border border-rule bg-card p-7 shadow-[0_1px_2px_rgba(34,30,22,0.04),0_8px_24px_-16px_rgba(34,30,22,0.25)]">
+        <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+          Device authorization
+        </p>
+        <h1 className="mb-4 font-display text-2xl font-semibold text-ink">{title}</h1>
         {children}
       </div>
     </div>

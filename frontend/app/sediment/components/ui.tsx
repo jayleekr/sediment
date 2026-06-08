@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 
+// ── Editorial-Archive shared primitives ──────────────────────────────────
+// Surfaces read like sheets of stock on a desk: warm card, hairline rule,
+// a low soft shadow. Headers borrow the typographic voice (Fraunces display).
+
 export function Surface({
   children,
   className = "",
@@ -12,7 +16,7 @@ export function Surface({
   const Component = as;
   return (
     <Component
-      className={`rounded-lg border border-neutral-200 bg-white shadow-sm ${className}`}
+      className={`rounded-md border border-rule bg-card shadow-[0_1px_2px_rgba(34,30,22,0.04),0_8px_24px_-16px_rgba(34,30,22,0.25)] ${className}`}
     >
       {children}
     </Component>
@@ -31,9 +35,13 @@ export function SectionHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-base font-semibold text-neutral-950">{title}</h2>
+        <h2 className="font-display text-xl font-semibold leading-tight text-ink">
+          {title}
+        </h2>
         {description && (
-          <p className="mt-1 text-sm leading-6 text-neutral-600">{description}</p>
+          <p className="mt-1.5 max-w-prose text-[15px] leading-7 text-ink-2">
+            {description}
+          </p>
         )}
       </div>
       {action}
@@ -51,14 +59,16 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-5">
-      <p className="text-sm font-semibold text-neutral-950">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-neutral-600">{description}</p>
+    <div className="rounded-md border border-dashed border-rule-2 bg-paper-2/60 px-5 py-6">
+      <p className="font-display text-base font-semibold text-ink">{title}</p>
+      <p className="mt-1.5 text-[15px] leading-7 text-ink-2">{description}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
 
+// Small ledger-style marker. Mono, letter-spaced — reads like an editorial
+// stamp rather than a SaaS pill. Tones map onto the archive palette.
 export function TrustBadge({
   tone = "neutral",
   children,
@@ -68,17 +78,17 @@ export function TrustBadge({
   children: ReactNode;
   title?: string;
 }) {
-  const tones = {
-    neutral: "bg-neutral-100 text-neutral-700",
-    success: "bg-emerald-100 text-emerald-800",
-    warning: "bg-amber-100 text-amber-800",
-    info: "bg-blue-50 text-blue-700",
+  const tones: Record<string, string> = {
+    neutral: "border-rule-2 text-ink-2",
+    success: "border-sage/50 text-sage",
+    warning: "border-ochre/50 text-ochre",
+    info: "border-accent/40 text-accent",
   };
 
   return (
     <span
       title={title}
-      className={`inline-flex min-h-6 items-center rounded-full px-2.5 text-xs font-medium ${tones[tone]}`}
+      className={`inline-flex min-h-[1.4rem] items-center rounded-sm border px-2 font-mono text-[11px] uppercase tracking-[0.12em] ${tones[tone]}`}
     >
       {children}
     </span>

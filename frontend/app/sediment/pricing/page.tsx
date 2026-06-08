@@ -105,11 +105,11 @@ export default function PricingPage() {
   return (
     <div className="space-y-12">
       <div className="text-center">
-        <h2 className="text-3xl font-bold">Pricing</h2>
-        <p className="mt-2 text-neutral-600">
+        <h2 className="font-display text-4xl font-semibold tracking-tight text-ink">Pricing</h2>
+        <p className="mt-2 text-ink-2">
           Flat per-team pricing — not per-seat. Add members without penalty.
         </p>
-        <p className="mt-1 text-sm text-neutral-500">
+        <p className="mt-1 text-sm text-ink-3">
           Start free. No credit card required. Upgrade only when your team outgrows the free quota.
         </p>
       </div>
@@ -118,27 +118,27 @@ export default function PricingPage() {
         {tiers.map((t) => (
           <div
             key={t.name}
-            className={`relative rounded-xl border bg-white p-6 ${
-              t.featured ? "ring-2 ring-blue-600 shadow-lg" : "shadow-sm"
+            className={`relative rounded-md border bg-card p-6 ${
+              t.featured ? "ring-2 ring-accent shadow-lg" : "shadow-sm"
             }`}
           >
             {t.featured && t.badge && (
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-3 py-0.5 text-xs font-medium text-white">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-accent px-3 py-0.5 text-xs font-medium text-paper">
                 {t.badge}
               </span>
             )}
-            <h3 className="text-lg font-semibold">{t.name}</h3>
+            <h3 className="font-display text-lg font-semibold text-ink">{t.name}</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-3xl font-bold">{t.price}</span>
-              <span className="text-sm text-neutral-500">{t.cadence}</span>
+              <span className="font-display text-3xl font-semibold text-ink">{t.price}</span>
+              <span className="text-sm text-ink-3">{t.cadence}</span>
             </div>
             {t.sub && (
-              <p className="mt-1 text-xs text-neutral-500">{t.sub}</p>
+              <p className="mt-1 text-xs text-ink-3">{t.sub}</p>
             )}
             <ul className="mt-4 space-y-2 text-sm">
               {t.highlights.map((h) => (
                 <li key={h} className="flex gap-2">
-                  <span className="text-blue-600">✓</span>
+                  <span className="text-accent">✓</span>
                   <span>{h}</span>
                 </li>
               ))}
@@ -147,8 +147,8 @@ export default function PricingPage() {
               href={`/sediment/onboard?tier=${encodeURIComponent(t.name.toLowerCase())}`}
               className={`mt-6 w-full rounded px-4 py-2 text-sm ${
                 t.featured
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
+                  ? "bg-accent text-paper hover:bg-accent-ink"
+                  : "bg-paper-2 text-ink hover:bg-rule"
               } block text-center`}
             >
               {t.cta}
@@ -158,17 +158,17 @@ export default function PricingPage() {
       </div>
 
       {/* 10-seat math — main conversion lever per pricing strategy memo */}
-      <div className="rounded-xl border bg-neutral-50 p-6">
-        <h3 className="text-lg font-semibold">
+      <div className="rounded-md border bg-paper-2/50 p-6">
+        <h3 className="font-display text-lg font-semibold text-ink">
           10-seat team monthly cost — Sediment vs alternatives
         </h3>
-        <p className="mt-1 text-sm text-neutral-600">
+        <p className="mt-1 text-sm text-ink-2">
           Most SaaS knowledge tools charge per-seat. A growing 10-person team gets penalized for growth.
           We charge flat per workspace — your bill stays the same as you scale.
         </p>
         <table className="mt-4 w-full text-sm">
           <caption className="sr-only">Ten seat monthly cost comparison</caption>
-          <thead className="text-left text-xs uppercase tracking-wide text-neutral-500">
+          <thead className="text-left text-xs uppercase tracking-wide text-ink-3">
             <tr>
               <th scope="col" className="py-2 pr-4">Tool</th>
               <th scope="col" className="py-2 pr-4">10-seat monthly</th>
@@ -179,22 +179,22 @@ export default function PricingPage() {
             {compare.map((row) => (
               <tr
                 key={row.tool}
-                className={`border-t ${row.us ? "bg-blue-50 font-medium" : ""}`}
+                className={`border-t ${row.us ? "bg-ochre-soft/40 font-medium" : ""}`}
               >
                 <td className="py-2 pr-4">{row.tool}</td>
                 <td className="py-2 pr-4">{row.price}</td>
-                <td className="py-2 text-neutral-600">{row.note}</td>
+                <td className="py-2 text-ink-2">{row.note}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-ink-3">
           Comparison prices reflect Business / Team tier list pricing as of May 2026.
           Glean and Otter source verified via vendor sales pages.
         </p>
       </div>
 
-      <p className="text-center text-xs text-neutral-500">
+      <p className="text-center text-xs text-ink-3">
         Pricing locked 2026-05-20. Stripe billing + quota enforcement land alongside first paid customer.
       </p>
     </div>

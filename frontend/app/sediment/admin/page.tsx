@@ -16,7 +16,7 @@ export default function AdminPage() {
 
   if (error) {
     return (
-      <div className="rounded-xl border bg-yellow-50 p-4 text-sm">
+      <div className="rounded-md border border-ochre/30 bg-ochre-soft/40 p-4 text-sm text-ink-2">
         <strong>admin only.</strong> {error}
       </div>
     );
@@ -32,7 +32,7 @@ export default function AdminPage() {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">
             <caption className="sr-only">Tenant administration overview</caption>
-            <thead className="text-left text-xs text-neutral-500">
+            <thead className="text-left text-xs text-ink-3">
               <tr>
                 <th scope="col">slug</th>
                 <th scope="col">plan</th>
@@ -61,7 +61,7 @@ export default function AdminPage() {
           </table>
         </div>
       </Surface>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-ink-3">
         Phase 6+ adds: per-tenant detail, integrations, billing, audit log drill-down.
       </p>
     </div>

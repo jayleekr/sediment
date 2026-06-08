@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { signIn as githubSignIn } from "next-auth/react";
 import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } from "./lib/api";
@@ -97,16 +97,25 @@ export default function CuratorHome() {
 
   if (!getToken() && !signedInAs) {
     return (
-      <Surface className="mx-auto max-w-md p-6">
-        <h1 className="mb-1 text-2xl font-semibold tracking-tight">Sediment</h1>
-        <h2 className="mb-2 text-lg font-semibold">Sign in</h2>
-        <p className="mb-4 text-sm text-neutral-600">
+      <Surface className="reveal-item mx-auto max-w-md p-7 md:p-8">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-3">
+          HypeProof Lab · the memory layer
+        </p>
+        <h1 className="mt-2.5 font-display text-4xl font-semibold tracking-tight text-ink">
+          Sediment
+        </h1>
+        <p className="mt-1 font-body text-[15px] italic text-ink-2">
+          where doing becomes knowing
+        </p>
+        <hr className="rule-dotted my-6" />
+        <h2 className="font-display text-lg font-semibold text-ink">Sign in</h2>
+        <p className="mb-6 mt-1.5 text-[15px] leading-7 text-ink-2">
           Sign in with the GitHub account that has access to this repo. Your
           GitHub username is matched to a Sediment member.
         </p>
         <button
           onClick={() => githubSignIn("github", { callbackUrl: "/sediment" })}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded bg-neutral-900 px-4 py-2 text-white hover:bg-neutral-700"
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-md bg-ink px-4 py-2.5 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink"
         >
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z" />
@@ -115,13 +124,13 @@ export default function CuratorHome() {
         </button>
         {ENABLE_DEV_AUTH && (
           <>
-            <div className="mb-4 flex items-center gap-2 text-xs text-neutral-400">
-              <span className="h-px flex-1 bg-neutral-200" />
+            <div className="mb-4 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
+              <span className="h-px flex-1 bg-rule" />
               local dev fallback
-              <span className="h-px flex-1 bg-neutral-200" />
+              <span className="h-px flex-1 bg-rule" />
             </div>
             <input
-              className="mb-3 w-full rounded border px-3 py-2"
+              className="mb-3 w-full rounded-md border border-rule bg-paper-2/40 px-3 py-2 text-[15px] outline-none transition-colors focus:border-accent"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="member email"
@@ -129,13 +138,13 @@ export default function CuratorHome() {
             <button
               onClick={signIn}
               disabled={loading}
-              className="w-full rounded border border-neutral-300 px-4 py-2 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              className="w-full rounded-md border border-rule-2 px-4 py-2 text-[15px] text-ink-2 transition-colors hover:bg-paper-2 disabled:opacity-50"
             >
-              {loading ? "..." : "Mint dev token (seeded email)"}
+              {loading ? "…" : "Mint dev token (seeded email)"}
             </button>
           </>
         )}
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 text-sm text-accent">{error}</p>}
       </Surface>
     );
   }
@@ -145,20 +154,22 @@ export default function CuratorHome() {
       {error && (
         <div
           role="alert"
-          className="col-span-12 rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800"
+          className="col-span-12 rounded-md border border-accent/30 bg-claret-soft/50 px-4 py-2.5 text-sm text-accent-ink"
         >
           {error}
         </div>
       )}
-      <aside className="col-span-12 md:col-span-4">
-        <Surface as="aside" className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Conversations</h3>
+      <aside className="reveal-item col-span-12 md:col-span-4" style={{ "--i": 0 } as CSSProperties}>
+        <Surface as="aside" className="p-5">
+          <div className="mb-4 flex items-center justify-between border-b border-rule pb-3">
+            <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+              Conversations
+            </h3>
             {convs.length > 0 && (
               <button
                 onClick={() => newConversation()}
                 aria-label="Start a new conversation"
-                className="rounded bg-neutral-900 px-3 py-2 text-xs text-white"
+                className="rounded-md bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-paper transition-colors hover:bg-accent-ink"
               >
                 + New
               </button>
@@ -174,14 +185,14 @@ export default function CuratorHome() {
                     <button
                       key={ex}
                       onClick={() => newConversation(ex)}
-                      className="rounded border border-neutral-300 px-3 py-1.5 text-left text-sm text-neutral-700 hover:bg-white"
+                      className="rounded-md border border-rule px-3 py-2 text-left text-[15px] text-ink-2 transition-colors hover:border-rule-2 hover:bg-card"
                     >
                       {ex}
                     </button>
                   ))}
                   <button
                     onClick={() => newConversation()}
-                    className="w-full rounded bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+                    className="w-full rounded-md bg-accent px-4 py-2 text-[15px] text-paper transition-colors hover:bg-accent-ink"
                   >
                     + New conversation
                   </button>
@@ -189,15 +200,17 @@ export default function CuratorHome() {
               }
             />
           ) : (
-            <ul className="space-y-1">
+            <ul className="-mx-2 space-y-0.5">
               {convs.map((c) => (
                 <li key={c.id}>
                   <Link
                     href={`/sediment/c/${c.id}`}
-                    className="block rounded px-2 py-2 text-sm hover:bg-neutral-100"
+                    className="block rounded-md px-2 py-2 transition-colors hover:bg-paper-2"
                   >
-                    <span className="block truncate font-medium">{c.title || "(untitled)"}</span>
-                    <span className="text-xs text-neutral-500">
+                    <span className="block truncate text-[15px] font-medium text-ink">
+                      {c.title || "(untitled)"}
+                    </span>
+                    <span className="font-mono text-[11px] uppercase tracking-wide text-ink-3">
                       updated {new Date(c.updated_at).toLocaleDateString()}
                     </span>
                   </Link>
@@ -208,27 +221,34 @@ export default function CuratorHome() {
         </Surface>
       </aside>
 
-      <main className="col-span-12 md:col-span-8">
-        <Surface className="p-6">
+      <main className="reveal-item col-span-12 md:col-span-8" style={{ "--i": 1 } as CSSProperties}>
+        <Surface className="p-6 md:p-7">
           <SectionHeader
             title="Ask the lab's memory"
             description="Use Sediment when you need a cited answer you can carry into work."
             action={<TrustBadge tone="info">evidence first</TrustBadge>}
           />
-          <div className="mt-5">
+          <div className="mt-6">
             <QuickAsk onSubmit={(q) => newConversation(q)} />
           </div>
 
-          <div className="mt-6">
-            <h3 className="mb-2 text-sm font-semibold text-neutral-600">Try one</h3>
-            <ul className="space-y-2 text-sm">
+          <div className="mt-8">
+            <h3 className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+              Try one
+            </h3>
+            <ul className="divide-y divide-rule border-y border-rule">
               {EXAMPLES.map((ex) => (
                 <li key={ex}>
                   <button
                     onClick={() => newConversation(ex)}
-                    className="text-left text-blue-700 hover:underline"
+                    className="group flex w-full items-baseline gap-2 py-2.5 text-left text-[15px] text-ink-2 transition-colors hover:text-accent"
                   >
-                    {ex}
+                    <span className="font-mono text-ink-3 transition-colors group-hover:text-accent">
+                      ›
+                    </span>
+                    <span className="underline decoration-rule-2 decoration-1 underline-offset-4 group-hover:decoration-accent">
+                      {ex}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -251,13 +271,13 @@ function QuickAsk({ onSubmit }: { onSubmit: (q: string) => void }) {
       className="flex flex-col gap-2 sm:flex-row"
     >
       <input
-        className="min-h-11 flex-1 rounded border border-neutral-300 px-3 py-2"
+        className="min-h-11 flex-1 rounded-md border border-rule bg-paper-2/30 px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card"
         placeholder="e.g., 라이언(ryan)의 4월 mirror-loop 칼럼"
         data-testid="ask-input"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      <button className="min-h-11 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+      <button className="min-h-11 rounded-md bg-accent px-5 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink">
         Ask
       </button>
     </form>

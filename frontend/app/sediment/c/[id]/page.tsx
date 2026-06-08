@@ -159,20 +159,20 @@ export default function ConversationPage() {
 
   if (loadError) {
     return (
-      <Surface className="mx-auto max-w-2xl p-6">
-        <h1 className="mb-2 text-xl font-semibold">Sediment</h1>
-        <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-semibold">Conversation could not be loaded.</p>
-          <p className="mt-1">{loadError}</p>
+      <Surface className="mx-auto max-w-2xl p-6 md:p-7">
+        <h1 className="mb-3 font-display text-2xl font-semibold text-ink">Sediment</h1>
+        <div role="alert" className="rounded-md border border-accent/30 bg-claret-soft/50 p-4 text-sm text-accent-ink">
+          <p className="font-display text-base font-semibold">Conversation could not be loaded.</p>
+          <p className="mt-1 font-mono text-xs">{loadError}</p>
           {loadError.startsWith("401") && (
             <p className="mt-2">Sign in again, then reopen this conversation.</p>
           )}
         </div>
         <Link
           href="/sediment"
-          className="mt-4 inline-flex rounded bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+          className="mt-5 inline-flex rounded-md bg-ink px-4 py-2 text-[15px] text-paper transition-colors hover:bg-accent-ink"
         >
-          Back to Sediment
+          ← Back to Sediment
         </Link>
       </Surface>
     );
@@ -216,9 +216,9 @@ export default function ConversationPage() {
               </>
             ) : null}
             {stream.error && (
-              <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-                <p className="font-semibold">Answer generation failed.</p>
-                <p className="mt-1">{stream.error}</p>
+              <div role="alert" className="rounded-md border border-accent/30 bg-claret-soft/50 p-3 text-sm text-accent-ink">
+                <p className="font-display text-base font-semibold">Answer generation failed.</p>
+                <p className="mt-1 font-mono text-xs">{stream.error}</p>
               </div>
             )}
           </div>
@@ -229,25 +229,25 @@ export default function ConversationPage() {
             e.preventDefault();
             ask(input);
           }}
-          className="mt-4 flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm sm:flex-row"
+          className="mt-4 flex flex-col gap-2 rounded-md border border-rule bg-card p-3 shadow-sm sm:flex-row"
         >
           <input
-            className="min-h-11 flex-1 rounded border border-neutral-300 px-3 py-2"
+            className="min-h-11 flex-1 rounded-md border border-rule bg-paper-2/30 px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card"
             placeholder="ask the lab…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={!stream.done}
           />
           <button
-            className="min-h-11 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+            className="min-h-11 rounded-md bg-accent px-5 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink disabled:opacity-50"
             disabled={!stream.done}
           >
             Send
           </button>
         </form>
-        <label className="mt-2 flex items-start gap-2 text-xs leading-5 text-neutral-600">
+        <label className="mt-2.5 flex items-start gap-2 text-[13px] leading-6 text-ink-2">
           <input
-            className="mt-1"
+            className="mt-1 accent-[#8b3a2c]"
             type="checkbox"
             checked={ownedMode}
             onChange={(e) => {
@@ -260,11 +260,19 @@ export default function ConversationPage() {
       </main>
 
       <aside className="col-span-12 md:col-span-4">
-        <Surface as="aside" className="sticky top-4 p-4">
-          <SectionHeader
-            title="Evidence"
-            description="Open a source before copying an answer into work."
-          />
+        <Surface as="aside" className="sticky top-4 p-5">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-xl font-semibold leading-tight text-ink">
+              Evidence
+            </h2>
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
+              apparatus
+            </span>
+          </div>
+          <p className="mt-1.5 text-[14px] leading-6 text-ink-2">
+            Open a source before copying an answer into work.
+          </p>
+          <hr className="rule-dotted mt-4" />
           {shownCitations.length === 0 ? (
             <div className="mt-4">
               <EmptyState
@@ -273,14 +281,14 @@ export default function ConversationPage() {
               />
             </div>
           ) : (
-            <ul className="mt-4 space-y-3 text-sm">
+            <ul className="mt-2 text-sm">
               {shownCitations.slice(0, 10).map((c, i) => (
                 <CitationCard key={citationKey(c, i)} index={i + 1} citation={c} />
               ))}
             </ul>
           )}
-          <div className="mt-4 border-t pt-3 text-xs text-neutral-600">
-            <div>status: {stream.status || "idle"}</div>
+          <div className="mt-5 border-t border-rule pt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
+            status: {stream.status || "idle"}
           </div>
         </Surface>
       </aside>
@@ -292,45 +300,47 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // Explicit element styling — Tailwind 4 here has no @tailwindcss/typography
-// plugin, so `prose` is a no-op. Map each markdown node to concrete classes.
+// plugin, so `prose` is a no-op. Map each markdown node to concrete classes
+// in the Editorial-Archive voice: Fraunces display headings, Newsreader body,
+// oxblood links, a warm-ink code block, and ledger-ruled tables.
 const MD_COMPONENTS = {
-  h1: (p: any) => <h1 className="mb-3 mt-5 border-b pb-1 text-xl font-bold" {...p} />,
-  h2: (p: any) => <h2 className="mb-2 mt-5 text-lg font-semibold" {...p} />,
-  h3: (p: any) => <h3 className="mb-2 mt-4 text-base font-semibold" {...p} />,
-  h4: (p: any) => <h4 className="mb-1 mt-3 text-sm font-semibold" {...p} />,
-  p:  (p: any) => <p className="my-2 leading-relaxed" {...p} />,
-  ul: (p: any) => <ul className="my-2 list-disc space-y-1 pl-5" {...p} />,
-  ol: (p: any) => <ol className="my-2 list-decimal space-y-1 pl-5" {...p} />,
-  li: (p: any) => <li className="leading-relaxed" {...p} />,
-  a:  (p: any) => <a className="text-blue-600 underline" target="_blank" rel="noreferrer" {...p} />,
+  h1: (p: any) => <h1 className="mb-3 mt-5 border-b border-rule pb-1.5 font-display text-2xl font-semibold text-ink" {...p} />,
+  h2: (p: any) => <h2 className="mb-2 mt-5 font-display text-xl font-semibold text-ink" {...p} />,
+  h3: (p: any) => <h3 className="mb-2 mt-4 font-display text-lg font-semibold text-ink" {...p} />,
+  h4: (p: any) => <h4 className="mb-1 mt-3 font-display text-base font-semibold text-ink" {...p} />,
+  p:  (p: any) => <p className="my-2.5 leading-7 text-ink" {...p} />,
+  ul: (p: any) => <ul className="my-2.5 list-disc space-y-1 pl-5 marker:text-ink-3" {...p} />,
+  ol: (p: any) => <ol className="my-2.5 list-decimal space-y-1 pl-5 marker:text-ink-3" {...p} />,
+  li: (p: any) => <li className="leading-7" {...p} />,
+  a:  (p: any) => <a className="text-accent underline decoration-rule-2 decoration-1 underline-offset-2 transition-colors hover:decoration-accent" target="_blank" rel="noreferrer" {...p} />,
   blockquote: (p: any) => (
-    <blockquote className="my-2 border-l-4 border-neutral-300 pl-3 italic text-neutral-600" {...p} />
+    <blockquote className="my-3 border-l-2 border-ochre pl-4 font-body italic text-ink-2" {...p} />
   ),
   code: ({ inline, ...p }: any) =>
     inline ? (
-      <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[0.85em]" {...p} />
+      <code className="rounded-sm bg-ochre-soft/50 px-1.5 py-0.5 font-mono text-[0.82em] text-ink" {...p} />
     ) : (
-      <code className="font-mono text-xs" {...p} />
+      <code className="font-mono text-[0.82em]" {...p} />
     ),
   pre: (p: any) => (
     <pre
-      className="my-3 overflow-x-auto rounded bg-neutral-900 p-3 text-xs leading-snug text-neutral-100"
+      className="my-3.5 overflow-x-auto rounded-md bg-ink p-4 font-mono text-xs leading-relaxed text-[#e9e0cb] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
       {...p}
     />
   ),
   table: (p: any) => (
-    <div className="my-3 overflow-x-auto">
-      <table className="w-full border-collapse text-xs" {...p} />
+    <div className="my-3.5 overflow-x-auto rounded-sm border border-rule">
+      <table className="w-full border-collapse text-[13px]" {...p} />
     </div>
   ),
-  th: (p: any) => <th className="border border-neutral-300 bg-neutral-100 px-2 py-1 text-left font-semibold" {...p} />,
-  td: (p: any) => <td className="border border-neutral-300 px-2 py-1 align-top" {...p} />,
-  hr: () => <hr className="my-4 border-neutral-200" />,
+  th: (p: any) => <th className="border border-rule bg-paper-2 px-2.5 py-1.5 text-left font-mono text-[11px] uppercase tracking-wide text-ink-2" {...p} />,
+  td: (p: any) => <td className="border border-rule px-2.5 py-1.5 align-top" {...p} />,
+  hr: () => <hr className="my-5 border-rule" />,
   img: (p: any) => (
     <img
       referrerPolicy="no-referrer"
       loading="lazy"
-      className="my-2 max-w-full rounded"
+      className="my-3 max-w-full rounded-md border border-rule"
       {...p}
     />
   ),
@@ -413,50 +423,59 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
 
   return (
     <>
-      <li className="border-b pb-2 last:border-0">
+      <li className="border-b border-rule py-3 first:pt-2 last:border-0">
         <button
           type="button"
           onClick={openModal}
           disabled={!hasRef}
-          className={`w-full text-left ${
-            hasRef ? "cursor-pointer hover:bg-neutral-50" : "cursor-default"
-          } rounded px-1 py-0.5 transition`}
+          className={`group/cite -mx-2 block w-full rounded-md px-2 py-1 text-left transition-colors ${
+            hasRef ? "cursor-pointer hover:bg-paper-2/70" : "cursor-default"
+          }`}
         >
-          <div className="font-mono text-xs text-neutral-500">
-            [{index}]{hasRef && <span className="ml-1 text-blue-600">↗ open</span>}
+          <div className="flex items-baseline gap-1.5 font-mono text-[11px] uppercase tracking-wide text-ink-3">
+            <span className="text-accent">[{index}]</span>
+            {hasRef && (
+              <span className="text-ink-3 transition-colors group-hover/cite:text-accent">
+                ↗ open
+              </span>
+            )}
           </div>
-          <div className="font-medium">{citation.ref || citation.display_name || "(no ref)"}</div>
+          <div className="mt-0.5 font-mono text-[13px] font-medium text-ink">
+            {citation.ref || citation.display_name || "(no ref)"}
+          </div>
           {citation.type && (
-            <div className="text-xs text-neutral-600">
+            <div className="font-mono text-[11px] uppercase tracking-wide text-ink-3">
               {citation.type}
               {citation.date ? ` · ${citation.date}` : ""}
             </div>
           )}
           {citation.type === "decision" && (
             <div
-              className={`mt-1 text-xs ${
-                provenanceMissing ? "text-amber-700" : "text-emerald-700"
+              className={`mt-1 font-mono text-[11px] ${
+                provenanceMissing ? "text-ochre" : "text-sage"
               }`}
             >
               {provenanceLabel || "provenance missing"}
             </div>
           )}
           {citation.content && (
-            <div className="mt-1 line-clamp-2 text-xs text-neutral-700">{citation.content}</div>
+            <div className="mt-1.5 line-clamp-2 font-body text-[13px] italic leading-6 text-ink-2">
+              {citation.content}
+            </div>
           )}
         </button>
-        <div className="mt-1 flex gap-3 text-xs">
+        <div className="mt-1.5 flex gap-4 font-mono text-[11px] uppercase tracking-wide">
           <button
             type="button"
             onClick={copyCite}
-            className="text-neutral-500 hover:text-neutral-900"
+            className={`transition-colors hover:text-accent ${copied ? "text-sage" : "text-ink-3"}`}
           >
-            {copied ? "✓ copied" : "📋 cite"}
+            {copied ? "✓ copied" : "cite"}
           </button>
           <button
             type="button"
             onClick={shareCite}
-            className="text-neutral-500 hover:text-neutral-900"
+            className="text-ink-3 transition-colors hover:text-accent"
           >
             ↗ share
           </button>
@@ -465,21 +484,28 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a160f]/55 p-4 backdrop-blur-[1px]"
           onClick={() => setOpen(false)}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby={`citation-title-${index}`}
-            className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-2xl"
+            className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-lg border border-rule-2 bg-card shadow-[0_24px_70px_-20px_rgba(26,22,15,0.5)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b px-5 py-3">
+            <div className="flex items-start justify-between gap-4 border-b border-rule px-6 py-4">
               <div>
-                <div className="font-mono text-xs text-neutral-500">[{index}]</div>
-                <div id={`citation-title-${index}`} className="font-semibold">{citation.ref}</div>
-                <div className="mt-1 flex flex-wrap gap-2">
+                <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
+                  Source [{index}]
+                </div>
+                <div
+                  id={`citation-title-${index}`}
+                  className="mt-1 font-mono text-[15px] font-medium text-ink"
+                >
+                  {citation.ref}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
                   {citation.type && <TrustBadge>{citation.type}</TrustBadge>}
                   {citation.date && <TrustBadge>{citation.date}</TrustBadge>}
                   {typeof citation.score === "number" && (
@@ -495,15 +521,15 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
               <button
                 ref={closeButtonRef}
                 onClick={() => setOpen(false)}
-                className="min-h-10 min-w-10 rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                className="min-h-9 rounded-md border border-rule-2 px-3 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2 transition-colors hover:border-accent hover:text-accent"
                 aria-label="Close"
               >
                 Close
               </button>
             </div>
-            <div className="overflow-y-auto px-6 py-4 text-sm text-neutral-900">
-              {loading && <p className="text-neutral-500">Loading…</p>}
-              {error && <p className="text-red-600">error: {error}</p>}
+            <div className="overflow-y-auto px-7 py-5 text-[15px] text-ink">
+              {loading && <p className="font-mono text-xs uppercase tracking-wide text-ink-3">Loading…</p>}
+              {error && <p className="font-mono text-xs text-accent">error: {error}</p>}
               {body !== null && (
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
                   {body}
@@ -560,31 +586,31 @@ function NoEvidencePanel({ query }: { query: string }) {
   return (
     <div
       data-testid="no-evidence-panel"
-      className="ml-2 mt-2 max-w-[80%] rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700"
+      className="ml-2 mt-2.5 max-w-[82%] rounded-md border border-dashed border-rule-2 bg-paper-2/60 px-4 py-3.5 text-sm text-ink-2"
     >
-      <div className="font-medium text-neutral-900">No evidence yet for this question.</div>
+      <div className="font-display text-[15px] font-semibold text-ink">No evidence yet for this question.</div>
       {trimmed && (
-        <div className="mt-1 text-xs text-neutral-600">
-          Searched for: <span className="font-mono">{trimmed}</span>
+        <div className="mt-1.5 text-[13px] text-ink-2">
+          Searched for: <span className="font-mono text-ink">{trimmed}</span>
         </div>
       )}
-      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
         <Link
           href={libHref}
-          className="rounded bg-blue-600 px-2 py-1 font-medium text-white hover:bg-blue-700"
+          className="rounded-md bg-accent px-2.5 py-1.5 font-medium text-paper transition-colors hover:bg-accent-ink"
         >
           Search vault for {trimmed ? `“${trimmed.length > 28 ? trimmed.slice(0, 28) + "…" : trimmed}”` : "this"} →
         </Link>
         {freshLabel && (
-          <span className="text-neutral-500" title="Most recent ingest time">
+          <span className="font-mono text-[11px] uppercase tracking-wide text-ink-3" title="Most recent ingest time">
             {freshLabel}
           </span>
         )}
-        <Link href="/sediment/library" className="text-neutral-500 underline hover:text-neutral-900">
+        <Link href="/sediment/library" className="text-ink-3 underline decoration-rule-2 underline-offset-2 transition-colors hover:text-accent">
           recent ingests
         </Link>
       </div>
-      <p className="mt-2 text-xs text-neutral-500">
+      <p className="mt-2.5 text-[13px] leading-6 text-ink-3">
         Tip: chat retrieval is stricter than library search. Direct name or filename queries often work better there.
       </p>
     </div>
@@ -608,20 +634,22 @@ function Bubble({
   return (
     <div data-role={role} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[92%] rounded-2xl px-4 py-2 text-sm md:max-w-[80%] ${
-          isUser ? "bg-blue-600 text-white" : "bg-neutral-100 text-neutral-900"
-        }`}
+        className={
+          isUser
+            ? "max-w-[85%] rounded-md rounded-br-sm bg-accent px-4 py-2.5 text-[15px] text-paper shadow-sm md:max-w-[75%]"
+            : "max-w-[94%] rounded-md border border-rule border-l-2 border-l-accent/50 bg-card px-4 py-3 text-[15px] text-ink shadow-sm md:max-w-[82%]"
+        }
       >
         {isUser ? (
-          <div className="whitespace-pre-wrap">{displayContent}</div>
+          <div className="whitespace-pre-wrap font-body leading-7">{displayContent}</div>
         ) : (
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
             {displayContent}
           </ReactMarkdown>
         )}
-        {streaming && <span className="ml-1 animate-pulse">▍</span>}
+        {streaming && <span className="ink-caret align-baseline" aria-hidden="true" />}
         {citations && citations.length > 0 && !isUser && (
-          <div className="mt-2 text-xs text-neutral-600">
+          <div className="mt-2.5 border-t border-rule pt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
             {citations.length} citation{citations.length === 1 ? "" : "s"}
           </div>
         )}
