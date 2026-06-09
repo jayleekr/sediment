@@ -111,7 +111,7 @@ jobs:
           PYTHONPATH=src ../sediment/.venv/bin/pytest tests/test_shim.py tests/test_shim_edges.py -v
 
   cross-tenant-rls-gate:
-    name: 🚨 Cross-tenant RLS gate (blocks merge)
+    name: Cross-tenant RLS gate (blocks merge)
     needs: python-unit
     runs-on: ubuntu-22.04
     steps:

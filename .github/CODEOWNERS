@@ -1,0 +1,8 @@
+# Sediment ownership.
+* @jayleekr @JeHyeong2
+
+# Runtime, deployment, and auth surfaces are high-blast-radius.
+/.github/workflows/ @jayleekr @JeHyeong2
+/infra/ @jayleekr @JeHyeong2
+/services/sediment/applications/ @jayleekr @JeHyeong2
+/services/sediment/lab_lib/ @jayleekr @JeHyeong2
