@@ -1,24 +1,73 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { signIn as githubSignIn } from "next-auth/react";
+import { ApiError, api, clearToken, getToken } from "../lib/api";
 import { SectionHeader, Surface } from "../components/ui";
 
 export default function AdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [authState, setAuthState] = useState<"checking" | "signed-out" | "forbidden" | "ready">("checking");
 
   useEffect(() => {
+    if (!getToken()) {
+      setAuthState("signed-out");
+      return;
+    }
     api<{ items: any[] }>("/api/v1/admin/tenants")
-      .then((d) => setTenants(d.items))
-      .catch((e) => setError(e.message));
+      .then((d) => {
+        setTenants(d.items);
+        setAuthState("ready");
+      })
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 401) {
+          clearToken();
+          setAuthState("signed-out");
+          setError("Session expired or missing. Sign in again with a Sediment admin GitHub account.");
+          return;
+        }
+        if (e instanceof ApiError && e.status === 403) {
+          setAuthState("forbidden");
+          setError("This Sediment member is not an admin for the current tenant.");
+          return;
+        }
+        setAuthState("forbidden");
+        setError(e instanceof Error ? e.message : String(e));
+      });
   }, []);
+
+  if (authState === "checking") {
+    return (
+      <Surface className="p-4">
+        <SectionHeader title="Admin" description="Checking your Sediment admin session." />
+      </Surface>
+    );
+  }
+
+  if (authState === "signed-out") {
+    return (
+      <Surface className="mx-auto max-w-md p-6">
+        <h2 className="mb-2 text-lg font-semibold">Admin sign in</h2>
+        <p className="mb-4 text-sm text-ink-2">
+          Sign in with a GitHub account mapped to a Sediment admin member.
+        </p>
+        <button
+          onClick={() => githubSignIn("github", { callbackUrl: "/sediment/admin" })}
+          className="flex w-full items-center justify-center rounded-md bg-ink px-4 py-2 text-paper transition-colors hover:bg-accent-ink"
+        >
+          Sign in with GitHub
+        </button>
+        {error && <p className="mt-3 text-sm text-ochre">{error}</p>}
+      </Surface>
+    );
+  }
 
   if (error) {
     return (
-      <div className="rounded-md border border-ochre/30 bg-ochre-soft/40 p-4 text-sm text-ink-2">
-        <strong>admin only.</strong> {error}
-      </div>
+      <Surface className="p-4">
+        <SectionHeader title="Admin only" description={error} />
+      </Surface>
     );
   }
 
