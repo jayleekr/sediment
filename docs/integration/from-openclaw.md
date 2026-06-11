@@ -86,7 +86,7 @@ import asyncio, json
 async def on_mention(msg):
     proc = await asyncio.create_subprocess_exec(
         "sediment", "ask", msg.text_without_mention,
-        "--account", "openclaw-bot@hypeproof.io",
+        "--account", "openclaw-bot@example.com",
         "--format", "json",
         stdout=asyncio.subprocess.PIPE,
     )

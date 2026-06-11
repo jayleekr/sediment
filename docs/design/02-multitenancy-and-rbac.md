@@ -184,7 +184,8 @@ Plus the same call seeds:
 - A `subscriptions` row with default quotas (8 seats, 10K queries/month, 5GB storage)
 - Initial `members` rows from `data/members.json` or hardcoded admins
 
-Today three tenants exist: `hypeproof-lab`, `kids-edu`, `acme-test`. See `13-tenant-catalog.md`.
+Today the public examples cover `hypeproof-lab`, `kids-edu`, and `acme-test`.
+Detailed per-tenant inventory is maintained in the operational tenant registry.
 
 ### 5.2 Creation (v2 — admin endpoint, planned)
 

@@ -149,7 +149,7 @@ channels:
   hypeprooflab-page:  { transport: discord_webhook, secret_env: DISCORD_WEBHOOK_LAB_PAGE }
   meeting-notes:      { transport: discord_webhook, secret_env: DISCORD_WEBHOOK_MEETING_NOTES }
   manager-notices:    { transport: discord_webhook, secret_env: DISCORD_WEBHOOK_MANAGER }
-  primary_email:      { transport: email_smtp,      to: jay@hypeproof.io }   # v3
+  primary_email:      { transport: email_smtp,      to: ops@example.com }     # v3
 
 # Per-tenant routing of (event_type → channels[]). Tenant slug "*" = global default.
 routes:
