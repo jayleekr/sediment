@@ -85,7 +85,7 @@ async def vault_search(
     cosine distance — when no OpenAI/Gemini key is set, ``embed_one``
     returns a zero vector that produces NaN under cosine and silently
     yields empty results (the LEARNINGS-class regression that library.py
-    and lab_curator_graph.py both guarded against but this file did not).
+    and sediment_graph.py both guarded against but this file did not).
     Offline path now mirrors the other two: BM25-only with OR-joined
     to_tsquery so short / multi-token queries still return real hits.
     """

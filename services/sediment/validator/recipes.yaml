@@ -72,7 +72,7 @@ recipes:
       - background_cmd: "makeplatform"
         wait_for_url: "http://localhost:10100/healthz"
         timeout: 30
-    description: "Start curator-platform in background"
+    description: "Start sediment-platform in background"
 
   - matches:
       check_id: P2-HEALTH-02
@@ -80,13 +80,13 @@ recipes:
       - background_cmd: "makelanggraph"
         wait_for_url: "http://localhost:10020/healthz"
         timeout: 30
-    description: "Start curator-langgraph in background"
+    description: "Start sediment-langgraph in background"
 
   - matches:
       check_id: P2-HEALTH-05
     fix:
       - background_cmd: "cd web && npm run dev"
-        wait_for_url: "http://localhost:3000/curator"
+        wait_for_url: "http://localhost:3000/sediment"
         timeout: 60
     description: "Start Next.js dev server"
 
@@ -124,8 +124,8 @@ ai_apply_immediately:
   - "P*-INGEST-01"    # vault-ingester start
   - "P*-INGEST-02"    # metadata-svc start
 
-# ── TIER 2 ── ai_propose_review_commit (curator-coder writes diff,
-#              curator-reviewer adversarially cross-checks, then commit) ──
+# ── TIER 2 ── ai_propose_review_commit (sediment-coder writes diff,
+#              sediment-reviewer adversarially cross-checks, then commit) ──
 # These ARE code changes but with safety nets:
 #   1. Branch-per-change (git worktree)
 #   2. validator gate (score must not regress)

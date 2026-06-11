@@ -120,7 +120,7 @@ def check_decision_artifact_provenance_contract(spec: dict, **_) -> dict:
     distill = (repo / "services" / "sediment" / "scripts" / "distill.py").read_text()
     graph = (
         repo / "services" / "sediment" / "applications" / "sediment_langgraph"
-        / "graphs" / "lab_curator_graph.py"
+        / "graphs" / "sediment_graph.py"
     ).read_text()
     ui = (repo / "frontend" / "app" / "sediment" / "c" / "[id]" / "page.tsx").read_text()
 

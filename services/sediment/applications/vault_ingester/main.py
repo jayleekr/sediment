@@ -46,7 +46,7 @@ from lab_lib.settings import settings
 configure_logging()
 log = get_logger("ingester")
 
-app = FastAPI(title="Curator Vault Ingester", version="0.1.0")
+app = FastAPI(title="Sediment Vault Ingester", version="0.1.0")
 
 
 class IngestDocReq(BaseModel):

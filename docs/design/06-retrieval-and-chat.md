@@ -36,7 +36,7 @@ flowchart TB
   class ROUTER,COMP llm
 ```
 
-**State (`CuratorState`)**: `tenant_id`, `member_id`, `conv_id`, `query`, `intent`, `citations`, `answer_chunks`, `task_tag`. Threaded through every node by LangGraph's MemorySaver checkpointer.
+**State (`SedimentState`)**: `tenant_id`, `member_id`, `conv_id`, `query`, `intent`, `citations`, `answer_chunks`, `task_tag`. Threaded through every node by LangGraph's MemorySaver checkpointer.
 
 ## 3. Intent routing
 
@@ -214,7 +214,7 @@ Frontend parser: `frontend/app/sediment/lib/sse.ts`. Smoke test parser: `validat
 ## 7. Member intent (the meta-lookup path)
 
 ```python
-async def node_member_lookup(state: CuratorState) -> dict:
+async def node_member_lookup(state: SedimentState) -> dict:
     # Pull all active members for this tenant, hand to LLM with the question
     # → LLM matches "AI engineer with embedded background" → Ryan
     # Citations contain {"type": "member", "display_name": "Ryan", "title": "...", "expertise": [...]}
@@ -295,7 +295,7 @@ Notifications live in the OUTBOUND path (07); chat is INBOUND only.
 ## 14. References
 
 - `services/sediment/applications/sediment_langgraph/main.py` — SSE endpoint, history, augmentation
-- `services/sediment/applications/sediment_langgraph/graphs/lab_curator_graph.py` — graph nodes (router, library, member, meta, compose, guardrails, save)
+- `services/sediment/applications/sediment_langgraph/graphs/sediment_graph.py` — graph nodes (router, library, member, meta, compose, guardrails, save)
 - `services/sediment/lab_lib/llm.py` — provider resolution + `stream_chat`
 - `services/sediment/lab_lib/embeddings.py` — query embedding
 - `infra/init.sql` lines 113–141 — `chunks` table + HNSW index

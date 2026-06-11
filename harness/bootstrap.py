@@ -14,8 +14,8 @@ What it does:
      (templated with project name + container + ports)
   3. Creates an empty checks/ directory + __init__.py
   4. Prints next steps:
-     - copy .claude/agents/curator-*.md to new project's .claude/agents/
-     - copy .claude/skills/curator-validate/ to new project's .claude/skills/
+     - copy .claude/agents/sediment-*.md to new project's .claude/agents/
+     - copy .claude/skills/sediment-validate/ to new project's .claude/skills/
      - edit rubric.yaml to add your project's checks
      - run `make validate-p0` once infra is up
 """
@@ -27,7 +27,7 @@ from pathlib import Path
 
 # Resolve harness root (this file lives in <project>/harness/)
 HARNESS_ROOT = Path(__file__).resolve().parent
-SOURCE_VALIDATOR = HARNESS_ROOT.parent / "services" / "curator" / "validator"
+SOURCE_VALIDATOR = HARNESS_ROOT.parent / "services" / "sediment" / "validator"
 TEMPLATES = HARNESS_ROOT / "templates"
 
 # Files that are 100% reusable across projects (verbatim copy).
@@ -155,9 +155,9 @@ async def check_rls_enabled_all(spec: dict, **_) -> dict:
     print()
     print("  1. cp ../../harness/MANIFEST.md  ./harness/MANIFEST.md")
     print("  2. Copy agent files to your project:")
-    print(f"       cp <hypeproof-repo>/.claude/agents/curator-*.md  <new-project>/.claude/agents/")
+    print(f"       cp <hypeproof-repo>/.claude/agents/sediment-*.md  <new-project>/.claude/agents/")
     print(f"  3. Copy slash command:")
-    print(f"       cp -R <hypeproof-repo>/.claude/skills/curator-validate  <new-project>/.claude/skills/")
+    print(f"       cp -R <hypeproof-repo>/.claude/skills/sediment-validate  <new-project>/.claude/skills/")
     print(f"  4. Edit rubric.yaml to add your phase checks (start small — 5 checks)")
     print(f"  5. Run: cd {target.parent.parent} && python -m validator --phase P0")
     print()

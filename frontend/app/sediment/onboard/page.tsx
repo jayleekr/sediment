@@ -56,7 +56,7 @@ export default function OnboardPage() {
                   onChange={(e) => setSlug(e.target.value.replace(/[^a-z0-9-]/g, ""))}
                 />
                 <span className="rounded-r border border-l-0 bg-paper-2 px-3 py-2 text-sm text-ink-2">
-                  .curator.hypeproof-ai.xyz
+                  .sediment.hypeproof-ai.xyz
                 </span>
               </div>
             </label>

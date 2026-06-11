@@ -62,7 +62,7 @@ fi
 export DATABASE_URL_APP="$(normalize_pg_url "$DATABASE_URL_APP")"
 export DATABASE_URL_SERVICE="$(normalize_pg_url "$DATABASE_URL_SERVICE")"
 
-echo "→ Starting AI Curator container"
+echo "→ Starting Sediment container"
 echo "   PUBLIC_PORT=$PUBLIC_PORT"
 echo "   platform=$SEDIMENT_PLATFORM_PORT langgraph=$SEDIMENT_LANGGRAPH_PORT"
 echo "   ingester=$VAULT_INGESTER_PORT metadata=$METADATA_SVC_PORT"

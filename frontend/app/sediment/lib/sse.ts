@@ -13,7 +13,7 @@ export type SSEHandlers = {
   onDone?: () => void;
 };
 
-export async function streamCurator(
+export async function streamSediment(
   conv_id: string,
   query: string,
   h: SSEHandlers,

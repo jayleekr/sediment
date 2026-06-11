@@ -1,6 +1,6 @@
 """JWT verification + identity extraction.
 
-For local dev, services accept JWTs minted by curator-platform.
+For local dev, services accept JWTs minted by sediment-platform.
 The JWT carries:
   - sub: member_id
   - org_id: tenant_id

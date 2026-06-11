@@ -1,7 +1,7 @@
 # Sediment — Fly.io Deployment Runbook
 
 Phase 1 target: **single Fly app + Fly Postgres**, public URL
-`curator.hypeproof-ai.xyz`. Cost ceiling: ~$5/mo (free tier should cover
+`sediment.hypeproof-ai.xyz`. Cost ceiling: ~$5/mo (free tier should cover
 idle hours; Postgres tier dominates).
 
 ---
@@ -55,23 +55,23 @@ bash harness/scripts/fly-exec.sh \
 
 # 7. Verify
 curl https://hypeproof-sediment.fly.dev/healthz
-# → {"status":"ok","service":"curator-platform"}
+# → {"status":"ok","service":"sediment-platform"}
 ```
 
 ---
 
-## Custom domain (curator.hypeproof-ai.xyz)
+## Custom domain (sediment.hypeproof-ai.xyz)
 
 ```bash
 # 1. Tell Fly about the domain
-fly certs add curator.hypeproof-ai.xyz --app hypeproof-sediment
+fly certs add sediment.hypeproof-ai.xyz --app hypeproof-sediment
 
 # 2. Fly will print 2 DNS records to add. Typical:
-#    CNAME curator.hypeproof-ai.xyz → hypeproof-sediment.fly.dev
-#    A     curator.hypeproof-ai.xyz → <Fly IP>   (if CNAME-at-apex not allowed)
+#    CNAME sediment.hypeproof-ai.xyz → hypeproof-sediment.fly.dev
+#    A     sediment.hypeproof-ai.xyz → <Fly IP>   (if CNAME-at-apex not allowed)
 
 # 3. After DNS propagates (~5-15 min):
-fly certs check curator.hypeproof-ai.xyz --app hypeproof-sediment
+fly certs check sediment.hypeproof-ai.xyz --app hypeproof-sediment
 # → expect status=Ready
 ```
 
@@ -83,7 +83,7 @@ Once the app is up:
 
 ```
 GitHub → repo settings → Webhooks → Add webhook
-  Payload URL:  https://curator.hypeproof-ai.xyz/webhook/github
+  Payload URL:  https://sediment.hypeproof-ai.xyz/webhook/github
   Content type: application/json
   Secret:       <value of GITHUB_WEBHOOK_SECRET>
   Events:       Just push
@@ -91,7 +91,7 @@ GitHub → repo settings → Webhooks → Add webhook
 
 Verify: push a trivial commit, then within 30s:
 ```bash
-curl https://curator.hypeproof-ai.xyz/api/v1/library?limit=3 \
+curl https://sediment.hypeproof-ai.xyz/api/v1/library?limit=3 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -103,13 +103,13 @@ Once deployed, run the connect skill against the public URL:
 
 ```bash
 # From any laptop in the team
-SEDIMENT_BASE_URL=https://curator.hypeproof-ai.xyz \
-SEDIMENT_LG_BASE=https://curator.hypeproof-ai.xyz \
-  /curator-connect <your@email>
+SEDIMENT_BASE_URL=https://sediment.hypeproof-ai.xyz \
+SEDIMENT_LG_BASE=https://sediment.hypeproof-ai.xyz \
+  /sediment-connect <your@email>
 ```
 
-The MCP config in `~/.claude/mcp_servers/curator.json` will point at the
-production URL. Restart Claude Code → `curator__*` tools available in every
+The MCP config in `~/.claude/mcp_servers/sediment.json` will point at the
+production URL. Restart Claude Code → `sediment__*` tools available in every
 worktree on that laptop.
 
 ---
@@ -147,14 +147,14 @@ tier).
 cd products/sediment
 
 # Build
-docker build -t curator:local -f Dockerfile .
+docker build -t sediment:local -f Dockerfile .
 
 # Run against an existing local postgres
 docker run --rm -p 8080:8080 \
-  -e DATABASE_URL="postgres+asyncpg://curator:curator_local_dev@host.docker.internal:5433/curator" \
+  -e DATABASE_URL="postgres+asyncpg://sediment:curator_local_dev@host.docker.internal:5433/curator" \
   -e JWT_SECRET="local-test-only" \
   -e LLM_PROVIDER="offline" \
-  curator:local
+  sediment:local
 
 # In another shell:
 curl http://localhost:8080/healthz

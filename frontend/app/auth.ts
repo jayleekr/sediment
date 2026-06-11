@@ -8,6 +8,9 @@ import GitHub from "next-auth/providers/github";
 const API_BASE =
   process.env.SEDIMENT_API_BASE ||
   process.env.SEDIMENT_DEV_API_PROXY ||
+  process.env.NEXT_PUBLIC_SEDIMENT_PLATFORM_URL ||
+  // legacy fallback — Vercel prod still sets the CURATOR name; drop once
+  // NEXT_PUBLIC_SEDIMENT_* is set there (see CLAUDE.md "Brand")
   process.env.NEXT_PUBLIC_CURATOR_PLATFORM_URL ||
   "http://localhost:10100";
 const AUTH_TENANT_SLUG =
@@ -36,8 +39,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const ghLogin = (profile as { login?: string }).login ?? "";
       const accessToken = typeof account.access_token === "string" ? account.access_token : "";
       if (!accessToken) {
-        token.curatorToken = undefined;
-        token.curatorError = "github access_token missing from NextAuth account";
+        token.sedimentToken = undefined;
+        token.sedimentError = "github access_token missing from NextAuth account";
         return token;
       }
 
@@ -60,31 +63,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             display_name: string;
             member_id: string;
           };
-          token.curatorToken = d.token;
-          token.curatorRole = d.role;
-          token.curatorName = d.display_name;
-          token.curatorMemberId = d.member_id;
-          token.curatorError = undefined;
+          token.sedimentToken = d.token;
+          token.sedimentRole = d.role;
+          token.sedimentName = d.display_name;
+          token.sedimentMemberId = d.member_id;
+          token.sedimentError = undefined;
         } else {
-          token.curatorError = `${ex.status}: ${(await ex.text()).slice(0, 300)}`;
+          token.sedimentError = `${ex.status}: ${(await ex.text()).slice(0, 300)}`;
         }
       } catch (e) {
-        token.curatorError = `exchange failed: ${(e as Error).message}`;
+        token.sedimentError = `exchange failed: ${(e as Error).message}`;
       }
       return token;
     },
 
     async session({ session, token }) {
       const s = session as typeof session & {
-        curatorToken?: string;
-        curatorError?: string;
-        curatorRole?: string;
-        curatorName?: string;
+        sedimentToken?: string;
+        sedimentError?: string;
+        sedimentRole?: string;
+        sedimentName?: string;
       };
-      s.curatorToken = (token.curatorToken as string) ?? undefined;
-      s.curatorError = (token.curatorError as string) ?? undefined;
-      s.curatorRole = (token.curatorRole as string) ?? undefined;
-      s.curatorName = (token.curatorName as string) ?? undefined;
+      s.sedimentToken = (token.sedimentToken as string) ?? undefined;
+      s.sedimentError = (token.sedimentError as string) ?? undefined;
+      s.sedimentRole = (token.sedimentRole as string) ?? undefined;
+      s.sedimentName = (token.sedimentName as string) ?? undefined;
       return s;
     },
   },

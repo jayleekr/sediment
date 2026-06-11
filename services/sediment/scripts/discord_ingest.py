@@ -78,7 +78,7 @@ async def main():
                 "channel_id": "1468135779271180502",
                 "author_id": "1186944844401225808",
                 "author_name": "Jay",
-                "content": "AI Curator MVP scaffolding 시작 — 모든 phase local로 진행",
+                "content": "Sediment MVP scaffolding 시작 — 모든 phase local로 진행",
                 "ts": datetime.now(timezone.utc).isoformat(),
             }
         ], indent=2, ensure_ascii=False))

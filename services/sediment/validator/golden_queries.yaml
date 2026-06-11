@@ -239,7 +239,7 @@ queries:
     lang: ko
 
   - id: GQ-031
-    q: "AI Curator 어떤 도메인 모델 쓰는지"
+    q: "Sediment 어떤 도메인 모델 쓰는지"
     expected_intent: library
     ideal_refs: ["products/sediment/SPEC.md"]
     difficulty: medium
@@ -255,7 +255,7 @@ queries:
     difficulty: medium
     lang: ko
 
-  # ─── AI Curator self-references (3) ─────────────────────────
+  # ─── Sediment self-references (3) ─────────────────────────
   # Refreshed 2026-05-21: infra/init.sql isn't an artifact (.md only). RLS
   # design lives in SPEC §11.11 + TEST_REQUIREMENTS RLS section.
   - id: GQ-033

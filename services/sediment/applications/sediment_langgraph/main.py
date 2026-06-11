@@ -1,6 +1,6 @@
-"""Curator LangGraph :10020
+"""Sediment LangGraph :10020
 
-Runs lab_curator_graph and streams the answer over SSE.
+Runs sediment_graph and streams the answer over SSE.
 
 SSE event protocol (mirrors AIT):
   event: message  data: {"v": "...", "metadata": {"tag": "status", "step": "router"}}
@@ -29,12 +29,12 @@ from lab_lib.grounding import (
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.tenant_middleware import TenantContextMiddleware
 
-from .graphs.lab_curator_graph import build_graph
+from .graphs.sediment_graph import build_graph
 
 configure_logging()
 log = get_logger("langgraph")
 
-app = FastAPI(title="Curator LangGraph", version="0.1.0")
+app = FastAPI(title="Sediment LangGraph", version="0.1.0")
 
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(
@@ -54,7 +54,7 @@ GRAPH = build_graph()
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok", "service": "curator-langgraph"}
+    return {"status": "ok", "service": "sediment-langgraph"}
 
 
 class StreamReq(BaseModel):

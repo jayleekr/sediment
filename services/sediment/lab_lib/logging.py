@@ -28,5 +28,5 @@ def configure_logging() -> None:
     )
 
 
-def get_logger(name: str = "curator"):
+def get_logger(name: str = "sediment"):
     return structlog.get_logger(name)

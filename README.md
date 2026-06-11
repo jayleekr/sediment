@@ -17,7 +17,7 @@
 |---|---|---|
 | 0. Spec & Scaffolding | ✅ | DECISIONS.md, dirs, docker, init.sql with RLS |
 | 1. Read-only index | ✅ | vault-ingester (RAG), metadata-svc, seed/ingest scripts |
-| 2. Chat MVP | ✅ | sediment-platform 10 routers, sediment-langgraph SSE, workspace_curator_graph, Workspace MCP 12 tools, standalone Next.js `frontend/app/sediment/*` |
+| 2. Chat MVP | ✅ | sediment-platform 10 routers, sediment-langgraph SSE, sediment_graph, Workspace MCP 12 tools, standalone Next.js `frontend/app/sediment/*` |
 | 3. Ingest automation | ✅ | APScheduler in-VM (`config/cron.yaml`, 8 Discord channels every 30 min), webhook endpoints (`/webhook/ingest`, `/webhook/discord-ingest`), `consolidate_memory.py`, `distill.py` |
 | 4. Memory consolidation | ✅ | dream.py (archive + boost + decision/action extraction + usage rollup) |
 | 5. Auth + RBAC + RLS test | ✅ | dev-token + GitHub OAuth (prod), pytest cross-tenant verify |
@@ -86,8 +86,8 @@ For prod deploy: just `git push origin main` — see `.github/workflows/fly-depl
         ┌───────▼────────┐ ┌────────▼─────────┐ ┌─────────────────▼──────────┐
         │  platform      │ │  langgraph       │ │  ingester                  │
         │  :10100  REST  │ │  :10020 SSE      │ │  :11000  /webhook/*        │
-        │  workspace_    │ │  curator_graph   │ │  + RAG batch ingest        │
-        │  curator_graph │ │  Workspace MCP   │ │                            │
+        │  sediment_     │ │  sediment_graph  │ │  + RAG batch ingest        │
+        │  graph         │ │  Workspace MCP   │ │                            │
         │  tenant_ctx    │ │  12 tools        │ │  service role (BYPASSRLS)  │
         │  middleware    │ │                  │ │                            │
         └───────┬────────┘ └──────────┬───────┘ └───────────────┬────────────┘
@@ -185,7 +185,7 @@ sediment/                              # repo root
 │   │   └── connectors/                # Discord HTTP + base connector
 │   ├── applications/
 │   │   ├── sediment_platform/         # :10100 REST (auth, library, members, admin, billing, ...)
-│   │   ├── sediment_langgraph/        # :10020 SSE (workspace_curator_graph)
+│   │   ├── sediment_langgraph/        # :10020 SSE (sediment_graph)
 │   │   ├── vault_ingester/            # :11000 (webhook/* batch ingest)
 │   │   ├── metadata_svc/              # :12000 (internal validator queries)
 │   │   └── sediment_mcp/              # FastMCP server (12 tools)
@@ -331,7 +331,7 @@ What needs real wiring at "Phase 6 → external beta" time:
 - [DECISIONS.md](./DECISIONS.md) — all 20 §11 questions answered with reasoning
 - [infra/init.sql](./infra/init.sql) — DDL + RLS policies (copy/paste into Supabase later)
 - [services/sediment/lab_platform/mcp_servers/workspace_mcp.py](./services/sediment/lab_platform/mcp_servers/workspace_mcp.py) — 12 domain tools
-- [services/sediment/applications/sediment_langgraph/graphs/lab_curator_graph.py](./services/sediment/applications/sediment_langgraph/graphs/lab_curator_graph.py) — LangGraph workflow
+- [services/sediment/applications/sediment_langgraph/graphs/sediment_graph.py](./services/sediment/applications/sediment_langgraph/graphs/sediment_graph.py) — LangGraph workflow
 - [services/sediment/scripts/verify_rls.py](./services/sediment/scripts/verify_rls.py) — RLS regression check
 
 ---

@@ -61,7 +61,7 @@ NEW_FILE=$(ls -1t "$VAL_DIR"/P3-iter*.json 2>/dev/null | head -1)
 if [ -z "$NEW_FILE" ] || [ "$NEW_FILE" = "$PRIOR_FILE" ]; then
   echo "[$(ts)] FATAL: validator did not write a new P3 JSON" >&2
   if [ -x "$NOTIFY" ]; then
-    "$NOTIFY" ":warning: AI Curator P3 cron failed — validator wrote no result. See $RUN_LOG"
+    "$NOTIFY" ":warning: Sediment P3 cron failed — validator wrote no result. See $RUN_LOG"
   fi
   exit 0  # don't break cron
 fi
@@ -91,12 +91,12 @@ fi
 if [ -n "$NOTIFY_REASON" ] && [ -x "$NOTIFY" ]; then
   case "$NOTIFY_REASON" in
     weekly_heartbeat)
-      MSG=":green_circle: AI Curator P3 weekly heartbeat — score ${NEW_SCORE}%, blockers ${NEW_BLOCKERS_PASSED}/${NEW_BLOCKERS_TOTAL}. All green."
+      MSG=":green_circle: Sediment P3 weekly heartbeat — score ${NEW_SCORE}%, blockers ${NEW_BLOCKERS_PASSED}/${NEW_BLOCKERS_TOTAL}. All green."
       ;;
     *)
       # Build a regression / failure message with top 3 failing checks
       FAIL_LIST=$(jq -r '.results[] | select(.passed == false) | "  - " + .id + " (" + .severity + "): " + (.title // "")' "$NEW_FILE" | head -5 | tr '\n' '\n')
-      MSG=":red_circle: AI Curator P3 alert: ${NOTIFY_REASON}
+      MSG=":red_circle: Sediment P3 alert: ${NOTIFY_REASON}
   Score: ${NEW_SCORE}% (was ${PRIOR_SCORE}%)
   Blockers: ${NEW_BLOCKERS_PASSED}/${NEW_BLOCKERS_TOTAL} (was ${PRIOR_BLOCKERS_PASSED}/${PRIOR_BLOCKERS_TOTAL})
   Top failures:

@@ -155,10 +155,10 @@ async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
     artifacts: list[str] = []
     console_errors: list[str] = []
 
-    # Known frontend noise unrelated to curator semantics. NextAuth's session
+    # Known frontend noise unrelated to sediment semantics. NextAuth's session
     # fetcher fires on every route change and can race with navigation,
     # producing transient ClientFetchError. These are NOT actionable bugs in
-    # the curator API surface, so we exclude them from the console_errors_max
+    # the sediment API surface, so we exclude them from the console_errors_max
     # assertion. Add new patterns here as they're identified.
     _noise_patterns = (
         "ClientFetchError",                        # next-auth session fetch race
@@ -183,7 +183,7 @@ async def _run_one_attempt(full: dict, flow: dict, out_dir: Path) -> list[str]:
 
         # Pre-seed cookie-consent acceptance so the global modal overlay
         # doesn't intercept Playwright clicks. The modal renders on every
-        # /curator/* route until consent is given. Stored at the document
+        # /sediment/* route until consent is given. Stored at the document
         # origin via init script before any page navigation.
         #
         # NOTE: add_init_script wraps source in (() => { ${source} })() so the

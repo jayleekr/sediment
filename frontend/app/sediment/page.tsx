@@ -18,7 +18,7 @@ const AUTH_TENANT_SLUG =
   process.env.NEXT_PUBLIC_SEDIMENT_AUTH_TENANT_SLUG ||
   "";
 
-export default function CuratorHome() {
+export default function SedimentHome() {
   const [mounted, setMounted] = useState(false);
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [signedInAs, setSignedInAs] = useState<string | null>(null);

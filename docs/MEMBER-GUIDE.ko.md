@@ -122,7 +122,7 @@ claude
 **각 repo 자기 스킬** (예시):
 
 - studio: `hype-open-pr`, `report-ui` 등 — PR/이슈 발행 (studio 전용)
-- sediment: `curator-validate`, `sediment-connect` 등
+- sediment: `sediment-validate`, `sediment-connect` 등
 - lab: `paper-lab`, `column-workflow`, `roadmap-review` 등 다수
 
 자기 repo의 `.claude/skills/` 디렉토리를 한 번 둘러보길 권한다.

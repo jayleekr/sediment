@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Idempotent environment setup. Safe to re-run anytime.
-# Implements 8 stages from /curator:setup skill.
+# Implements 8 stages from /sediment:setup skill.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

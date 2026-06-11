@@ -1,4 +1,4 @@
-# AI Curator — Validation Rubric (v0.1)
+# Sediment — Validation Rubric (v0.1)
 # Declarative checks executed by validator/runner.py
 #
 # Check types:
@@ -511,7 +511,7 @@ phases:
 
       # ── Service health ──────────────────────────────────────
       - id: P2-HEALTH-01
-        title: "curator-platform :10100 healthy"
+        title: "sediment-platform :10100 healthy"
         layer: L2
         severity: blocker
         type: http
@@ -520,7 +520,7 @@ phases:
         expected_status: 200
 
       - id: P2-HEALTH-02
-        title: "curator-langgraph :10020 healthy"
+        title: "sediment-langgraph :10020 healthy"
         layer: L2
         severity: blocker
         type: http

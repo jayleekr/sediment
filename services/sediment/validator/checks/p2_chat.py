@@ -277,7 +277,7 @@ async def check_stream_complete_time(spec: dict, **_) -> dict:
 # ──────────────── Intent routing ────────────────
 
 async def _intent_for(query: str) -> str:
-    from applications.sediment_langgraph.graphs.lab_curator_graph import build_graph
+    from applications.sediment_langgraph.graphs.sediment_graph import build_graph
     graph = build_graph()
     state = {
         "tenant_id": "00000000-0000-0000-0000-000000000000",

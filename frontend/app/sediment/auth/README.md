@@ -1,4 +1,4 @@
-# Curator Auth (Phase 5)
+# Sediment Auth (Phase 5)
 
 MVP uses `/api/v1/auth/dev-token` to mint JWTs for any seeded member email.
 This is **local dev only** — not safe for production.
@@ -23,8 +23,8 @@ export const { handlers, auth } = NextAuth({
     async jwt({ token, account, user }) {
       // resolve org_id from members table by email or external_id
       if (user?.email) {
-        const member = await fetch(`${process.env.CURATOR_API}/api/v1/members/by-email`, {
-          headers: { "X-Service-Key": process.env.CURATOR_SERVICE_KEY! },
+        const member = await fetch(`${process.env.SEDIMENT_API_BASE}/api/v1/members/by-email`, {
+          headers: { "X-Service-Key": process.env.SEDIMENT_SERVICE_KEY! },
           body: JSON.stringify({ email: user.email }),
         }).then(r => r.json());
         token.org_id = member.tenant_id;
@@ -42,4 +42,4 @@ export const { handlers, auth } = NextAuth({
 ```
 
 Then mint a service-issued JWT (HS256, same secret) on every request and forward as Bearer.
-The Curator backend doesn't need to know about NextAuth — only that the JWT carries `org_id`.
+The Sediment backend doesn't need to know about NextAuth — only that the JWT carries `org_id`.

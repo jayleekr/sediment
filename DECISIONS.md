@@ -15,11 +15,11 @@
 | 3 | DB | **로컬 Postgres+pgvector via docker-compose** (개발) → **Supabase** (prod 후보) | RLS 네이티브 지원. Vercel Postgres는 RLS 제한적. Neon은 branch는 좋지만 RLS 미흡 |
 | 4 | Auth | **NextAuth.js + 자체 Organization 모델** (MVP) → Phase 11 enterprise 시 WorkOS 마이그레이션 | Clerk는 $25/mo 시작 — 로컬 dogfood엔 오버. NextAuth + 자체 org는 1주 작업, 비용 0 |
 | 5 | Ingest 우선순위 | **`research/daily/` → `web/src/content/columns/` → 회의록 → Discord** | daily research 가장 양 많고 frontmatter 정제됨. 칼럼은 KO/EN 페어 → 검증 쉬움 |
-| 6 | 개인-팀 메모리 | **명시적 `/curator publish` 명령으로만** Jay 개인 메모리 → 팀 vault 승격 | 자동 동기화 = 데이터 누출 리스크. 인지 partner와 팀 product 분리 |
+| 6 | 개인-팀 메모리 | **명시적 `/sediment publish` 명령으로만** Jay 개인 메모리 → 팀 vault 승격 | 자동 동기화 = 데이터 누출 리스크. 인지 partner와 팀 product 분리 |
 | 7 | MCP 위치 | **`services/sediment/lab_platform/mcp_servers/workspace_mcp.py`** | 외부 SaaS 고객은 Claude Code 안 씀. 별도 포트(8888)로 expose, FastMCP 사용 |
 | 8 | 첫 사용자 그룹 | **Jay 단독 1주 → JY/Ryan 추가 → 8명** | 도그푸딩 단계 1주는 빠른 iteration용 (질문 패턴 발견, UI 버그 수정). 8명 동시는 노이즈 ↑ |
 | 9 | 비용 한도 (내부) | **$200/mo** (`COST_BUDGET_MONTHLY_USD=200`) | 8명 × 25 query/day × 30일 × ~$0.03 = $180. 버퍼 $20 |
-| 10 | 5/5 파일럿과의 우선순위 | **병행** (별도 worktree) | Curator 빌드는 Jay 1인 작업, 5/5 파일럿은 BH/JY/Ryan 작업. 인적 자원 충돌 없음 |
+| 10 | 5/5 파일럿과의 우선순위 | **병행** (별도 worktree) | Sediment 빌드는 Jay 1인 작업, 5/5 파일럿은 BH/JY/Ryan 작업. 인적 자원 충돌 없음 |
 
 ---
 
@@ -31,7 +31,7 @@
 | 12 | Pricing 모델 | **Hybrid: seat 기반 + usage overage** | seat은 예측 가능 매출, usage overage는 power user 대응. Linear/Notion 모두 사용 |
 | 13 | 무료 tier 존재? | **Yes** (3 seat / 1k query/mo / 1GB) | HypeProof Lab dogfooding이 free tier에 자연 fit. Academy 졸업생 viral 채널 |
 | 14 | 출시 가격 | **Free $0 / Pro $20 / Business $40 / Enterprise contact** | Notion AI ($20)와 동일 가격대. premium 포지션 아닌 mainstream |
-| 15 | Custom domain | **MVP: 서브도메인 자동** (`<slug>.curator.hypeproof-ai.xyz`) → **Phase 11**: CNAME 옵션 (Business+ 한정) | 외부 베타까진 충분. enterprise 등장 시 |
+| 15 | Custom domain | **MVP: 서브도메인 자동** (`<slug>.sediment.hypeproof-ai.xyz`) → **Phase 11**: CNAME 옵션 (Business+ 한정) | 외부 베타까진 충분. enterprise 등장 시 |
 | 16 | Brand 노출 | **Free: 강제 Powered by HypeProof / Pro+: 토글 / Enterprise: white-label** | 표준 SaaS 패턴 |
 | 17 | 데이터 거주 | **MVP: US 단일** (Vercel + Supabase US) | KR 고객 등장 시 (Phase 12) Naver Cloud / AWS Seoul region 추가 |
 | 18 | Compliance | **Phase 6: 개인정보처리방침 + 이용약관** → **Phase 7: DPA 템플릿** → **Phase 8+: PIPA(KR)** → **Phase 10+: SOC 2 Type I** | 필요 시점에 단계적 진입. 변호사 검토 1회 $500 예산 |
@@ -47,9 +47,9 @@
 | 임베딩 모델 | **OpenAI `text-embedding-3-small` (1536d)** | 비용 ($0.00002/1k token), 품질 검증, pgvector 호환 |
 | LLM | **Anthropic Claude Sonnet 4.6** (메인) + **Opus 4.7** (memory consolidator) | sonnet은 query 처리, opus는 dream cron 같은 무거운 작업 |
 | Markdown 청킹 | **헤딩 기준 hierarchical chunking, max 1500 tokens, overlap 200** | 작은 칼럼은 헤딩 단위로, 긴 소설/리서치는 hierarchical |
-| LangGraph 진입점 | **`workspace_curator_graph` (단수)** | per-tenant 분기는 state.tenant_id로 처리, graph는 1개 |
+| LangGraph 진입점 | **`sediment_graph` (단수)** | per-tenant 분기는 state.tenant_id로 처리, graph는 1개 |
 | 검색 알고리즘 | **Hybrid: BM25 (full-text) + pgvector cosine, RRF rerank** | 벡터만으론 keyword 정확도 ↓. PostgreSQL ts_vector + RRF |
-| Discord MCP | **Mother bot 재활용** (별도 구현 X) | Mother가 이미 Discord plugin으로 read/write. Curator는 RPC 호출만 |
+| Discord MCP | **Mother bot 재활용** (별도 구현 X) | Mother가 이미 Discord plugin으로 read/write. Sediment는 RPC 호출만 |
 | 환경 변수 관리 | **`.env` (gitignored) + `.env.example` (committed)** | 표준 패턴 |
 | 마이그레이션 | **Alembic** | SQLAlchemy 호환, 가장 검증됨 |
 | Test 프레임워크 | **pytest + pytest-asyncio + httpx (async client)** | FastAPI 표준 |
@@ -70,7 +70,7 @@
 | Enterprise | **BYOK** | 고객 선택 | 자기 키 → seat fee만 받음 |
 | CI / no key | **offline** | mock | 결정적, 무비용. 통합 테스트용 |
 
-**아키텍처 변경**: `lab_lib/llm.py` 추상화. `curator_langgraph/main.py`가 직접 Anthropic SDK 호출 → `stream_chat(system, user)` 호출. provider는 env (`LLM_PROVIDER`) 또는 per-tenant flag로 결정.
+**아키텍처 변경**: `lab_lib/llm.py` 추상화. `sediment_langgraph/main.py`가 직접 Anthropic SDK 호출 → `stream_chat(system, user)` 호출. provider는 env (`LLM_PROVIDER`) 또는 per-tenant flag로 결정.
 
 **Gemini Flash 품질 검증 필요**: golden 40 query × Sonnet vs Flash A/B → faithfulness 차이 측정. 차이 < 0.05이면 Free tier는 Flash 확정.
 

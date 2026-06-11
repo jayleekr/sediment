@@ -1,5 +1,5 @@
 {
-  "_comment": "Recommended .claude/settings.local.json patch for AI Curator harness. Apply via /permissions or by manually merging into your existing .claude/settings.local.json. Outer session permissions only — Ralph loop subprocess runs with --dangerously-skip-permissions and bypasses these.",
+  "_comment": "Recommended .claude/settings.local.json patch for Sediment harness. Apply via /permissions or by manually merging into your existing .claude/settings.local.json. Outer session permissions only — Ralph loop subprocess runs with --dangerously-skip-permissions and bypasses these.",
 
   "permissions": {
     "defaultMode": "default",
@@ -49,14 +49,14 @@
 
       "Bash(./products/ai-curator/harness/ralph/ralph.sh:*)",
       "Bash(./products/ai-curator/harness/monitor/*)",
-      "Bash(products/ai-curator/services/curator/scripts/*)",
-      "Bash(products/ai-curator/services/curator/scripts/cron/*)",
+      "Bash(products/ai-sediment/services/sediment/scripts/*)",
+      "Bash(products/ai-sediment/services/sediment/scripts/cron/*)",
 
-      "Write(products/ai-curator/**)",
-      "Write(.github/workflows/curator-*.yml)",
-      "Write(web/src/app/curator/**)",
-      "Edit(products/ai-curator/**)",
-      "Edit(web/src/app/curator/**)"
+      "Write(products/ai-sediment/**)",
+      "Write(.github/workflows/sediment-*.yml)",
+      "Write(frontend/app/sediment/**)",
+      "Edit(products/ai-sediment/**)",
+      "Edit(frontend/app/sediment/**)"
     ],
     "deny": [
       "Bash(chmod 777:*)",

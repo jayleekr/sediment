@@ -5,16 +5,13 @@ user_invocable: true
 triggers:
   - "/sediment-connect"
   - "/sediment-setup-mcp"
-  - "/curator-connect"
   - "connect to sediment"
-  - "connect to curator"
   - "register sediment mcp"
 ---
 
-> **Brand**: Sediment. **Internal codename**: curator. Module paths
-> (`services/sediment/`, `applications/sediment_mcp/`) and some env vars
-> retain the codename — only user-visible surfaces (MCP tool names, web
-> UI, skill name, the new `sediment` CLI) carry the brand.
+> **Brand**: Sediment everywhere. A handful of internal identifiers keep the
+> retired "curator" codename deliberately (local DB cluster, `curator.token`
+> web-storage key) — see `CLAUDE.md` "Brand" for the full list.
 
 ## Two paths
 

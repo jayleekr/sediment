@@ -22,7 +22,7 @@ INTERVAL="${INTERVAL:-3}"
 clear
 while :; do
   printf '\033[H\033[2J'  # clear
-  echo "═══ AI Curator — Ralph Monitor ═══════════════════════════════════════════"
+  echo "═══ Sediment — Ralph Monitor ═══════════════════════════════════════════"
   echo "  $(date '+%Y-%m-%d %H:%M:%S')   refresh ${INTERVAL}s   Ctrl-C to exit"
   echo
 

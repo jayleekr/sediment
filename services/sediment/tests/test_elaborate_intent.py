@@ -18,7 +18,7 @@ import re
 
 import pytest
 
-from applications.sediment_langgraph.graphs.lab_curator_graph import (
+from applications.sediment_langgraph.graphs.sediment_graph import (
     _is_elaborate_query,
     node_router,
     build_graph,
@@ -98,7 +98,7 @@ def test_graph_includes_elaborate_node():
 def test_elaborate_node_has_tenant_and_conv_filter():
     """SQL inside node_elaborate must filter both by tenant_id AND conv_id."""
     import importlib
-    mod = importlib.import_module("applications.sediment_langgraph.graphs.lab_curator_graph")
+    mod = importlib.import_module("applications.sediment_langgraph.graphs.sediment_graph")
     src = inspect.getsource(mod)
     m = re.search(
         r"async def node_elaborate.*?(?=^(?:async )?def |\Z)",

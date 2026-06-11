@@ -60,7 +60,7 @@ async def run(dry_run: bool, target: str | None) -> int:
     if not raw:
         svc = settings.database_url_service.replace("+asyncpg", "")
         # postgresql://curator_service:curator_service_local@localhost:5433/curator
-        # → postgresql://curator:curator_local_dev@localhost:5433/curator
+        # → postgresql://sediment:curator_local_dev@localhost:5433/curator
         raw = svc.replace(
             "curator_service:curator_service_local",
             "curator:curator_local_dev",

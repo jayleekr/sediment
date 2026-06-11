@@ -20,7 +20,7 @@ from sqlalchemy import text
 
 # Resolve data/members.json by walking up from this script. The old hardcoded
 # parents[5] assumed the pre-split monorepo layout
-# (mvp/products/sediment/services/curator/scripts/); after the 2026-05-18
+# (mvp/products/sediment/services/sediment/scripts/); after the 2026-05-18
 # repo split the layout is <repo>/services/sediment/scripts/, so search
 # instead of hardcoding — survives further moves.
 SCRIPT = Path(__file__).resolve()
@@ -66,7 +66,7 @@ def migrations_db_url() -> str:
         return raw.replace("+asyncpg", "")
     svc = settings.database_url_service.replace("+asyncpg", "")
     # Local-dev fallback: swap the dockerized service role for the owner role
-    # (legacy `curator*` names — kept as-is for docker-compose compatibility).
+    # (legacy `sediment*` names — kept as-is for docker-compose compatibility).
     # PROD must set SEDIMENT_MIGRATIONS_DB_URL — the role rename to sediment_*
     # broke implicit substitution and there's no in-VM way to derive the
     # owner credentials from a Supabase pooler URL.
@@ -134,7 +134,7 @@ async def upsert_tenant(s, slug: str, name: str) -> str:
         VALUES (:slug, :name, :domain, 'free', 'active')
         ON CONFLICT (slug) DO UPDATE SET display_name = EXCLUDED.display_name
         RETURNING id
-    """), {"slug": slug, "name": name, "domain": f"{slug}.curator.hypeproof-ai.xyz"})
+    """), {"slug": slug, "name": name, "domain": f"{slug}.sediment.hypeproof-ai.xyz"})
     tid = str(r.scalar_one())
 
     await s.execute(text("""

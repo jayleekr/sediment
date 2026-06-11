@@ -259,7 +259,7 @@ timestamp,phase,score,max,pct,blockers_passed,blockers_total,passed
 
 ---
 
-## 7. CI 게이트 (`.github/workflows/curator-validate.yml` — Phase 6+)
+## 7. CI 게이트 (`.github/workflows/sediment-validate.yml` — Phase 6+)
 
 ```yaml
 on: pull_request
@@ -305,13 +305,13 @@ validator도 코드. validator가 깨지면 false-positive로 통과 보고 가�
 
 | ID | 시나리오 | 단계 | screenshot 횟수 |
 |---|---|---|---|
-| E2E-01 | Sign-in flow | open `/curator` → input email → submit → see chat | 3 |
+| E2E-01 | Sign-in flow | open `/sediment` → input email → submit → see chat | 3 |
 | E2E-02 | Empty state visible | post sign-in → assert empty conv list + suggested queries | 1 |
-| E2E-03 | New conversation + first query | click suggestion → URL 변경 `/curator/c/[id]` → SSE 시작 | 4 |
+| E2E-03 | New conversation + first query | click suggestion → URL 변경 `/sediment/c/[id]` → SSE 시작 | 4 |
 | E2E-04 | Streaming UI | 첫 delta 도착 → 누적 → answer_end | 3 (50%, 100%, end) |
 | E2E-05 | Citation cards visible | sidebar에 citation list 렌더 | 1 |
-| E2E-06 | Library browse + filter | `/curator/library` → click `column` filter → table updates | 2 |
-| E2E-07 | Members page | `/curator/members` → 8 cards visible | 1 |
+| E2E-06 | Library browse + filter | `/sediment/library` → click `column` filter → table updates | 2 |
+| E2E-07 | Members page | `/sediment/members` → 8 cards visible | 1 |
 | E2E-08 | Cross-tenant negative test | acme tenant 토큰으로 hypeproof-lab의 conv URL 접근 → 403 또는 empty | 2 |
 
 각 screenshot은 `output/validation/screenshots/iter-N/E2E-XX-step-Y.png`로 저장.
@@ -346,7 +346,7 @@ flows:
     base_url: "http://localhost:3000"
     steps:
       - action: navigate
-        url: "/curator"
+        url: "/sediment"
         wait_for: "selector=input[placeholder='member email']"
         screenshot: "01-empty-form"
         assert:
@@ -363,7 +363,7 @@ flows:
         screenshot: "03-after-signin"
         assert:
           - type: url_contains
-            value: "/curator"
+            value: "/sediment"
           - type: localStorage_has
             key: "curator.token"
           - type: console_errors_count

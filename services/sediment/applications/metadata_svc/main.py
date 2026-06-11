@@ -17,7 +17,7 @@ from lab_lib.tenant_middleware import TenantContextMiddleware
 configure_logging()
 log = get_logger("metadata")
 
-app = FastAPI(title="Curator Metadata Service", version="0.1.0")
+app = FastAPI(title="Sediment Metadata Service", version="0.1.0")
 app.add_middleware(TenantContextMiddleware)
 
 

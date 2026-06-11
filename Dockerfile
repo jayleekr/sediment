@@ -1,4 +1,4 @@
-# AI Curator — multi-service production image
+# Sediment — multi-service production image
 #
 # Packs all 4 FastAPI services + nginx into one container so Fly.io can run
 # the whole stack on a single VM (cheap Phase 1 deployment).
@@ -59,8 +59,8 @@ COPY infra/migrations/            /app/infra/migrations/
 RUN chmod +x /start.sh /release.sh /run-with-db.sh
 
 # Default ports (override via Fly env). Public port is 8080 (nginx).
-ENV CURATOR_PLATFORM_PORT=10100 \
-    CURATOR_LANGGRAPH_PORT=10020 \
+ENV SEDIMENT_PLATFORM_PORT=10100 \
+    SEDIMENT_LANGGRAPH_PORT=10020 \
     VAULT_INGESTER_PORT=11000 \
     METADATA_SVC_PORT=12000 \
     PUBLIC_PORT=8080

@@ -1,4 +1,4 @@
-"""Curator Platform :10100
+"""Sediment Platform :10100
 
 Main REST API. Tenant-aware (RLS) for all read/write.
 Some endpoints (auth/login, signup) operate without tenant context and use
@@ -25,7 +25,7 @@ log = get_logger("platform")
 # defaults. No-op in dev/test/CI. See lab_lib.settings.validate_runtime_secrets.
 validate_runtime_secrets()
 
-app = FastAPI(title="Curator Platform", version="0.1.0")
+app = FastAPI(title="Sediment Platform", version="0.1.0")
 
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(
@@ -44,7 +44,7 @@ app.add_middleware(
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok", "service": "curator-platform"}
+    return {"status": "ok", "service": "sediment-platform"}
 
 
 # Routers

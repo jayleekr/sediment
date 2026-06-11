@@ -1,16 +1,16 @@
-# SSL Skill Manifests for the 7 curator-* subagents.
+# SSL Skill Manifests for the 7 sediment-* subagents.
 # Conforms to contracts/skill_manifest.schema.json.
 # This file is the machine-inspectable contract; the markdown agent files are the
 # prompt instantiation. Keep them in sync — when behavior changes, update both.
 
 agents:
 
-  - agent_id: curator-validator
+  - agent_id: sediment-validator
     version: "0.1.0"
     model: sonnet
     max_turns: 30
     scheduling:
-      trigger: "/curator-validate <phase> [single]   OR   Task tool dispatch"
+      trigger: "/sediment-validate <phase> [single]   OR   Task tool dispatch"
       frequency: on-demand
       idempotent: true
       preconditions:
@@ -59,12 +59,12 @@ agents:
         - products/sediment/VALIDATION_PLAN.md
         - products/sediment/services/sediment/validator/rubric.yaml
 
-  - agent_id: curator-loop-orchestrator
+  - agent_id: sediment-loop-orchestrator
     version: "0.1.0"
     model: opus
     max_turns: 80
     scheduling:
-      trigger: "/curator-validate <phase> loop"
+      trigger: "/sediment-validate <phase> loop"
       frequency: on-demand
       idempotent: true
       preconditions:
@@ -100,7 +100,7 @@ agents:
     portability:
       generic_logic: true
 
-  - agent_id: curator-fixer
+  - agent_id: sediment-fixer
     version: "0.1.0"
     model: haiku
     max_turns: 25
@@ -133,7 +133,7 @@ agents:
     portability:
       generic_logic: true
 
-  - agent_id: curator-rag-tuner
+  - agent_id: sediment-rag-tuner
     version: "0.1.0"
     model: opus
     max_turns: 40
@@ -160,7 +160,7 @@ agents:
     portability:
       generic_logic: true
 
-  - agent_id: curator-rls-auditor
+  - agent_id: sediment-rls-auditor
     version: "0.1.0"
     model: opus
     max_turns: 30
@@ -192,7 +192,7 @@ agents:
     portability:
       generic_logic: true
 
-  - agent_id: curator-e2e-debugger
+  - agent_id: sediment-e2e-debugger
     version: "0.1.0"
     model: sonnet
     max_turns: 25
@@ -220,7 +220,7 @@ agents:
     portability:
       generic_logic: true
 
-  - agent_id: curator-rubric-author
+  - agent_id: sediment-rubric-author
     version: "0.1.0"
     model: opus
     max_turns: 35

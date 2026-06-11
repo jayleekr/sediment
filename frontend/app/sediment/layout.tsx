@@ -19,7 +19,7 @@ function envBadge() {
   return { label: "local · dev", cls: "text-ink-3" };
 }
 
-export default function CuratorLayout({ children }: { children: ReactNode }) {
+export default function SedimentLayout({ children }: { children: ReactNode }) {
   const badge = envBadge();
   return (
     <div className="min-h-screen bg-paper text-ink">

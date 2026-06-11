@@ -7,7 +7,7 @@ not a content retrieval query).
 """
 import asyncio
 
-from applications.sediment_langgraph.graphs.lab_curator_graph import node_router
+from applications.sediment_langgraph.graphs.sediment_graph import node_router
 
 
 def _route(query: str) -> str:

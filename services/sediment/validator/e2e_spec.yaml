@@ -280,7 +280,7 @@ flows:
 
   - id: E2E-10
     name: "Mobile viewport (iPhone 12)"
-    # Verifies the curator UI renders without horizontal overflow at 390x844
+    # Verifies the sediment UI renders without horizontal overflow at 390x844
     # and the sign-in form is usable. Catches Tailwind grid-cols-12 regressions
     # that would push the conv pane off-screen on narrow viewports.
     severity: major

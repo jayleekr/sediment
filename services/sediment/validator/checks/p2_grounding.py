@@ -37,7 +37,7 @@ _GROUNDING_PROBES: list[dict] = [
         "signals": ["28", "[1]", "칼럼", "column"],
     },
     {
-        "query": "AI Curator 어떤 도메인 모델 쓰는지",
+        "query": "Sediment 어떤 도메인 모델 쓰는지",
         # SPEC.md retrieval — answer should mention domain entities or [1].
         "signals": ["[1]", "tenant", "artifact", "chunk", "RLS", "SPEC"],
     },

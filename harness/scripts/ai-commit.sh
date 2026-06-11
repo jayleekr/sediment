@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # AI commit protocol — branch-per-change with auto-rollback.
 #
-# This script is invoked by curator-coder via Bash tool. It enforces the safety
+# This script is invoked by sediment-coder via Bash tool. It enforces the safety
 # net so that AI-generated patches can land WITHOUT human review, but with
 # regression protection.
 #
 # Flow:
 #   1. Verify clean working tree
 #   2. Create branch ai/coder/<check-id>-<ts>
-#   3. (curator-coder writes files via Edit tool — happens between invocations)
+#   3. (sediment-coder writes files via Edit tool — happens between invocations)
 #   4. Run validator BEFORE commit → record baseline_after
 #   5. If score regressed → revert files, exit 2
 #   6. Commit with structured message
@@ -144,7 +144,7 @@ case "$cmd" in
       printf 'Branch: %s\n' "$BR"
       printf 'Validator gate: passed (see output/ai-commit/%s.validate-after.log)\n' "$CHECK_ID"
       printf 'Reviewer: approved (see output/ai-commit/%s.reviewer.json)\n\n' "$CHECK_ID"
-      printf 'Co-authored-by: curator-coder <ai@hypeproof-ai.xyz>\n'
+      printf 'Co-authored-by: sediment-coder <ai@hypeproof-ai.xyz>\n'
     } > "$MSG_FILE"
     git commit -F "$MSG_FILE" 2>&1
 

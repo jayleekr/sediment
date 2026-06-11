@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# feature-loop.sh — unified feature-completeness loop for AI Curator.
+# feature-loop.sh — unified feature-completeness loop for Sediment.
 #
 # Each iteration:
 #   1. ensure services up + LLM_PROVIDER=claude_cli
@@ -8,7 +8,7 @@
 #   4. run UX critic on screenshots → ux_score
 #   5. composite = min(e2e_pass_rate, validator_score, ux_score)
 #   6. if composite < 9.0:
-#        find weakest axis → dispatch curator-coder (claude -p) → reviewer → ai-commit
+#        find weakest axis → dispatch sediment-coder (claude -p) → reviewer → ai-commit
 #   7. update STATE + JOURNAL
 #
 # Termination:
@@ -314,7 +314,7 @@ dispatch_coder() {
   local iter="$1" check_id="$2" msg="$3"
   local prompt_file="$LOG_DIR/iter-$iter-coder-prompt.md"
   cat > "$prompt_file" <<EOF
-You are curator-coder. Read .claude/agents/curator-coder.md for the contract.
+You are sediment-coder. Read .claude/agents/sediment-coder.md for the contract.
 
 WORK ORDER:
   check_id: $check_id

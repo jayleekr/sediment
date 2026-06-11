@@ -9,17 +9,29 @@
 
 **Sediment** — "where doing becomes knowing".
 
-Fully renamed from the previous "AI Curator" codename on 2026-05-15. The
-following internal identifiers still retain `curator`/`ai-curator` as a
-historical artifact (not user-visible, low value to chase):
+Fully renamed from the previous "AI Curator" codename on 2026-05-15; a
+final remnant purge landed 2026-06-11. The following internal identifiers
+still retain `curator`/`ai-curator` deliberately (not user-visible,
+breaking-change cost > value):
 
 - Rubric phase IDs (P0–P3) and check IDs (`P2-WEB-*`, etc.) — stable contract
-- `curator.token` localStorage key — invalidating active dev tokens has no upside
-- Docker container names (`curator-pg`, `curator-redis`) — DB cluster identity
+- `curator.token` / `curator.token_rejected` web-storage keys — invalidating
+  active dev tokens has no upside
+- Local dev DB cluster identity: container names (`curator-pg`,
+  `curator-redis`), DB/user `curator`, roles `curator_app`/`curator_service`
+  (incl. `infra/init.sql` and the CI Postgres service that loads it) —
+  renaming would invalidate every dev's local volumes
+- JWT `ai-curator-local` / `ai-curator-services` issuer/audience defaults —
+  changing them revokes every outstanding local token
+- Vault ingest paths / search synonyms pointing at `products/ai-curator` —
+  historical content in the lab vault still lives under that name
+- `NEXT_PUBLIC_CURATOR_*` env fallback in `frontend/app/auth.ts` +
+  `lib/api.ts` — Vercel prod still sets the old names; drop the fallback
+  after adding `NEXT_PUBLIC_SEDIMENT_*` in Vercel
 - `applications/curator_guardrails/` — placeholder for a planned (not yet built) service
 
-Everywhere else — directories, modules, env vars, URLs, MCP tools, plist
-labels, Fly app slug — is Sediment.
+Everywhere else — directories, modules, env vars, URLs, MCP tools, agents,
+skills, Fly app slug — is Sediment.
 
 ---
 
@@ -147,8 +159,8 @@ Per `services/sediment/validator/recipes.yaml`:
 
 | Tier | Pattern | Permission |
 |---|---|---|
-| 1 ai_apply_immediately | `P*-INFRA-*`, `P*-HEALTH-*`, `P*-INGEST-01/02` | `curator-fixer` direct (no review) |
-| 2 ai_propose_review_commit | RAG, SEARCH, INGEST-04, E2E, SEC, INTENT, MCP, DDL (non-RLS), CHUNK, WEB (after adding) | `curator-coder` + reviewer + commit |
+| 1 ai_apply_immediately | `P*-INFRA-*`, `P*-HEALTH-*`, `P*-INGEST-01/02` | `sediment-fixer` direct (no review) |
+| 2 ai_propose_review_commit | RAG, SEARCH, INGEST-04, E2E, SEC, INTENT, MCP, DDL (non-RLS), CHUNK, WEB (after adding) | `sediment-coder` + reviewer + commit |
 | 3 human_required | `P*-RLS-*` | NEVER auto. Write work-order. |
 | 4 forbid_ai_edit | init.sql, .env, billing.py, credentials* | guard.json blocks at tool level |
 
@@ -167,14 +179,14 @@ direct-push to `main`.
 
 ## Subagent dispatch pattern
 
-Curator-coder (model=opus) is dispatched via the Task tool with a
+Sediment-coder (model=opus) is dispatched via the Task tool with a
 self-contained prompt that includes:
-1. Pointer to `.claude/agents/curator-coder.md` for the contract
+1. Pointer to `.claude/agents/sediment-coder.md` for the contract
 2. The work-order as JSON inline
 3. Pointer to LEARNINGS.md for prior patterns
 4. Cost ceiling
 
-Curator-coder cannot itself dispatch the reviewer via the Task tool
+Sediment-coder cannot itself dispatch the reviewer via the Task tool
 (sub-sub-agent limit). It uses `claude -p --dangerously-skip-permissions
 --model sonnet` headless instead — that runs at level 0 and bypasses the
 limit. This is per the root CLAUDE.md "Architecture Principle: Shell Scripts
@@ -210,9 +222,9 @@ scope and clear semantics:
 1. Confirm the pattern doesn't touch RLS, init.sql, .env, billing.py
 2. Add the glob (e.g. `P*-NEWTHING-*`) to `ai_propose_review_commit` in `recipes.yaml`
 3. Commit with explicit reasoning in the commit message
-4. Dispatch curator-coder with the work-order
+4. Dispatch sediment-coder with the work-order
 
-Adding a pattern unlocks autonomous fix-by-curator-coder for that whole
+Adding a pattern unlocks autonomous fix-by-sediment-coder for that whole
 class of failure forever after.
 
 ---

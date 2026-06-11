@@ -30,7 +30,7 @@
                        │
                        ▼
    ┌─────────────────────────────────────────┐
-   │ curator-medic (every 10 iter)           │
+   │ sediment-medic (every 10 iter)           │
    │   diagnoses 6 patterns                  │
    │   appends LEARNINGS.md                  │
    │   gentle recovery                       │
@@ -66,9 +66,9 @@ nohup bash products/sediment/harness/monitor/dashboard-loop.sh \
 |---|---|---|
 | Anthropic rate-limit (429) | ralph.sh exp backoff | 30s-150s |
 | Network timeout | ralph.sh retry | 30s |
-| Service died (ingester crash) | curator-medic detects + dispatches curator-fixer | 1-2 iter |
-| Stalled task (5 iter no progress) | curator-medic appends LEARNINGS, escalates | 1 iter |
-| Score regression | curator-medic dispatches matching specialist | 1-2 iter |
+| Service died (ingester crash) | sediment-medic detects + dispatches sediment-fixer | 1-2 iter |
+| Stalled task (5 iter no progress) | sediment-medic appends LEARNINGS, escalates | 1 iter |
+| Score regression | sediment-medic dispatches matching specialist | 1-2 iter |
 | Out of API budget | ralph stops cleanly with `cost_budget_exhausted` | terminal — manual |
 | Ralph itself dies (oom etc.) | supervisor.sh restarts after cooldown | 60-300s |
 | 5 crashes in 30min | supervisor writes CRASH_REPORT.md and stops | terminal — manual |
@@ -77,7 +77,7 @@ nohup bash products/sediment/harness/monitor/dashboard-loop.sh \
 
 ```bash
 # 1. One-line status
-/curator:status
+/sediment:status
 
 # 2. If supervisor stopped (CRASH_REPORT exists)
 cat output/ralph/CRASH_REPORT.md
@@ -86,11 +86,11 @@ cat output/ralph/CRASH_REPORT.md
 cat output/validation/loop-*-*/convergence.md
 
 # 4. If still running but stuck
-/curator:medic
-/curator:learnings --tail 20
+/sediment:medic
+/sediment:learnings --tail 20
 
 # 5. To restart anything from any state
-/curator:restart
+/sediment:restart
 ```
 
 ## Cost ceiling
@@ -114,7 +114,7 @@ cat output/validation/loop-*-*/convergence.md
 
 ```bash
 # Hard stop everything
-/curator:kill
+/sediment:kill
 
 # Read what happened
 cat products/sediment/harness/ralph/JOURNAL.md | tail -50

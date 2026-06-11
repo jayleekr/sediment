@@ -18,11 +18,11 @@
       "guidance": { "type": "string", "description": "Human-readable next step or specialist subagent name." },
       "specialist": {
         "enum": [
-          "curator-rag-tuner",
-          "curator-rls-auditor",
-          "curator-e2e-debugger",
-          "curator-fixer",
-          "curator-rubric-author",
+          "sediment-rag-tuner",
+          "sediment-rls-auditor",
+          "sediment-e2e-debugger",
+          "sediment-fixer",
+          "sediment-rubric-author",
           null
         ]
       }

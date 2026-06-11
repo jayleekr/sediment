@@ -3,7 +3,7 @@
 Extracted 2026-05-23 (WO-7) to close the duplication that LEARNINGS predicted
 would drift and HAS drifted: `_STOP_WORDS` lived independently in
 ``applications/sediment_platform/routers/library.py`` and
-``applications/sediment_langgraph/graphs/lab_curator_graph.py``, with the
+``applications/sediment_langgraph/graphs/sediment_graph.py``, with the
 ``workspace_mcp.py`` MCP tool missing the zero-vector guard entirely
 (REPORT.md HIGH — confirmed recurrence). One canonical module:
 
@@ -204,7 +204,7 @@ def is_zero_vector(vec: Sequence[float], tol: float = 1e-9) -> bool:
     offline mode (no OpenAI/Gemini key set).
 
     Centralized 2026-05-23 (WO-7). Previously the check ``not any(abs(x) > 1e-9 for x in qvec)``
-    was duplicated across library.py + lab_curator_graph.py while
+    was duplicated across library.py + sediment_graph.py while
     workspace_mcp.py omitted it entirely (LEARNINGS-class recurrence —
     REPORT.md HIGH). Every caller of ``embed_one`` MUST run this guard
     BEFORE letting the vector flow into cosine distance (which yields NaN

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ralph Wiggum Loop for AI Curator
+# Ralph Wiggum Loop for Sediment
 #
 # Pattern: Huntley 2026 (https://ghuntley.com/ralph/)
 # Each iteration spawns a fresh `claude -p --dangerously-skip-permissions` subprocess

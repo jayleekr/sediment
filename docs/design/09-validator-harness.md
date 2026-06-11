@@ -192,19 +192,19 @@ recipes:
   # Tier 1: trivial fixes AI applies directly without review
   - pattern: "P*-INFRA-*"
     action: ai_apply_immediately
-    agent: curator-fixer
+    agent: sediment-fixer
   - pattern: "P*-HEALTH-*"
     action: ai_apply_immediately
-    agent: curator-fixer
+    agent: sediment-fixer
   - pattern: "P*-INGEST-01"
     action: ai_apply_immediately
-    agent: curator-fixer
+    agent: sediment-fixer
   
   # Tier 2: structural changes — AI proposes, AI reviewer reviews, AI commits
   - pattern: "P*-RAG-*"
     action: ai_propose_review_commit
-    agent: curator-coder
-    reviewer: curator-reviewer
+    agent: sediment-coder
+    reviewer: sediment-reviewer
   - pattern: "P*-SEARCH-*"
     action: ai_propose_review_commit
   - pattern: "P*-E2E-*"
@@ -255,8 +255,8 @@ Per iteration:
 1. Validate (current phase or specific check)
 2. Read failures
 3. For each failure, look up recipes.yaml → tier
-4. T1: dispatch curator-fixer
-5. T2: dispatch curator-coder → reviewer → commit
+4. T1: dispatch sediment-fixer
+5. T2: dispatch sediment-coder → reviewer → commit
 6. T3: write `output/work-orders/<check-id>-<iter>.json` for human
 7. T4: log + skip
 8. Re-validate

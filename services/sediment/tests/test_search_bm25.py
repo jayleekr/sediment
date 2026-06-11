@@ -214,7 +214,7 @@ def test_build_ts_or_query_strips_korean_particles():
 
     After the fix, base forms must be present in the OR query too.
     """
-    from applications.sediment_langgraph.graphs.lab_curator_graph import (
+    from applications.sediment_langgraph.graphs.sediment_graph import (
         _build_ts_or_query,
     )
 
@@ -257,7 +257,7 @@ import pytest
     ("라이언에서", "라이언"),
 ])
 def test_strip_korean_particles_cases(particle_tok, expected_base):
-    from applications.sediment_langgraph.graphs.lab_curator_graph import (
+    from applications.sediment_langgraph.graphs.sediment_graph import (
         _strip_korean_particles,
     )
 

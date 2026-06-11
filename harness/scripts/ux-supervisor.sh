@@ -151,7 +151,7 @@ detect_stuck() {
   fi
 }
 
-# Health watchdog: ensure web/curator services up so E2E can run
+# Health watchdog: ensure web/sediment services up so E2E can run
 health_check() {
   local missing=""
   for kv in "5433:postgres" "10100:platform" "10020:langgraph" "11000:ingester" "12000:metadata" "3000:web"; do

@@ -75,7 +75,7 @@ async def onboard(req: OnboardReq, x_service_key: str | None = Header(default=No
             "slug": req.workspace_slug,
             "name": req.workspace_name,
             "plan": req.plan,
-            "domain": f"{req.workspace_slug}.curator.hypeproof-ai.xyz",
+            "domain": f"{req.workspace_slug}.sediment.hypeproof-ai.xyz",
         })
         tid = r.scalar_one()
 

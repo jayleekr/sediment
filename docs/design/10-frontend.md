@@ -26,7 +26,7 @@ frontend/app/
     ├── FreshnessBadge.tsx                 "last ingest 3min ago" stale indicator
     ├── lib/
     │   ├── api.ts                         fetch wrapper + JWT injection
-    │   ├── sse.ts                         SSE client (streamCurator)
+    │   ├── sse.ts                         SSE client (streamSediment)
     │   └── ...                            other client helpers
     ├── c/[id]/                            conversation detail (chat + SSE)
     ├── library/                           artifact browser + filters
@@ -62,7 +62,7 @@ async function ask(q: string) {
   
   // 2. Stream the assistant turn
   setStream({ status: "thinking…", ... });
-  await streamCurator(id, q, {
+  await streamSediment(id, q, {
     onStatus: (msg, meta) => setStream(...),
     onCitation: (c) => setStream(s => ({ ...s, citations: [...s.citations, c] })),
     onDelta: (token) => setStream(s => ({ ...s, buffer: s.buffer + token })),
@@ -273,7 +273,7 @@ The single test: *"If two users from two tenants signed in on the same browser a
 
 - `frontend/app/sediment/` — all pages
 - `frontend/app/sediment/lib/api.ts` — fetch wrapper
-- `frontend/app/sediment/lib/sse.ts` — `streamCurator` client
+- `frontend/app/sediment/lib/sse.ts` — `streamSediment` client
 - `frontend/app/api/auth/[...nextauth]/route.ts` — NextAuth config
 - `frontend/package.json` — pinned versions
 - `validator/e2e_spec.yaml` E2E-01–E2E-13 — UI coverage

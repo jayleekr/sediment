@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from applications.sediment_langgraph.graphs.lab_curator_graph import (
+from applications.sediment_langgraph.graphs.sediment_graph import (
     _is_freshness_query,
     _detect_freshness_type,
     node_router,
@@ -96,7 +96,7 @@ def test_freshness_node_has_tenant_filter():
     """SQL inside node_freshness_lookup must filter by tenant explicitly
     (sediment#16 defense-in-depth)."""
     import importlib
-    mod = importlib.import_module("applications.sediment_langgraph.graphs.lab_curator_graph")
+    mod = importlib.import_module("applications.sediment_langgraph.graphs.sediment_graph")
     src = inspect.getsource(mod)
     # Pull the whole function — up to the next top-level def/async def
     m = re.search(

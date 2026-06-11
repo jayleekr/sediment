@@ -12,8 +12,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-RALPH_DIR = REPO_ROOT / "products" / "ai-curator" / "harness" / "ralph"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RALPH_DIR = REPO_ROOT / "harness" / "ralph"
 VALID_DIR = REPO_ROOT / "output" / "validation"
 OUT_PATH = REPO_ROOT / "output" / "ralph-dashboard.html"
 
@@ -100,7 +100,7 @@ def render() -> str:
 <html><head>
 <meta charset="utf-8">
 <meta http-equiv="refresh" content="10">
-<title>AI Curator Ralph Dashboard</title>
+<title>Sediment Ralph Dashboard</title>
 <style>
   body {{ font-family: -apple-system, sans-serif; background:#0b0d12; color:#e2e8f0; margin:0; padding:24px; }}
   h1 {{ font-size:20px; margin:0 0 16px; }}
@@ -117,7 +117,7 @@ def render() -> str:
   .err {{ color:#fca5a5; }}
 </style>
 </head><body>
-<h1>AI Curator — Ralph Dashboard <span style="color:#64748b;font-size:13px;">{now}</span></h1>
+<h1>Sediment — Ralph Dashboard <span style="color:#64748b;font-size:13px;">{now}</span></h1>
 
 <div class="grid">
   <div class="card">

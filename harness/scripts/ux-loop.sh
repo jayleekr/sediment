@@ -3,9 +3,9 @@
 #
 # Each iter:
 #   1. Capture: run validator --phase P2 --only-layers L11 (E2E + screenshots)
-#   2. Score: dispatch curator-ux-critic on screenshots → feedback.json
+#   2. Score: dispatch sediment-ux-critic on screenshots → feedback.json
 #   3. Decide: if overall >= target_overall AND all axes >= target_per_axis: STOP
-#   4. Fix: dispatch curator-coder with top finding as work-order
+#   4. Fix: dispatch sediment-coder with top finding as work-order
 #   5. Loop
 #
 # Cost-aware. State in output/ux/STATE.json.
@@ -116,8 +116,8 @@ run_critic() {
   local out_log="$UX_DIR/iter-$(printf '%02d' "$iter").critic.log"
 
   cat > "$prompt_file" <<EOF
-You are now operating as **curator-ux-critic**. Read your contract first:
-  $REPO_ROOT/.claude/agents/curator-ux-critic.md
+You are now operating as **sediment-ux-critic**. Read your contract first:
+  $REPO_ROOT/.claude/agents/sediment-ux-critic.md
 
 Then read the rubric:
   $RUBRIC
@@ -181,8 +181,8 @@ run_coder() {
   local check_id="UX-ITER-$(printf '%02d' "$iter")-$(jq -r '.axis // "unknown"' <<<"$top")"
 
   cat > "$prompt_file" <<EOF
-You are operating as **curator-coder**. Read your contract:
-  $REPO_ROOT/.claude/agents/curator-coder.md
+You are operating as **sediment-coder**. Read your contract:
+  $REPO_ROOT/.claude/agents/sediment-coder.md
 
 Work-order from ux-critic iter $iter:
 $top

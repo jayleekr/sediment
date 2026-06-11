@@ -13,7 +13,7 @@ hybrid `<=>` + `ts_rank`).
 - `infra/init.sql` IS the pgvector-ready schema: `CREATE EXTENSION vector`,
   `chunks.embedding vector(1536)`, `chunks_embedding_hnsw` HNSW, `tsv` GIN.
 - Embedding: OpenAI `text-embedding-3-small`, **1536d** (`settings.embedding_dim`).
-- Retrieval: `applications/.../lab_curator_graph.py` already hybrid (vector +
+- Retrieval: `applications/.../sediment_graph.py` already hybrid (vector +
   BM25). No code change to "turn on" pgvector — it just needs the column to
   actually be `vector` (it is, on Supabase).
 - 563 artifacts is the known-good ingest count (MVP reference, NEXT.md).

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { api, citeExport, getFreshness, type Citation, type Freshness, type Message } from "../../lib/api";
-import { streamCurator } from "../../lib/sse";
+import { streamSediment } from "../../lib/sse";
 import { EmptyState, SectionHeader, Surface, TrustBadge } from "../../components/ui";
 
 // Backend phrases emitted by lab_lib/grounding.no_evidence_answer when the
@@ -113,7 +113,7 @@ export default function ConversationPage() {
     setInput("");
     setStream({ status: "thinking…", citations: [], buffer: "", done: false });
     aborter.current = new AbortController();
-    await streamCurator(
+    await streamSediment(
       id,
       q,
       {

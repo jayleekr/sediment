@@ -13,9 +13,9 @@ layer로 prod LIVE(Fly API + Vercel UI + Supabase pgvector). TODO.md 백로그�
 ## 항목 처리 방법
 1. 근거 파일 먼저 읽고, 완료조건이 아직 열려있는지 확인(이미 된 건 검증 후 skip).
 2. tier 분류:
-   - Tier 1 (INFRA/HEALTH/INGEST-01-02): curator-fixer, 직접 적용.
-   - Tier 2 (RAG/SEARCH/INTENT/SEC/E2E/DDL-non-RLS/CHUNK/nginx): curator-coder 에이전트를
-     Task로 디스패치(.claude/agents/curator-coder.md + LEARNINGS.md + 비용상한 포함). 직접 hand-patch 금지.
+   - Tier 1 (INFRA/HEALTH/INGEST-01-02): sediment-fixer, 직접 적용.
+   - Tier 2 (RAG/SEARCH/INTENT/SEC/E2E/DDL-non-RLS/CHUNK/nginx): sediment-coder 에이전트를
+     Task로 디스패치(.claude/agents/sediment-coder.md + LEARNINGS.md + 비용상한 포함). 직접 hand-patch 금지.
    - Tier 3 (P*-RLS-*): 절대 자동 금지. work-order만 쓰고 그 항목 정지.
    - Tier 4 (init.sql/.env/billing.py/credentials*): guard.json이 차단.
    - operator/cross-repo/ops 항목(T1, T2, T7-secrets): `fly` 파괴적 ops나 타 repo →
@@ -34,7 +34,7 @@ layer로 prod LIVE(Fly API + Vercel UI + Supabase pgvector). TODO.md 백로그�
 - 풀 `make validate-*`는 로컬 docker 데몬 있을 때만.
 
 ## 비용/정지 조건
-- curator-coder 1회 ~$1 + reviewer $0.5. 항목당 $2 상한, 1회 시도+reviewer(루프 금지). 전체 $20 상한.
+- sediment-coder 1회 ~$1 + reviewer $0.5. 항목당 $2 상한, 1회 시도+reviewer(루프 금지). 전체 $20 상한.
 - 정지하고 사람에게 넘길 것: Tier-3 RLS, operator/cross-repo, 1회 수정 후에도 gate 실패, 예산 소진.
 
 ## 보고

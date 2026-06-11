@@ -137,7 +137,7 @@ while [ "$restart_count" -lt "$MAX_RESTARTS" ]; do
           echo
           echo "## Recovery suggestions"
           echo "1. Check service health: \`./harness/monitor/watch.sh\`"
-          echo "2. Run /curator:medic for diagnosis"
+          echo "2. Run /sediment:medic for diagnosis"
           echo "3. Check ANTHROPIC_API_KEY validity"
           echo "4. Resume after fixing: \`./supervisor.sh --max-restarts 5\`"
         } > "$LOG_DIR/CRASH_REPORT.md"

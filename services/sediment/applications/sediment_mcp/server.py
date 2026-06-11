@@ -1,8 +1,4 @@
-"""curator_mcp — Claude Code MCP server for Sediment.
-
-(Brand: Sediment. Internal codename: curator. Module + env vars retain the
-codename to avoid a large internal refactor — only user-visible surfaces
-were renamed.)
+"""sediment_mcp — Claude Code MCP server for Sediment.
 
 Exposes Sediment's team-facing surface as MCP tools so any Claude Code
 session can query the shared knowledge vault, file decisions, and read
@@ -58,7 +54,7 @@ async def sediment__whoami() -> dict:
     will fail too — fix the token before debugging anything else.
     """
     if not SEDIMENT_TOKEN:
-        return {"error": "SEDIMENT_TOKEN not set. Run /curator-setup or set env var."}
+        return {"error": "SEDIMENT_TOKEN not set. Run /sediment:setup or set env var."}
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(f"{SEDIMENT_BASE_URL}/api/v1/auth/whoami",
                               headers=_auth_headers())
@@ -220,11 +216,11 @@ async def sediment__recent(days: int = 7, type: Optional[str] = None,
 
 
 def main():
-    transport = os.environ.get("CURATOR_MCP_TRANSPORT", "stdio")
+    transport = os.environ.get("SEDIMENT_MCP_TRANSPORT", "stdio")
     if transport == "http":
-        port = int(os.environ.get("CURATOR_MCP_PORT", "10030"))
-        host = os.environ.get("CURATOR_MCP_HOST", "127.0.0.1")
-        print(f"curator_mcp on http://{host}:{port}", file=sys.stderr)
+        port = int(os.environ.get("SEDIMENT_MCP_PORT", "10030"))
+        host = os.environ.get("SEDIMENT_MCP_HOST", "127.0.0.1")
+        print(f"sediment_mcp on http://{host}:{port}", file=sys.stderr)
         mcp.run(transport="http", host=host, port=port)
     else:
         # stdio is the default for Claude Code MCP — CC spawns the process

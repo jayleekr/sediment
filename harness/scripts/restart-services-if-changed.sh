@@ -99,7 +99,7 @@ bounce() {
   local module_pattern="$1"  # e.g. "applications.sediment_platform.main"
   local fallback_app="$2"    # e.g. "applications.sediment_platform.main:app"
   local fallback_port="$3"   # e.g. 10100
-  local nice_name="$4"       # e.g. "curator-platform"
+  local nice_name="$4"       # e.g. "sediment-platform"
 
   local pid cmd
   pid=$(pgrep -f "uvicorn.*${module_pattern}" | head -1 || true)
@@ -115,13 +115,13 @@ bounce() {
     done
     # Relaunch with the captured cmdline (preserves any custom flags)
     cd "$SVC_DIR"
-    nohup bash -c "$cmd" > "/tmp/curator-${nice_name}.log" 2>&1 &
+    nohup bash -c "$cmd" > "/tmp/sediment-${nice_name}.log" 2>&1 &
     cd "$REPO_ROOT"
   else
     echo "  $nice_name not running — starting fresh on :$fallback_port"
     cd "$SVC_DIR"
     nohup .venv/bin/uvicorn "$fallback_app" --port "$fallback_port" \
-      > "/tmp/curator-${nice_name}.log" 2>&1 &
+      > "/tmp/sediment-${nice_name}.log" 2>&1 &
     cd "$REPO_ROOT"
   fi
 
@@ -133,12 +133,12 @@ bounce() {
     fi
     sleep 1
   done
-  echo "  WARN: $nice_name not healthy on :$fallback_port within 15s — see /tmp/curator-${nice_name}.log" >&2
+  echo "  WARN: $nice_name not healthy on :$fallback_port within 15s — see /tmp/sediment-${nice_name}.log" >&2
   return 1
 }
 
-[ "$need_platform" = "1" ]  && bounce "applications.sediment_platform.main"  "applications.sediment_platform.main:app"  10100 "curator-platform"
-[ "$need_langgraph" = "1" ] && bounce "applications.sediment_langgraph.main" "applications.sediment_langgraph.main:app" 10020 "curator-langgraph"
+[ "$need_platform" = "1" ]  && bounce "applications.sediment_platform.main"  "applications.sediment_platform.main:app"  10100 "sediment-platform"
+[ "$need_langgraph" = "1" ] && bounce "applications.sediment_langgraph.main" "applications.sediment_langgraph.main:app" 10020 "sediment-langgraph"
 [ "$need_ingester" = "1" ]  && bounce "applications.vault_ingester.main"    "applications.vault_ingester.main:app"    11000 "vault-ingester"
 [ "$need_metadata" = "1" ]  && bounce "applications.metadata_svc.main"      "applications.metadata_svc.main:app"      12000 "metadata-svc"
 

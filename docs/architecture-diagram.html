@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>AI Curator — Architecture & Verification Status</title>
+<title>Sediment — Architecture & Verification Status</title>
 <style>
   :root {
     --bg: #0a0c12;
@@ -77,7 +77,7 @@
 </head>
 <body>
 
-<h1>AI Curator — Architecture &amp; Verification</h1>
+<h1>Sediment — Architecture &amp; Verification</h1>
 <p class="subtitle">2026-05-06 · 18-min live test result · 7 real bugs found+fixed · core RAG+RLS pipeline verified</p>
 
 <div class="stat-grid">
@@ -129,11 +129,11 @@
 
   <!-- L2 Subagents (8) -->
   <rect class="layer-rect ok" x="20" y="200" width="1060" height="98" rx="6"/>
-  <text class="layer-title" x="40" y="224">L2 · Subagents (SSL manifest, .claude/agents/curator-*.md)</text>
+  <text class="layer-title" x="40" y="224">L2 · Subagents (SSL manifest, .claude/agents/sediment-*.md)</text>
 
   <g transform="translate(40,240)">
     <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
-    <text x="80" y="18" text-anchor="middle" class="label">curator-validator</text>
+    <text x="80" y="18" text-anchor="middle" class="label">sediment-validator</text>
     <text x="80" y="34" text-anchor="middle" class="small">phase entry</text>
   </g>
   <g transform="translate(210,240)">
@@ -143,7 +143,7 @@
   </g>
   <g transform="translate(380,240)">
     <rect width="160" height="44" rx="4" fill="#1f2937" stroke="#374151"/>
-    <text x="80" y="18" text-anchor="middle" class="label">curator-fixer</text>
+    <text x="80" y="18" text-anchor="middle" class="label">sediment-fixer</text>
     <text x="80" y="34" text-anchor="middle" class="small">recipe applier</text>
   </g>
   <g transform="translate(550,240)">
@@ -161,11 +161,11 @@
     <text x="85" y="18" text-anchor="middle" class="label">e2e-debugger</text>
     <text x="85" y="34" text-anchor="middle" class="small">screenshot triage</text>
   </g>
-  <text x="40" y="296" class="small">+ rubric-author (new check stubs) + curator-medic (self-heal, 6 patterns)</text>
+  <text x="40" y="296" class="small">+ rubric-author (new check stubs) + sediment-medic (self-heal, 6 patterns)</text>
 
   <!-- L3 Validator harness Python -->
   <rect class="layer-rect ok" x="20" y="318" width="1060" height="116" rx="6"/>
-  <text class="layer-title" x="40" y="342">L3 · Validator harness (Python — services/curator/validator/)</text>
+  <text class="layer-title" x="40" y="342">L3 · Validator harness (Python — services/sediment/validator/)</text>
 
   <g transform="translate(40,358)">
     <rect width="200" height="64" rx="4" fill="#1f2937" stroke="var(--ok)"/>
@@ -205,9 +205,9 @@
 
   <!-- L4 Project under test -->
   <rect class="layer-rect ok" x="20" y="454" width="1060" height="70" rx="6"/>
-  <text class="layer-title" x="40" y="478">L4 · Project under test — AI Curator backend</text>
+  <text class="layer-title" x="40" y="478">L4 · Project under test — Sediment backend</text>
   <text class="layer-desc" x="40" y="496">Postgres+pgvector :5433 ✓ · Redis :6380 ✓ · vault-ingester :11000 ✓ · metadata-svc :12000 ✓ · 14 tables · 14 RLS · 13 policies</text>
-  <text class="layer-desc" x="40" y="513" fill="var(--warn)">curator-platform :10100 ⏸ · curator-langgraph :10020 ⏸ · web :3000 ⏸ (not started; needed for P2)</text>
+  <text class="layer-desc" x="40" y="513" fill="var(--warn)">sediment-platform :10100 ⏸ · sediment-langgraph :10020 ⏸ · web :3000 ⏸ (not started; needed for P2)</text>
 </svg>
 
 <h2>2. Validation Flow (실제 검증된 path · zero-cost iteration)</h2>
@@ -418,19 +418,19 @@
     <tr><th>Category</th><th>Count</th><th>Examples</th></tr>
   </thead>
   <tbody>
-    <tr><td>Subagents (.claude/agents/curator-*.md)</td><td class="num">8</td><td>validator, loop-orchestrator, fixer, rls-auditor, rag-tuner, e2e-debugger, rubric-author, medic</td></tr>
-    <tr><td>Slash skills (.claude/skills/curator/*)</td><td class="num">13</td><td>start, status, fix, tune-rag, audit-rls, debug-e2e, propose-rubric, medic, learnings, compact, resurrect, kill, restart, setup</td></tr>
-    <tr><td>Validator harness (Python, services/curator/validator/)</td><td class="num">22</td><td>runner, dispatch, e2e_runner, fixer, loop, report, types, 8 checks</td></tr>
+    <tr><td>Subagents (.claude/agents/sediment-*.md)</td><td class="num">8</td><td>validator, loop-orchestrator, fixer, rls-auditor, rag-tuner, e2e-debugger, rubric-author, medic</td></tr>
+    <tr><td>Slash skills (.claude/skills/sediment/*)</td><td class="num">13</td><td>start, status, fix, tune-rag, audit-rls, debug-e2e, propose-rubric, medic, learnings, compact, resurrect, kill, restart, setup</td></tr>
+    <tr><td>Validator harness (Python, services/sediment/validator/)</td><td class="num">22</td><td>runner, dispatch, e2e_runner, fixer, loop, report, types, 8 checks</td></tr>
     <tr><td>Harness contracts + bootstrap (harness/)</td><td class="num">15</td><td>5 JSON schemas, 3 templates, ralph/, monitor/, MANIFEST, bootstrap-all.sh</td></tr>
     <tr><td>Project docs</td><td class="num">8</td><td>SPEC.md (1084), DECISIONS.md, TEST_REQUIREMENTS.md (711), VALIDATION_PLAN.md, README, START_HERE, OVERNIGHT</td></tr>
-    <tr><td>Backend services (FastAPI)</td><td class="num">4</td><td>curator-platform, curator-langgraph, vault-ingester, metadata-svc</td></tr>
-    <tr><td>Web routes (Next.js)</td><td class="num">8</td><td>/curator, /c/[id], /library, /members, /admin, /onboard, /pricing, /auth</td></tr>
+    <tr><td>Backend services (FastAPI)</td><td class="num">4</td><td>sediment-platform, sediment-langgraph, vault-ingester, metadata-svc</td></tr>
+    <tr><td>Web routes (Next.js)</td><td class="num">8</td><td>/sediment, /c/[id], /library, /members, /admin, /onboard, /pricing, /auth</td></tr>
   </tbody>
 </table>
 
 <div class="footer">
-  AI Curator architecture diagram · self-contained HTML · 2026-05-06<br>
-  Source: products/ai-curator/docs/architecture-diagram.html
+  Sediment architecture diagram · self-contained HTML · 2026-05-06<br>
+  Source: products/ai-sediment/docs/architecture-diagram.html
 </div>
 
 </body>

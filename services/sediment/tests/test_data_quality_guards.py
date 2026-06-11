@@ -26,7 +26,7 @@ def _read_source(modpath: str) -> str:
 
 
 def test_library_search_has_explicit_tenant_filter_bm25():
-    src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
+    src = _read_source("applications.sediment_langgraph.graphs.sediment_graph")
     # BM25-only branch must include both the chunk + artifact filter
     assert "a.tenant_id = CAST(:tid AS uuid)" in src, \
         "BM25 retrieval must have explicit artifact tenant filter (sediment#16)"
@@ -35,7 +35,7 @@ def test_library_search_has_explicit_tenant_filter_bm25():
 
 
 def test_library_search_has_explicit_tenant_filter_hybrid():
-    src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
+    src = _read_source("applications.sediment_langgraph.graphs.sediment_graph")
     # Hybrid path uses CTEs — both `bm25` and `vec` CTEs need the filter
     # (we count occurrences as a sanity check)
     assert src.count("c.tenant_id = CAST(:tid AS uuid)") >= 2, \
@@ -43,7 +43,7 @@ def test_library_search_has_explicit_tenant_filter_hybrid():
 
 
 def test_hybrid_retrieval_assigns_rank_after_topk_pushdown():
-    src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
+    src = _read_source("applications.sediment_langgraph.graphs.sediment_graph")
 
     assert "WITH bm25_top AS" in src
     assert "vec_top AS" in src
@@ -94,7 +94,7 @@ def test_platform_search_embedding_failure_falls_back_to_bm25(monkeypatch):
 
 
 def test_member_lookup_has_tenant_filter():
-    src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
+    src = _read_source("applications.sediment_langgraph.graphs.sediment_graph")
     # Locate the member lookup function source
     import re
     m = re.search(r"async def node_member_lookup.*?return", src, re.S)
@@ -105,7 +105,7 @@ def test_member_lookup_has_tenant_filter():
 
 
 def test_meta_summary_has_tenant_filter():
-    src = _read_source("applications.sediment_langgraph.graphs.lab_curator_graph")
+    src = _read_source("applications.sediment_langgraph.graphs.sediment_graph")
     import re
     m = re.search(r"async def node_meta_summary.*?return", src, re.S)
     assert m, "node_meta_summary not found"

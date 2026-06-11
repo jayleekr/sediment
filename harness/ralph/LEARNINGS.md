@@ -26,7 +26,7 @@
   prevent: pin to pg17 in MVP. Re-evaluate pg18 only after testing volume migration in staging
 
 [2026-05-05T14:02:30Z] iter=test-03 pattern=python_path_miscount detail=parents[N]_off_by_two_in_seed_ingest_validator
-  cause: scripts assumed REPO_ROOT = parents[3] but actual depth from script to mvp/ is 5 (scripts→curator→services→ai-curator→products→mvp). Validator checks were also off (parents[5] should be parents[6]).
+  cause: scripts assumed REPO_ROOT = parents[3] but actual depth from script to mvp/ is 5 (scripts→sediment→services→ai-sediment→products→mvp). Validator checks were also off (parents[5] should be parents[6]).
   fix: corrected to parents[5] for scripts/ and parents[6] for validator/checks/. Comment chains in source.
   prevent: use a shared `repo_root.py` helper that infers root from .git or pyproject.toml location, not parents[N]
 
@@ -61,7 +61,7 @@
 
 [2026-05-08T06:25:00Z] ai_coder_e2e_verified detail=full_workflow_proof
   cause: Jay said "AI가 코드 수정 못 하게 차단한 게 잘못됐다 — 사람 일을 없애야지"
-  fix: 4-tier recipes (forbid/human/review/auto), curator-coder + curator-reviewer agents,
+  fix: 4-tier recipes (forbid/human/review/auto), sediment-coder + sediment-reviewer agents,
        ai-commit.sh (baseline → begin → gate → commit), guard.json (3 critical files only)
   prevent: from now on, validator failures auto-dispatch coder; reviewer cross-checks;
        branch + auto-rollback. Human only sees 2-attempt rejections or guard.json paths.
@@ -76,11 +76,11 @@
 
 [2026-05-08T11:21:00Z] iter=session-2026-05-09-coder-01 pattern=ai_coder_dispatch_real detail=check=P2-INTENT-02 branch=ai/coder/p2-intent-02-20260508T111405 sha=909b302ef900b00e83e0823c21b54be1901e783c
   cause: SQLAlchemy `:qvec::vector` colliding with named-param parser (recurrence of LEARNINGS #4 pattern=sqlalchemy_jsonb_cast). asyncpg saw `:qvec` followed by an undefined `:vector` param -> PostgresSyntaxError "syntax error at or near \":\"" in row_number() OVER (ORDER BY c.embedding <=> :qvec::vector) AS rank.
-  fix: replaced `:qvec::vector` with `CAST(:qvec AS vector)` across 4 files: applications/sediment_langgraph/graphs/lab_curator_graph.py, applications/sediment_platform/routers/library.py, lab_platform/mcp_servers/workspace_mcp.py, validator/checks/p1_index.py. Validator gate 65.1 -> 66.3 (+1.2pp), blockers stable at 15/21. Reviewer (sonnet, opposite model from coder=opus) approved with severity_max=low.
+  fix: replaced `:qvec::vector` with `CAST(:qvec AS vector)` across 4 files: applications/sediment_langgraph/graphs/sediment_graph.py, applications/sediment_platform/routers/library.py, lab_platform/mcp_servers/workspace_mcp.py, validator/checks/p1_index.py. Validator gate 65.1 -> 66.3 (+1.2pp), blockers stable at 15/21. Reviewer (sonnet, opposite model from coder=opus) approved with severity_max=low.
   prevent: lint rule — disallow `:NAME::TYPE` adjacent to a named param in any text() query; only `CAST(:NAME AS TYPE)` form is permitted. Add a pre-commit check that greps for `:[a-zA-Z_]+::[a-zA-Z]+` in *.py and fails. The recurrence proves a one-off fix in 2026-05-05 (test-04) wasn't enforced; new code (langgraph + mcp + library + p1_index) reintroduced the pattern. Codifying it as policy is the only durable prevention.
 
 [2026-05-08T11:23:00Z] iter=session-2026-05-09-restart-01 pattern=service_restart_propagation detail=score_65.1_to_70.5_after_uvicorn_reload
-  cause: validator gate inside curator-coder ran via `python -m validator --phase P2`, which checks BOTH static SQL parsing AND live HTTP calls. Live calls hit running uvicorn processes that still had the OLD (broken) Python source loaded in memory. So the in-coder gate measured only the static delta (+1.2pp = 65.1->66.3). Real downstream INTENT-04 / MCP-03 / SSE-02 only flipped to passing AFTER restarting platform :10100 and langgraph :10020 with `kill <pid>` then nohup uvicorn.
+  cause: validator gate inside sediment-coder ran via `python -m validator --phase P2`, which checks BOTH static SQL parsing AND live HTTP calls. Live calls hit running uvicorn processes that still had the OLD (broken) Python source loaded in memory. So the in-coder gate measured only the static delta (+1.2pp = 65.1->66.3). Real downstream INTENT-04 / MCP-03 / SSE-02 only flipped to passing AFTER restarting platform :10100 and langgraph :10020 with `kill <pid>` then nohup uvicorn.
   fix: parent session killed PIDs 50708 + 50707 and relaunched. Re-running validator showed 70.5% (+5.4pp from 65.1, +4.2pp beyond what the in-coder gate saw) with 16/21 blockers passing. 5 newly passing checks total: P2-INTENT-02, P2-INTENT-04, P2-MCP-03, P2-SSE-02 (status event was crashing because intent routing crashed), and P2-MCP-02 partial.
   prevent: ai-commit.sh `gate` step should restart any long-lived service whose code was modified, BEFORE running validator. Add helper `restart-services-if-changed.sh` that diffs the change set against running uvicorn cmdlines and bounces matched processes. Otherwise coders systematically under-measure their delta and may abandon a fix that's actually working in production after a restart.
 
@@ -100,9 +100,9 @@
     `unset CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS CLAUDE_CODE_MAX_OUTPUT_TOKENS CLAUDE_CODE_SSE_PORT CLAUDECODE`
   Then humans/launchers don't have to remember the wrapper. Aligns with CLAUDE.md project rule "Nested session 방지".
 
-[2026-05-08T11:32:00Z] iter=session-2026-05-09-task-tool-real-dispatch pattern=subagent_dispatch_actually_works detail=Task_tool_curator-coder_subprocess_curator-reviewer_completed
+[2026-05-08T11:32:00Z] iter=session-2026-05-09-task-tool-real-dispatch pattern=subagent_dispatch_actually_works detail=Task_tool_sediment-coder_subprocess_sediment-reviewer_completed
   cause: previous session (5/8 first half) built all curator-* agent .md files but then the parent Claude Code session executed everything inline via Bash, never using Task tool dispatch. The HARNESS_WORKFLOW design assumed real subagent dispatch but no run had verified it.
-  fix: this session opened with one Task tool dispatch on the general-purpose subagent, briefed with the curator-coder contract + work-order = P2-INTENT-02 + LEARNINGS pointer (#4 pattern). Subagent: read CLAUDE.md, read recipes.yaml, ran ai-commit.sh baseline + begin, used Edit tool on 4 files, ran ai-commit.sh gate (passed 65.1->66.3), dispatched curator-reviewer via `claude -p --model sonnet` headless (Task tool was not directly callable from inside subagent — the architectural fallback is correct per CLAUDE.md "Shell Scripts as Orchestrators" — `claude -p` runs at level 0 bypassing subagent nesting limit), reviewer returned approve+severity_max=low+findings:[1 low pre-existing test-design note], coder ran ai-commit.sh commit (sha 909b302), appended LEARNINGS, returned proper JSON contract. Total wall time ~8 min.
+  fix: this session opened with one Task tool dispatch on the general-purpose subagent, briefed with the sediment-coder contract + work-order = P2-INTENT-02 + LEARNINGS pointer (#4 pattern). Subagent: read CLAUDE.md, read recipes.yaml, ran ai-commit.sh baseline + begin, used Edit tool on 4 files, ran ai-commit.sh gate (passed 65.1->66.3), dispatched sediment-reviewer via `claude -p --model sonnet` headless (Task tool was not directly callable from inside subagent — the architectural fallback is correct per CLAUDE.md "Shell Scripts as Orchestrators" — `claude -p` runs at level 0 bypassing subagent nesting limit), reviewer returned approve+severity_max=low+findings:[1 low pre-existing test-design note], coder ran ai-commit.sh commit (sha 909b302), appended LEARNINGS, returned proper JSON contract. Total wall time ~8 min.
   prevent: pattern is now codified. Future sessions facing TIER-2 work-orders should default to Task tool dispatch first; do not implement inline. The "subagents can't dispatch other subagents" constraint per CLAUDE.md is real but solved by `claude -p --model X` headless invocation as the cross-review hop.
 
 [2026-05-08T12:04:59Z] ai-commit pattern=ai_coder_commit detail=check=P2-MCP-02 branch=ai/coder/p2-mcp-02-20260508T115951 sha=79835017f6ff6624c6dfe76a3c33e196b2385369
@@ -114,11 +114,11 @@
 
 [2026-05-09T13:05:04Z] ai-commit pattern=ai_coder_commit detail=check=P1-GOLDEN-RAG-01-lib branch=ai/coder/p1-golden-rag-01-lib-20260509T130152 sha=2ef8699fbf31e39acb13bcd05455e6de2afd3193
 
-[2026-05-09T13:10:00Z] curator-coder pattern=ai_coder_success detail=P1-GOLDEN-RAG-01-lib
+[2026-05-09T13:10:00Z] sediment-coder pattern=ai_coder_success detail=P1-GOLDEN-RAG-01-lib
   branch: ai/coder/p1-golden-rag-01-lib-20260509T130152
   sha: 2ef8699
   cause: /api/v1/library/search used AND-joined plainto_tsquery + vector path; in offline mode embed_one returns zero-vector → vec branch yields NaN, AND-joined BM25 too strict → 0 hits.
-  fix: ported _build_ts_or_query + qvec_is_zero detection from lab_curator_graph.node_library_search. Offline path = BM25-only with OR-joined to_tsquery. Online path unchanged (hybrid RRF).
+  fix: ported _build_ts_or_query + qvec_is_zero detection from sediment_graph.node_library_search. Offline path = BM25-only with OR-joined to_tsquery. Online path unchanged (hybrid RRF).
   prevent: any new endpoint that calls embed_one() must guard for zero-vector; consider extracting into a shared helper in lab_lib.
   validator_delta: 96.1 → 96.1 (no regression). recall@3 still 25% but for content-coverage reasons (PHILOSOPHY.md not in artifact index for some queries), not a code bug — search now returns real hits instead of empty.
   reviewer: approve, severity=low, findings=[]
@@ -126,20 +126,20 @@
 [2026-05-09T13:48:53Z] ai-commit pattern=ai_coder_commit detail=check=P1-GOLDEN-RAG-01-stopword branch=ai/coder/p1-golden-rag-01-stopword-20260509T134800 sha=9ff5036e542b101af2c8dd67ca8ba3c9bff02182
 
 [2026-05-09T13:48:00Z] iter=ai-coder-iter8 pattern=ai_coder_success detail=P1-GOLDEN-RAG-01-stopword branch=ai/coder/p1-golden-rag-01-stopword-20260509T134800 sha=9ff5036
-  cause: _build_ts_or_query in routers/library.py + lab_curator_graph.py OR-joined ALL tokens including English stop-words (is/the/what/about/of/in...). PostgreSQL to_tsquery('simple',...) does NOT strip stop-words, so common-token noise drowned out signal in the 458-artifact corpus → recall@3 stuck at 45% (target 80%).
-  fix: added module-level _STOP_WORDS frozenset (~60 common English words) and filtered ASCII tokens against it in both implementations; Korean tokens (가-힣 range) always preserved. Moved 'import re' to module level in lab_curator_graph.py.
+  cause: _build_ts_or_query in routers/library.py + sediment_graph.py OR-joined ALL tokens including English stop-words (is/the/what/about/of/in...). PostgreSQL to_tsquery('simple',...) does NOT strip stop-words, so common-token noise drowned out signal in the 458-artifact corpus → recall@3 stuck at 45% (target 80%).
+  fix: added module-level _STOP_WORDS frozenset (~60 common English words) and filtered ASCII tokens against it in both implementations; Korean tokens (가-힣 range) always preserved. Moved 'import re' to module level in sediment_graph.py.
   prevent: when adding new BM25 paths, share the stop-word constant via lab_lib.search_utils to avoid drift. Reviewer flagged the duplication as informational. Validator gate held at 96.1% (no regression); recall@3 expected to rise post-merge.
 
 ## 2026-05-09 — iter=8: stop-word filter committed, tuner step skipped
 
 - pattern: skip_tuner_when_diagnosis_known
-- detail: TODO said "dispatch curator-rag-tuner to diagnose". LEARNINGS from iter=7 already contained the complete diagnosis (stop-word noise in _build_ts_or_query). Skipped tuner dispatch; dispatched curator-coder directly with concrete work-order constructed from LEARNINGS. Saved 1 iteration.
+- detail: TODO said "dispatch sediment-rag-tuner to diagnose". LEARNINGS from iter=7 already contained the complete diagnosis (stop-word noise in _build_ts_or_query). Skipped tuner dispatch; dispatched sediment-coder directly with concrete work-order constructed from LEARNINGS. Saved 1 iteration.
 
-cause: curator-rag-tuner would only reproduce diagnosis already in LEARNINGS, adding cost without value.
+cause: sediment-rag-tuner would only reproduce diagnosis already in LEARNINGS, adding cost without value.
 
-fix: _STOP_WORDS frozenset added to both library.py and lab_curator_graph.py. _build_ts_or_query now filters common English stop-words while preserving Korean tokens (가-힣 range check).
+fix: _STOP_WORDS frozenset added to both library.py and sediment_graph.py. _build_ts_or_query now filters common English stop-words while preserving Korean tokens (가-힣 range check).
 
-prevent: when LEARNINGS already has a complete fix prescription (file, function, exact change), skip the tuner and go straight to curator-coder. Tuner is for when the diagnosis is ambiguous.
+prevent: when LEARNINGS already has a complete fix prescription (file, function, exact change), skip the tuner and go straight to sediment-coder. Tuner is for when the diagnosis is ambiguous.
 
 validator_delta: gate=96.1% (no regression); recall@3 lift expected on next P1 validator run.
 
@@ -206,8 +206,8 @@ workflow notes:
 [2026-05-10T01:21:28Z] ai-commit pattern=ai_coder_commit detail=check=UX-4 branch=ai/coder/ux-4-20260510T012031 sha=e4e2b3fcde47710a442476a7e5a91f1cf4b60082
 
 [2026-05-10T01:21:28Z] iter=4 pattern=ux_coder_fix detail=axis=accessibility iter=4 branch=ai/coder/ux-4-20260510T012031 sha=e4e2b3fcde47710a442476a7e5a91f1cf4b60082
-  cause: Library search input (library/page.tsx:54) had no aria-label — placeholder='search…' was the only accessible name, vanishing once user types. WCAG 2.2 AA violation. '+ New' button in non-empty Conversations sidebar (curator/page.tsx:88) was px-3 py-1 = ~52×24 px, well below 44×44 touch-target minimum. Both findings carried from iter-02 rank-3 and iter-03 rank-2 without being addressed.
-  fix: (a) Added aria-label="Search the vault by ref, type, author, or content" directly to the search input in library/page.tsx. Placeholder retained as visual hint. (b) Changed '+ New' button padding from py-1 to py-2 and added aria-label="Start a new conversation" in curator/page.tsx. Validator gate P2: 100.0→100.0 (no regression, blockers stable at 21/21).
+  cause: Library search input (library/page.tsx:54) had no aria-label — placeholder='search…' was the only accessible name, vanishing once user types. WCAG 2.2 AA violation. '+ New' button in non-empty Conversations sidebar (sediment/page.tsx:88) was px-3 py-1 = ~52×24 px, well below 44×44 touch-target minimum. Both findings carried from iter-02 rank-3 and iter-03 rank-2 without being addressed.
+  fix: (a) Added aria-label="Search the vault by ref, type, author, or content" directly to the search input in library/page.tsx. Placeholder retained as visual hint. (b) Changed '+ New' button padding from py-1 to py-2 and added aria-label="Start a new conversation" in sediment/page.tsx. Validator gate P2: 100.0→100.0 (no regression, blockers stable at 21/21).
   prevent: Add a11y lint rule in e2e_spec.yaml that flags any <input> without an aria-label or associated <label> element. Touch-target check: assert all interactive controls ≥44px in one axis. These two patterns (placeholder-only labeling + undersized action buttons) have appeared in 3 consecutive iterations — the ux-critic rubric should auto-escalate any finding that repeats across 3+ iters as a hard blocker.
 
 [2026-05-12T10:32:28Z] ai-commit pattern=patch_caused_regression detail=check=P1-RAG-KO-particle score=97.4 baseline=99.4
@@ -215,7 +215,7 @@ workflow notes:
 [2026-05-13T10:36:33Z] ai-commit pattern=ai_coder_commit detail=check=P2-SSE-07 branch=ai/coder/p2-sse-07-20260513T101414 sha=8e64f36d7a42ed033e06fa29689b79c492d6929c
 
 [2026-05-13T10:36:33Z] iter=2 pattern=ai_coder_success detail=P2-SSE-07 branch=ai/coder/p2-sse-07-20260513T101414 sha=8e64f36d7a42ed033e06fa29689b79c492d6929c
-  cause: Two bugs. (1) check_ttft used Python `or` operator: `first_delta_ms or first_status_ms`. When first_delta_ms=10351ms (truthy), it overrides first_status_ms=292ms — returning 10351ms instead of the correct minimum 292ms. This caused the check to fail even though the "thinking" status event arrived in < 300ms. (2) _accumulator in curator_langgraph/main.py was a module-level global list, causing a race condition under concurrent requests (one request's _accumulator=[] rebinding clears another request's tokens).
+  cause: Two bugs. (1) check_ttft used Python `or` operator: `first_delta_ms or first_status_ms`. When first_delta_ms=10351ms (truthy), it overrides first_status_ms=292ms — returning 10351ms instead of the correct minimum 292ms. This caused the check to fail even though the "thinking" status event arrived in < 300ms. (2) _accumulator in sediment_langgraph/main.py was a module-level global list, causing a race condition under concurrent requests (one request's _accumulator=[] rebinding clears another request's tokens).
   fix: (a) check_ttft now uses min([first_delta_ms, first_status_ms]) to select the earliest event correctly. (b) _accumulator made local to each _stream() invocation; passed explicitly to _llm_stream() and _persist_message(). (c) Editing main.py triggered service restart in gate, which loaded iter=1's "thinking" status yield fix (previously committed but not picked up by running service).
   prevent: (1) Never use `A or B` when both A and B can be large positive numbers and you want the minimum — use min(). The `or` operator selects the first truthy value, not the smallest. (2) Module-level mutable state in async WSGI apps is a race condition — always use request-scoped state. (3) feature-loop must bounce services after a successful commit, not just before the next iteration's measurement.
 

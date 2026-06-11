@@ -1,4 +1,4 @@
-# Fly.io app config for AI Curator (HypeProof Lab).
+# Fly.io app config for Sediment (HypeProof Lab).
 #
 # Single-VM Phase 1 deployment: one container packs all 4 FastAPI services
 # behind nginx on port 8080. Postgres is a separate Fly Postgres cluster.

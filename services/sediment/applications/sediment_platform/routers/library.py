@@ -85,7 +85,7 @@ def _detect_query_type(q: str) -> Optional[str]:
 # names a project explicitly, boost artifacts under that path. Solves the
 # "동아일보 관련 칼럼이나 제안" → products/donga-roi class of failures where the
 # project nickname isn't in the document body verbatim. Mirrored from
-# lab_curator_graph.
+# sediment_graph.
 _PROJECT_HINT_MAP: dict[str, str] = {
     "donga": "donga", "동아": "donga", "동아일보": "donga",
     "academy": "ai-architect-academy", "아카데미": "ai-architect-academy",
@@ -126,7 +126,7 @@ def _build_ts_or_query(q: str) -> str:
 
     plainto_tsquery uses AND between terms — too strict for offline mode where
     embedding API is unavailable and we can't fall back to vector similarity.
-    Mirrors the pattern used by lab_curator_graph.node_library_search so that
+    Mirrors the pattern used by sediment_graph.node_library_search so that
     the platform /search endpoint behaves identically to the LangGraph node.
 
     English stop-words are filtered out (see _STOP_WORDS); Korean tokens are
@@ -257,7 +257,7 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
     a zero-vector yields NaN, so the vec branch contributes nothing AND the
     BM25 branch alone uses AND-joined plainto_tsquery (too strict for short
     knowledge queries). Detect zero-vector and switch to BM25-only with
-    OR-joined to_tsquery — mirrors lab_curator_graph.node_library_search.
+    OR-joined to_tsquery — mirrors sediment_graph.node_library_search.
     """
     bm25_first = _prefer_bm25_first(q)
     qvec = _embed_for_search(q, bm25_first=bm25_first)

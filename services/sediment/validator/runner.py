@@ -106,7 +106,7 @@ async def main_async(phase_id: str, iteration: int = 1, output_dir: Path | None 
 
 def main() -> None:
     import argparse
-    parser = argparse.ArgumentParser(description="AI Curator validator")
+    parser = argparse.ArgumentParser(description="Sediment validator")
     parser.add_argument("--phase", required=True, help="P0|P1|P2|P3")
     parser.add_argument("--iteration", type=int, default=1)
     parser.add_argument("--only-layers", nargs="+", help="L1 L3 ...")

@@ -38,10 +38,10 @@
 │     state: TODO.md + JOURNAL.md + STATE.json                 │
 ├──────────────────────────────────────────────────────────────┤
 │ L2  Subagent dispatch (within each Ralph iter)               │
-│     curator-validator / curator-loop-orchestrator /          │
-│     curator-fixer / curator-rag-tuner /                      │
-│     curator-rls-auditor / curator-e2e-debugger /             │
-│     curator-rubric-author                                    │
+│     sediment-validator / sediment-loop-orchestrator /          │
+│     sediment-fixer / sediment-rag-tuner /                      │
+│     sediment-rls-auditor / sediment-e2e-debugger /             │
+│     sediment-rubric-author                                    │
 ├──────────────────────────────────────────────────────────────┤
 │ L3  Validator harness (Python)                               │
 │     services/sediment/validator/                              │
@@ -53,7 +53,7 @@
 ├──────────────────────────────────────────────────────────────┤
 │ L4  Project under test                                       │
 │     services/sediment/applications/* (FastAPI 4 services)     │
-│     web/src/app/curator/* (Next.js)                          │
+│     frontend/app/sediment/* (Next.js)                          │
 │     infra/docker-compose.yml + init.sql                      │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -118,7 +118,7 @@ rm products/sediment/harness/ralph/{TODO.md,JOURNAL.md,STATE.json}
 | **Validator (inner)** | Rubric convergence within a phase | up to 50 | score ≥ 95% OR blockers OR stall OR cost |
 
 Ralph picks the next TODO and dispatches to a subagent (often
-`curator-loop-orchestrator`). That subagent runs the inner loop. When the inner
+`sediment-loop-orchestrator`). That subagent runs the inner loop. When the inner
 loop returns, Ralph reads the result, updates TODO/JOURNAL, and decides the next
 move on its NEXT iter (fresh subprocess).
 

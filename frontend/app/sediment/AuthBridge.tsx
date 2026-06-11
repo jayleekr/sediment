@@ -14,25 +14,25 @@ export default function AuthBridge() {
 
   useEffect(() => {
     const s = session as
-      | { curatorToken?: string; curatorError?: string }
+      | { sedimentToken?: string; sedimentError?: string }
       | null;
     if (!s) return;
-    if (s.curatorError) {
-      setErr(s.curatorError);
+    if (s.sedimentError) {
+      setErr(s.sedimentError);
       return;
     }
-    if (s.curatorToken && getToken() !== s.curatorToken) {
+    if (s.sedimentToken && getToken() !== s.sedimentToken) {
       // Loop guard: api() marks tokens as `rejected` on 401. NextAuth's
       // periodic session refetch produces a NEW session object even when
-      // curatorToken is unchanged → without this gate, AuthBridge sees
-      // localStorage empty (api cleared it) + session.curatorToken (still
+      // sedimentToken is unchanged → without this gate, AuthBridge sees
+      // localStorage empty (api cleared it) + session.sedimentToken (still
       // the bad JWT) → reinstalls → 401 → clearToken → repeat. Infinite
       // reload. If the same JWT just got rejected, leave localStorage
       // empty and let page.tsx render the sign-in card.
-      if (isTokenRejected(s.curatorToken)) {
+      if (isTokenRejected(s.sedimentToken)) {
         return;
       }
-      setToken(s.curatorToken);
+      setToken(s.sedimentToken);
       // After sign-in lands, nudge the page to re-read the new token.
       //   - At /sediment landing → land on the chat shell.
       //   - Anywhere else (e.g. /sediment/device for device-flow approval,

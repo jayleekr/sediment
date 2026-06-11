@@ -1,13 +1,19 @@
-/* Sediment (codename: curator) — client API helpers
+/* Sediment — client API helpers
  *
- * Local dev: store JWT in localStorage under "curator.token".
+ * Local dev: store JWT in localStorage under "curator.token" (key keeps the
+ * retired codename on purpose — see CLAUDE.md "Brand").
  * Production (Phase 5): NextAuth.js session token.
  */
 
 export const PLATFORM_BASE =
-  (process.env.NEXT_PUBLIC_CURATOR_PLATFORM_URL as string) || "http://localhost:10100";
+  (process.env.NEXT_PUBLIC_SEDIMENT_PLATFORM_URL as string) ||
+  // legacy fallback — Vercel prod still sets the CURATOR names; drop once migrated
+  (process.env.NEXT_PUBLIC_CURATOR_PLATFORM_URL as string) ||
+  "http://localhost:10100";
 export const LANGGRAPH_BASE =
-  (process.env.NEXT_PUBLIC_CURATOR_LANGGRAPH_URL as string) || "http://localhost:10020";
+  (process.env.NEXT_PUBLIC_SEDIMENT_LANGGRAPH_URL as string) ||
+  (process.env.NEXT_PUBLIC_CURATOR_LANGGRAPH_URL as string) ||
+  "http://localhost:10020";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -23,8 +29,8 @@ export function clearToken() {
 }
 
 /** Mark a specific JWT as backend-rejected. AuthBridge checks this before
- *  re-mirroring session.curatorToken into localStorage — without this guard,
- *  NextAuth's periodic session refetch returns the same (now-bad) curatorToken,
+ *  re-mirroring session.sedimentToken into localStorage — without this guard,
+ *  NextAuth's periodic session refetch returns the same (now-bad) sedimentToken,
  *  AuthBridge re-installs it, api() gets 401 again, clearToken() fires, repeat
  *  → infinite reload loop. Keyed on the token string itself so a fresh sign-in
  *  (different JWT) clears the gate naturally. */
@@ -63,7 +69,7 @@ export async function api<T = unknown>(
     // Expired / invalid token → wipe it AND tell AuthBridge "this exact
     // JWT got rejected, don't keep re-installing it from session". Without
     // the markTokenRejected, NextAuth's session refetch produces a new
-    // session object every cycle even when curatorToken is unchanged;
+    // session object every cycle even when sedimentToken is unchanged;
     // AuthBridge re-applies, api() rejects, repeat — infinite reload.
     if (res.status === 401) {
       if (token) markTokenRejected(token);

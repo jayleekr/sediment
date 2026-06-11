@@ -1,10 +1,10 @@
 # UX Rubric — visual + UX scoring for E2E screenshots
 #
 # Adapted from deck-critic (slide visual scoring) + plan-design-review (web UX).
-# Used by curator-ux-critic agent. Each axis is 1-5; overall = round(mean*2) capped at 9.
+# Used by sediment-ux-critic agent. Each axis is 1-5; overall = round(mean*2) capped at 9.
 #
 # Targets are not "release blockers" — they're guidance for ux-loop iteration.
-# The loop dispatches curator-coder when any axis < 4 with concrete findings.
+# The loop dispatches sediment-coder when any axis < 4 with concrete findings.
 
 version: 1
 target_overall: 8           # ux-loop converges when overall >= 8 (mean 4.0 across axes)
@@ -61,7 +61,7 @@ axes:
       Grid alignment, consistent margins/padding, predictable component
       placement across pages. Nav placement stable across pages.
     evaluators:
-      - "Header (AI Curator + Chat / Library / Members) renders identically on every page"
+      - "Header (Sediment + Chat / Library / Members) renders identically on every page"
       - "Card padding consistent across components (e.g. 16px or 24px, not mixed)"
       - "Tables / lists use uniform row spacing"
     deductions:

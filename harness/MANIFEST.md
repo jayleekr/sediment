@@ -3,7 +3,7 @@
 > Reusable validation toolkit for AI/LLM products. Project-agnostic by design.
 > SSL-structured (Liang et al. 2026, *From Skill Text to Skill Structure*, arXiv:2604.24026).
 
-This manifest is the **single source of truth** for what the harness expects from a host project and what it provides in return. Drop the `harness/` directory + `.claude/agents/curator-*.md` + `.claude/skills/curator-validate/` into any project, satisfy the contracts below, and you have a 50-iteration self-improving validation loop.
+This manifest is the **single source of truth** for what the harness expects from a host project and what it provides in return. Drop the `harness/` directory + `.claude/agents/sediment-*.md` + `.claude/skills/sediment-validate/` into any project, satisfy the contracts below, and you have a 50-iteration self-improving validation loop.
 
 ---
 
@@ -21,21 +21,21 @@ This separation is what makes components portable: you can swap projects without
 
 ## 1. Components
 
-### 1.1 Subagents (`.claude/agents/curator-*.md`)
+### 1.1 Subagents (`.claude/agents/sediment-*.md`)
 
 | Agent | Scheduling | Structural | Logical |
 |---|---|---|---|
-| `curator-validator` | on-demand or via /slash | rubric → dispatch → triage | in: phase / out: report + specialist? |
-| `curator-loop-orchestrator` | mode=loop | bootstrap → loop → escalate | in: phase / out: convergence status |
-| `curator-fixer` | after failed iter | parse work-order → match recipe → exec | in: work-order / out: applied / unfixable |
-| `curator-rag-tuner` | on RAG failure | gather → diagnose → propose | in: report.json / out: tuning proposal |
-| `curator-rls-auditor` | on RLS failure | enumerate → probe → trace | in: report.json / out: audit report |
-| `curator-e2e-debugger` | on E2E failure | screenshots → classify → propose | in: iter dir / out: e2e proposal |
-| `curator-rubric-author` | on feature add | diff → map → draft | in: git ref / out: rubric proposal |
+| `sediment-validator` | on-demand or via /slash | rubric → dispatch → triage | in: phase / out: report + specialist? |
+| `sediment-loop-orchestrator` | mode=loop | bootstrap → loop → escalate | in: phase / out: convergence status |
+| `sediment-fixer` | after failed iter | parse work-order → match recipe → exec | in: work-order / out: applied / unfixable |
+| `sediment-rag-tuner` | on RAG failure | gather → diagnose → propose | in: report.json / out: tuning proposal |
+| `sediment-rls-auditor` | on RLS failure | enumerate → probe → trace | in: report.json / out: audit report |
+| `sediment-e2e-debugger` | on E2E failure | screenshots → classify → propose | in: iter dir / out: e2e proposal |
+| `sediment-rubric-author` | on feature add | diff → map → draft | in: git ref / out: rubric proposal |
 
-### 1.2 Slash command (`.claude/skills/curator-validate/`)
+### 1.2 Slash command (`.claude/skills/sediment-validate/`)
 
-`/curator-validate <phase> [single|loop] [all|rag|rls|e2e|security]`
+`/sediment-validate <phase> [single|loop] [all|rag|rls|e2e|security]`
 
 Dispatches to the right subagent. No orchestration logic — only routing.
 
@@ -102,7 +102,7 @@ The harness writes:
 
 ```bash
 # From the new project's root:
-python3 path/to/curator/harness/bootstrap.py \
+python3 path/to/sediment/harness/bootstrap.py \
   --target ./services/<svc>/validator \
   --project-name <name> \
   --tenant-table-list "tenants,members,artifacts,..." \
@@ -127,15 +127,15 @@ The Python harness is project-agnostic — it reads `rubric.yaml` and dispatches
 ```
 User
   │
-  └─ /curator-validate p1 loop
+  └─ /sediment-validate p1 loop
         │
         ▼
-   [SKILL] curator-validate
+   [SKILL] sediment-validate
         │
-        └─ Task: subagent_type=curator-loop-orchestrator
+        └─ Task: subagent_type=sediment-loop-orchestrator
               │
               ▼
-        [AGENT] curator-loop-orchestrator
+        [AGENT] sediment-loop-orchestrator
               │
               ├─ Bash: make validate-loop PHASE=p1
               │       │
@@ -144,7 +144,7 @@ User
               │             ├─ e2e_runner.py (Playwright)
               │             └─ fixer.py (recipes)
               │
-              └─ Task: subagent_type=curator-rag-tuner (if RAG fails)
+              └─ Task: subagent_type=sediment-rag-tuner (if RAG fails)
                     │
                     └─ Read report.json + golden_queries.yaml
                        Write tuning-proposal-*.md
@@ -164,8 +164,8 @@ When porting to a new project:
 | `validator/e2e_spec.yaml` | YES — per project |
 | `validator/recipes.yaml` | YES — per project |
 | `validator/checks/*.py` | YES — but copy library checks (lib_rls, lib_rag, lib_security) verbatim |
-| `.claude/agents/curator-*.md` | LIGHT — edit "First: Read Context" file paths only |
-| `.claude/skills/curator-validate/SKILL.md` | LIGHT — rename trigger, file paths |
+| `.claude/agents/sediment-*.md` | LIGHT — edit "First: Read Context" file paths only |
+| `.claude/skills/sediment-validate/SKILL.md` | LIGHT — rename trigger, file paths |
 
 The 80/20: ~80% of the code is reusable, ~20% (rubric content, project-specific check functions) is per-project.
 

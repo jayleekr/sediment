@@ -1,4 +1,4 @@
--- AI Curator — Postgres init
+-- Sediment — Postgres init
 -- Multi-tenant schema with Row-Level Security from day 1.
 -- Single DB, single schema, tenant_id on every table.
 

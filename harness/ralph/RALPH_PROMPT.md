@@ -95,8 +95,8 @@ completing it. Do NOT try to finish multiple tasks per iteration.
 
 Concrete change examples:
 - run `make validate-pN` and append result to JOURNAL.md
-- if validator failed: invoke specialist subagent (curator-fixer / curator-rag-tuner /
-  curator-rls-auditor / curator-e2e-debugger) via the Task tool
+- if validator failed: invoke specialist subagent (sediment-fixer / sediment-rag-tuner /
+  sediment-rls-auditor / sediment-e2e-debugger) via the Task tool
 - if no validator failure but score < 95%: read report.md, dispatch the right specialist
 - if all P0-P3 converged: append `STOP` to JOURNAL.md and exit
 - if same task hasn't moved forward in 5 iterations: mark `[STALL]` in TODO + escalate
@@ -131,28 +131,28 @@ At the END (after your one change):
 
 Default order: P0 → P1 → P2 → P3.
 - Don't start P(N+1) until P(N) shows "converged" in `output/validation/loop-PN-*/convergence.md`.
-- For each phase, prefer the loop runner: invoke `/curator-validate pN loop` via the
-  curator-loop-orchestrator subagent. Single-shot is OK for quick check only.
+- For each phase, prefer the loop runner: invoke `/sediment-validate pN loop` via the
+  sediment-loop-orchestrator subagent. Single-shot is OK for quick check only.
 
 ## When to dispatch specialists (with code-mode)
 
 The flow for TIER-2 failures (code change required):
-  specialist diagnoses → dispatches **curator-coder** → coder writes diff +
-  branch + validator gate → **curator-reviewer** cross-checks → auto-commit on
+  specialist diagnoses → dispatches **sediment-coder** → coder writes diff +
+  branch + validator gate → **sediment-reviewer** cross-checks → auto-commit on
   approve. Human only sees this if reviewer rejects 2 attempts.
 
 | Failure pattern | Tier | Flow |
 |---|---|---|
-| `*-INFRA-*`, `*-HEALTH-*` | 1 | curator-fixer applies recipe (no code change) |
-| `*-INGEST-01/02` | 1 | curator-fixer starts service |
-| `*-GOLDEN-RAG-*`, `*-SEARCH-*` | 2 | curator-rag-tuner → curator-coder → reviewer → commit |
-| `*-INGEST-04` (idempotency) | 2 | curator-rag-tuner → curator-coder |
-| `*-E2E-*` | 2 | curator-e2e-debugger → curator-coder → reviewer |
-| `*-SEC-*` | 2 | curator-coder strengthens system prompt → reviewer (adversarial) |
-| `*-INTENT-*` | 2 | curator-coder edits routing rules → reviewer |
-| `*-CHUNK-*`, `*-DDL-*` (non-RLS) | 2 | curator-coder → Alembic migration → reviewer |
-| New feature shipped | 2 | curator-rubric-author proposal → curator-coder appends to rubric.yaml |
-| `*-RLS-*` | 3 | curator-rls-auditor diagnose ONLY. NEVER auto-fix. Escalate to TODO. |
+| `*-INFRA-*`, `*-HEALTH-*` | 1 | sediment-fixer applies recipe (no code change) |
+| `*-INGEST-01/02` | 1 | sediment-fixer starts service |
+| `*-GOLDEN-RAG-*`, `*-SEARCH-*` | 2 | sediment-rag-tuner → sediment-coder → reviewer → commit |
+| `*-INGEST-04` (idempotency) | 2 | sediment-rag-tuner → sediment-coder |
+| `*-E2E-*` | 2 | sediment-e2e-debugger → sediment-coder → reviewer |
+| `*-SEC-*` | 2 | sediment-coder strengthens system prompt → reviewer (adversarial) |
+| `*-INTENT-*` | 2 | sediment-coder edits routing rules → reviewer |
+| `*-CHUNK-*`, `*-DDL-*` (non-RLS) | 2 | sediment-coder → Alembic migration → reviewer |
+| New feature shipped | 2 | sediment-rubric-author proposal → sediment-coder appends to rubric.yaml |
+| `*-RLS-*` | 3 | sediment-rls-auditor diagnose ONLY. NEVER auto-fix. Escalate to TODO. |
 | init.sql / .env / billing.py edits needed | 4 | guard.json blocks. Write LEARNINGS, escalate. |
 
 ## Output for this iteration

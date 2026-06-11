@@ -33,7 +33,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 async def router_only():
     """Run only the router node — fast, no retrieval, no LLM."""
-    from applications.sediment_langgraph.graphs.lab_curator_graph import node_router
+    from applications.sediment_langgraph.graphs.sediment_graph import node_router
 
     async def _run(query: str) -> str:
         # Minimal state — router only reads `query` and `tenant_id`.
