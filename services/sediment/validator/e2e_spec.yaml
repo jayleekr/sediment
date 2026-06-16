@@ -367,7 +367,7 @@ flows:
       # picked up the right NEXT_PUBLIC_* vars and isn't lying about its env.
       - action: assert
         type: text_contains
-        selector: "span.bg-emerald-100"
+        selector: "[data-testid='sediment-env-badge']"
         value: "prod"
       - action: navigate
         url: "/sediment/library"
