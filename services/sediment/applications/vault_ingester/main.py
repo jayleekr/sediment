@@ -208,6 +208,7 @@ class WebhookFile(BaseModel):
 
 class WebhookIngestReq(BaseModel):
     ref: str = "unknown"               # git ref / sha, for the audit event
+    repo: Optional[str] = None         # "owner/name" — maps to a tenant (sediment P3)
     files: list[WebhookFile]
 
 
@@ -219,6 +220,53 @@ async def _default_tenant_id() -> Optional[str]:
         )
         row = r.first()
         return row[0] if row else None
+
+
+async def _tenant_for_repo(repo: str) -> Optional[str]:
+    """Map a GitHub repo ("owner/name") → tenant_id via the integrations table.
+    Uses the already-present integrations(kind='github', config->>'repo') row."""
+    async with service_session() as s:
+        r = await s.execute(
+            text(
+                "SELECT tenant_id::text FROM integrations "
+                "WHERE kind = 'github' AND config->>'repo' = :repo LIMIT 1"
+            ),
+            {"repo": repo},
+        )
+        row = r.first()
+        return row[0] if row else None
+
+
+async def _tenant_count() -> int:
+    async with service_session() as s:
+        return (await s.execute(text("SELECT count(*) FROM tenants"))).scalar_one()
+
+
+async def _resolve_webhook_tenant(repo: Optional[str]) -> str:
+    """Decide which tenant an inbound webhook belongs to (sediment P3).
+
+    1. repo → integrations mapping (explicit, multi-tenant safe).
+    2. fallback to the single default tenant, but ONLY when exactly one tenant
+       exists (preserves today's single-tenant behaviour).
+    3. otherwise refuse (400) — never silently route an unmapped repo to a guess,
+       which would write one tenant's data into another's rows.
+    """
+    if repo:
+        tid = await _tenant_for_repo(repo)
+        if tid:
+            return tid
+    if await _tenant_count() == 1:
+        tid = await _default_tenant_id()
+        if tid:
+            return tid
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"cannot resolve tenant for repo={repo!r}: no github integration "
+            "mapping and more than one tenant exists. Add an integrations row "
+            "(kind='github', config->>'repo')."
+        ),
+    )
 
 
 def _verify_github_sig(raw: bytes, header: Optional[str]) -> bool:
@@ -246,9 +294,9 @@ async def webhook_ingest(request: Request):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"bad payload: {e}")
 
-    tid = await _default_tenant_id()
-    if not tid:
-        raise HTTPException(status_code=500, detail="default tenant not found — run `make seed`")
+    # Resolve tenant from the repo (sediment P3) instead of always defaulting.
+    # Single-tenant deployments are unaffected; multi-tenant + unmapped → 400.
+    tid = await _resolve_webhook_tenant(req.repo)
 
     # Canonical filters from lab_lib (pure helpers, no vault-root dependency).
     # Previously imported from scripts.ingest_repo, but that module raises

@@ -75,13 +75,17 @@ jobs:
                       except FileNotFoundError:
                           pass
               print(f"diff mode: {len(files)} changed markdown file(s)")
-          body = json.dumps({"ref": after, "files": files})
+          # repo ("owner/name") lets the ingester route to the right tenant
+          # (sediment P3). Harmless for single-tenant; required once >1 tenant.
+          repo = os.environ.get("REPO") or None
+          body = json.dumps({"ref": after, "repo": repo, "files": files})
           with open("payload.json", "w", encoding="utf-8") as fh:
               fh.write(body)
         env:
           MODE: ${{ inputs.mode || 'diff' }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
+          REPO: ${{ github.repository }}
       - name: Sign + POST to Sediment ingester (chunked)
         run: |
           [ -s payload.json ] || { echo "no payload"; exit 0; }
@@ -92,11 +96,12 @@ jobs:
           import json
           data = json.load(open("payload.json"))
           ref, files = data["ref"], data["files"]
+          repo = data.get("repo")          # carry repo through to each batch (P3)
           CHUNK = 30
           n = 0
           for i in range(0, len(files) or 1, CHUNK):
               with open(f"payload.batch.{n:04d}.json", "w") as f:
-                  json.dump({"ref": ref, "files": files[i:i+CHUNK]}, f)
+                  json.dump({"ref": ref, "repo": repo, "files": files[i:i+CHUNK]}, f)
               n += 1
           print(f"split {len(files)} files into {n} batch(es) of <={CHUNK}")
           PY
