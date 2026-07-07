@@ -129,7 +129,12 @@ export default function ConversationPage() {
             done: true,
           }));
           try {
-            await load(); // re-pull messages so citations are persisted
+            const msgs = await load(); // re-pull messages so citations are persisted
+            if (msgs[msgs.length - 1]?.role === "assistant") {
+              // The persisted row now renders the answer; hide the live bubble
+              // so the answer isn't shown twice.
+              setStream((s) => (s.error ? s : { ...s, buffer: "" }));
+            }
           } catch {
             // Keep the stream error visible instead of replacing it with a blank shell.
           }
