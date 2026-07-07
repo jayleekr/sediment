@@ -18,6 +18,8 @@ docs/_build/
 # Auto-updated pointers to most-recent validation run — noise in commits.
 output/validation/P*-latest.json
 output/validation/P*-latest.md
+# Per-run metric history — VM/CI-local, uploaded as a workflow artifact.
+output/validation/history/
 # Playwright screenshots from E2E runs (local dev + CI smoke uploads).
 output/validation/screenshots/
 # Ralph runtime state — restored from templates each run.

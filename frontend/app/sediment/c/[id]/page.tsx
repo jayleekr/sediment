@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { api, citeExport, getFreshness, type Citation, type Freshness, type Message } from "../../lib/api";
+import { api, citeExport, sendSignal, promoteToGolden, getFreshness, type Citation, type Freshness, type Message } from "../../lib/api";
 import { streamCurator } from "../../lib/sse";
 import { EmptyState, SectionHeader, Surface, TrustBadge } from "../../components/ui";
 
@@ -198,6 +198,9 @@ export default function ConversationPage() {
             {messages.map((m, i) => (
               <div key={m.id}>
                 <Bubble role={m.role} content={m.content} citations={m.citations} />
+                {m.role === "assistant" && !m.id.startsWith("tmp-") && (
+                  <MessageActions convId={id} messageId={m.id} content={m.content} />
+                )}
                 {m.role === "assistant" &&
                   (!m.citations || m.citations.length === 0) &&
                   isNoEvidenceText(m.content) && (
@@ -613,6 +616,98 @@ function NoEvidencePanel({ query }: { query: string }) {
       <p className="mt-2.5 text-[13px] leading-6 text-ink-3">
         Tip: chat retrieval is stricter than library search. Direct name or filename queries often work better there.
       </p>
+    </div>
+  );
+}
+
+// Feedback affordances under each persisted assistant message. All handlers
+// are fire-and-forget: sendSignal/promoteToGolden never throw and never touch
+// the token, so a failing signal cannot break chat. Rendered only on
+// server-reloaded assistant rows (real UUID `m.id`), never the live stream
+// bubble (no id until onDone reload).
+function MessageActions({ convId, messageId, content }: { convId: string; messageId: string; content: string }) {
+  const [copied, setCopied] = useState(false);
+  const [vote, setVote] = useState<null | "up" | "down">(null);
+  const [reporting, setReporting] = useState(false);
+  const [reason, setReason] = useState("");
+  const [reported, setReported] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch {
+      /* clipboard blocked */
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+    sendSignal("copy", messageId); // fire-and-forget
+  }
+  function onUp() {
+    setVote("up");
+    sendSignal("thumbs_up", messageId);
+  }
+  function onDown() {
+    setVote("down");
+    setReporting(true);
+    sendSignal("thumbs_down", messageId);
+  }
+  async function submitReport() {
+    const r = reason.trim();
+    if (r.length < 3) return; // server requires min 3
+    const ok = await promoteToGolden({ conv_id: convId, message_id: messageId, reason: r });
+    if (ok) {
+      setReported(true);
+      setReporting(false);
+    }
+  }
+
+  return (
+    <div className="ml-1 mt-1.5 flex flex-wrap items-center gap-4 font-mono text-[11px] uppercase tracking-wide">
+      <button
+        type="button"
+        onClick={onCopy}
+        className={`transition-colors hover:text-accent ${copied ? "text-sage" : "text-ink-3"}`}
+      >
+        {copied ? "✓ copied" : "copy"}
+      </button>
+      <button
+        type="button"
+        onClick={onUp}
+        className={`transition-colors hover:text-accent ${vote === "up" ? "text-sage" : "text-ink-3"}`}
+        aria-pressed={vote === "up"}
+      >
+        ↑ helpful
+      </button>
+      <button
+        type="button"
+        onClick={onDown}
+        className={`transition-colors hover:text-accent ${vote === "down" ? "text-accent" : "text-ink-3"}`}
+        aria-pressed={vote === "down"}
+      >
+        ↓ not helpful
+      </button>
+      {reported && <span className="text-sage">✓ reported</span>}
+      {reporting && !reported && (
+        <span className="flex w-full items-center gap-2 normal-case tracking-normal sm:w-auto">
+          <input
+            className="min-h-8 flex-1 rounded-md border border-rule bg-paper-2/30 px-2.5 py-1 font-body text-[13px] text-ink outline-none focus:border-accent"
+            placeholder="what's wrong with this answer?"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitReport();
+            }}
+          />
+          <button
+            type="button"
+            onClick={submitReport}
+            disabled={reason.trim().length < 3}
+            className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-paper transition-colors hover:bg-accent-ink disabled:opacity-50"
+          >
+            report
+          </button>
+        </span>
+      )}
     </div>
   );
 }

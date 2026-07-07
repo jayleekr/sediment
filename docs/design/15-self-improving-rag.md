@@ -40,7 +40,7 @@ From the internal survey:
 | Intent golden (31 cases) | `services/sediment/tests/test_ask_intent_golden.py` | Router fidelity |
 | Live runner | `services/sediment/scripts/run_golden_against_prod.py` | E2E from prod-real input → prod-real answer |
 | Validator framework (5 check types, Phase 0-5, severity-weighted scoring) | `services/sediment/validator/rubric.yaml` + `validator/checks/lib_rag.py` | Recall@K, MRR, latency histograms |
-| Phase 5.5 dogfood gate (10 measurable criteria) | `PHASE_5_5_DOGFOOD_GATE.md` | Quality contract (NPS, faithfulness, thumbs-up, ...) |
+| Phase 5.5 dogfood gate (10 measurable criteria) | `validator/checks/p5_dogfood.py` (spec `PHASE_5_5_DOGFOOD_GATE.md` absent) | Quality contract (NPS, faithfulness, thumbs-up, ...) |
 | Event store + feedback POST | `events` + `mcp_call_log` + `/api/v1/feedback` | Per-query traces, ratings (skeleton wired) |
 | Ralph supervisor + LEARNINGS.md | `harness/ralph/` | Autonomous loop that already learns from failure (35KB / 200+ patterns) |
 | Daily P3 cron with Discord regression alerts | `make p3-cron-install` | Already pings when checks regress |

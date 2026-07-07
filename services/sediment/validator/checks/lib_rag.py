@@ -19,6 +19,8 @@ from lab_lib.db import service_session
 from lab_lib.settings import settings
 from sqlalchemy import text
 
+from validator.history import append_history
+
 GOLDEN_PATH = Path(__file__).resolve().parent.parent / "golden_queries.yaml"
 
 
@@ -83,6 +85,7 @@ async def check_recall_at_k(spec: dict, k: int = 3, min_pct: int = 80, **_) -> d
         return {"passed": False, "message": "no queries to evaluate"}
     recalls = [_recall_at_k(r["hits"], r["ideal_refs"], k) for r in rows]
     avg = sum(recalls) / len(recalls) * 100
+    append_history(f"recall_at_{k}", round(avg, 1), phase="P1", n=len(rows))
     ok = avg >= min_pct
     failed = [r["id"] for r, rec in zip(rows, recalls) if rec < 0.5]
     return {
@@ -101,6 +104,7 @@ async def check_mrr(spec: dict, min_mrr: float = 0.5, **_) -> dict:
         return {"passed": False, "message": "no queries"}
     rrs = [_reciprocal_rank(r["hits"], r["ideal_refs"]) for r in rows]
     mrr = sum(rrs) / len(rrs)
+    append_history("mrr", round(mrr, 3), phase="P1", n=len(rows))
     return {
         "passed": mrr >= min_mrr,
         "actual": {"mrr": round(mrr, 3)},
