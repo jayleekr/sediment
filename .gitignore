@@ -60,3 +60,4 @@ output/reviews/
 # Personal asset dumps (KakaoTalk photos, internal docs) — local only.
 assets/
 
+frontend/test-results/
