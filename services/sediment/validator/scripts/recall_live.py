@@ -21,8 +21,9 @@ Usage:
 
 Exit codes:
     0  ok — no regression vs baseline
-    1  unrecoverable error (auth fail / network / search HTTP error)
+    1  unrecoverable error (network / partial search HTTP error)
     2  recall regression detected (drop in PASS count below threshold)
+    3  auth failure — every query returned 401/403 (expired/invalid CI token)
 """
 from __future__ import annotations
 import asyncio
@@ -30,10 +31,13 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 import yaml
+
+from validator.history import append_history
 
 API = os.environ.get("SEDIMENT_API", "https://hypeproof-sediment.fly.dev")
 EMAIL = os.environ.get("SEDIMENT_EMAIL", "jayleekr0125@gmail.com")
@@ -161,24 +165,44 @@ async def main():
     text, pass_n, error_rows = _format(rep)
     print(text)
 
+    append_history("recall_at_3_prod", pass_n, phase="P1", n=len(rep["rows"]))
+
     # Write machine-readable summary for CI consumption.
+    details = [
+        {"id": r["id"],
+         "recall_at_3": _recall_at_k(r["hits"], r["ideal_refs"], 3),
+         "lat_ms": r["lat_ms"],
+         "err": r.get("err")}
+        for r in rep["rows"]
+    ]
     summary = {
         "api": API,
+        "ts": datetime.now(timezone.utc).isoformat(),
         "total": len(rep["rows"]),
         "pass_n": pass_n,
         "error_n": len(error_rows),
         "threshold": MIN_PASS,
-        "details": [
-            {"id": r["id"],
-             "recall_at_3": _recall_at_k(r["hits"], r["ideal_refs"], 3),
-             "lat_ms": r["lat_ms"],
-             "err": r.get("err")}
-            for r in rep["rows"]
-        ],
+        # avg_recall reuses the recall_at_3 values already computed for details.
+        "avg_recall": (
+            sum(d["recall_at_3"] for d in details) / len(rep["rows"]) * 100
+        ) if rep["rows"] else 0.0,
+        # True only when EVERY errored query returned 401/403 — i.e. the CI
+        # token is expired/invalid, not a genuine retrieval-quality regression.
+        "auth_error": bool(error_rows) and all(
+            r.get("err") in (401, 403) for r in error_rows
+        ),
+        "details": details,
     }
     if os.environ.get("RECALL_JSON_OUT"):
         Path(os.environ["RECALL_JSON_OUT"]).write_text(json.dumps(summary, indent=2))
 
+    if summary["auth_error"]:
+        print(
+            "\nAUTH FAILURE: SEDIMENT_CI_TOKEN is expired/invalid (all queries "
+            "returned 401/403). Rotate the secret; this is NOT a recall regression.",
+            file=sys.stderr,
+        )
+        sys.exit(3)
     if error_rows:
         ids = ", ".join(f"{r['id']}={r['err']}" for r in error_rows[:10])
         print(f"\nFAIL: search HTTP errors: {ids}", file=sys.stderr)

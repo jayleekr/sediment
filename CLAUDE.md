@@ -219,10 +219,34 @@ class of failure forever after.
 
 ## Phase 5.5 dogfood gate
 
-10 measurable criteria gated by `feature_flags.dogfood_gate_active`. The
-criteria themselves were maintained in an internal-only spec; the gating
-mechanism (flag + measurement endpoints) is part of the public surface.
+10 measurable criteria implemented as a **standalone aggregator** in
+`services/sediment/validator/checks/p5_dogfood.py` (deliberately not wired into
+`rubric.yaml`). Run one-shot:
+
+```bash
+cd services/sediment && .venv/bin/python -m validator.checks.p5_dogfood
+```
+
+It reads directly from Postgres (`events`, `messages`) + filesystem
+(`output/validation/*.json`, manual `output/dogfood/nps-week4.json`,
+`harness/ralph/LEARNINGS.md`) and writes a JSON snapshot to
+`output/dogfood/<YYYY-MM-DD>.json` (exit 0 if all pass). Criteria: 1–4
+functional readiness (P2 rolling score, E2E flake, faithfulness, RLS zero-leak),
+5–7 adoption (DAU / queries / turns), 8–10 quality (thumbs-up, NPS, no critical
+incidents). It is currently manual/standalone — no cron job invokes it yet.
+
+**There is no `feature_flags.dogfood_gate_active` flag.** The
+`tenants.feature_flags` JSONB column (`infra/init.sql`) has no such key and there
+are no dogfood measurement endpoints — the gate is the script above, not a
+runtime flag. `PHASE_5_5_DOGFOOD_GATE.md` is referenced by several docs but does
+not exist in the repo.
+
+**Adoption clause superseded.** Per `DECISIONS.md` 2026-05-19 ("Dogfood
+activation gate + ship-gate"), the adoption verdict is now **S3≥5/8 + S4≥3/8**
+(Activation Engine): criteria 5/6/7 (DAU/query/turns) are diagnostic-only and 9
+(NPS) is absorbed into S4; criteria 1–4/8/10 stay hard pass/fail. Ship-gate: no
+paying external tenant until S3≥5/8 (Ring 1) AND S3+ from ≥1 non-builder (Ring 2).
 
 ---
 
-*Last updated: 2026-05-25*
+*Last updated: 2026-07-07*

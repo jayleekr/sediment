@@ -29,6 +29,7 @@ from sqlalchemy import text
 
 from lab_lib.db import service_session
 from validator.checks.p2_faithfulness import _judge_one, FaithfulnessResult
+from validator.history import append_history
 
 
 log = logging.getLogger("judge_daily")
@@ -188,6 +189,7 @@ async def run(hours: int = 24, max_n: int = 200) -> dict:
         "rolling_median_7d": round(rolling, 3) if rolling else None,
         "drift_alert": drift_alert,
     }
+    append_history("faithfulness_daily_median", round(today_median, 3), phase="P3", n=len(results))
     log.info("judge_daily.done %s", summary)
 
     # Dump for the Discord hook to read

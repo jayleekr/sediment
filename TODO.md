@@ -71,7 +71,7 @@
 - **Tier:** 2 — **Jay의 명시적 승인 전 시작 금지.**
 
 ### T9 — [gate] Phase 5.5 dogfood gate week-1 measurement
-- **근거:** `PHASE_5_5_DOGFOOD_GATE.md` (10 criteria); `feature_flags.dogfood_gate_active`.
+- **근거:** 10 criteria in standalone `validator/checks/p5_dogfood.py` (no feature flag). Adoption clause (5/6/7/9) superseded by DECISIONS.md 2026-05-19 ship-gate (S3/S4). `PHASE_5_5_DOGFOOD_GATE.md` is referenced but absent.
 - **완료조건:** week-1 측정 착수, 10개 항목 각각 현재값 또는 측정계획.
 - **Tier:** gate (human 결정; 계측=Tier2).
 

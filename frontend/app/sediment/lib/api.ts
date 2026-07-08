@@ -110,6 +110,54 @@ export async function citeExport(
   }
 }
 
+// Raw POST that tolerates 204/empty bodies (signals + promote-to-golden
+// return 204; api() would throw on res.json()). Returns res.ok, never throws.
+async function postVoid(path: string, body: unknown): Promise<boolean> {
+  try {
+    const token = getToken();
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${PLATFORM_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      console.warn(`signal ${path} -> ${res.status}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn(`signal ${path} failed`, e);
+    return false;
+  }
+}
+
+export type SignalKind = "copy" | "thumbs_up" | "thumbs_down";
+
+/** Fire-and-forget implicit signal. message_id MUST be a persisted assistant UUID. */
+export async function sendSignal(
+  kind: SignalKind,
+  message_id: string,
+  opts: { note?: string } = {}
+): Promise<void> {
+  if (!message_id || message_id.startsWith("tmp-")) return; // guard: no id yet
+  await postVoid(`/api/v1/signals/${kind}`, { message_id, note: opts.note, source: "web" });
+}
+
+/** Fire-and-forget "report bad answer" -> golden proposal (also writes a
+ *  thumbs_down signal row server-side). */
+export async function promoteToGolden(args: {
+  conv_id: string;
+  message_id: string;
+  reason: string;
+  expected_intent?: string;
+  ideal_refs?: string[];
+}): Promise<boolean> {
+  if (!args.message_id || args.message_id.startsWith("tmp-")) return false;
+  return postVoid("/api/v1/feedback/promote-to-golden", args);
+}
+
 export type Freshness = {
   last_ingest_ts: string | null;
   seconds_ago: number | null;
