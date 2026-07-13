@@ -186,7 +186,8 @@ jayleekr/hypeproof-studio-releases  ← binary releases for Studio
 JinyongShin/hypeproof_kids_edu      ← second tenant's vault + backend
 ```
 
-See 13-tenant-catalog.md for what we ingest from each.
+Detailed per-tenant ingest inventory is maintained in the operational tenant
+registry, not in the public architecture docs.
 
 ## 5. Runtime data flows (the 4 canonical paths)
 
