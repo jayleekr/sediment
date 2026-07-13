@@ -48,6 +48,15 @@ async def dispatch(spec: dict) -> CheckResult:
     layer = spec["layer"]
     severity: Severity = spec["severity"]
     typ = spec["type"]
+    # Env-gated checks (rubric `enabled_env`): skip cleanly when the flag is
+    # unset so PR/CI builds without an API key don't spuriously fail a blocker.
+    enabled_env = spec.get("enabled_env")
+    if enabled_env and os.environ.get(enabled_env, "").strip().lower() not in ("1", "true", "yes", "on"):
+        return CheckResult(
+            id=cid, title=title, layer=layer, severity=severity,
+            passed=True, actual={"skipped": enabled_env},
+            message=f"skipped: {enabled_env} not set",
+        )
     t0 = time.time()
     try:
         if typ == "bash":

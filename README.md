@@ -21,7 +21,7 @@
 | 3. Ingest automation | ✅ | APScheduler in-VM (`config/cron.yaml`, 8 Discord channels every 30 min), webhook endpoints (`/webhook/ingest`, `/webhook/discord-ingest`), `consolidate_memory.py`, `distill.py` |
 | 4. Memory consolidation | ✅ | dream.py (archive + boost + decision/action extraction + usage rollup) |
 | 5. Auth + RBAC + RLS test | ✅ | dev-token + GitHub OAuth (prod), pytest cross-tenant verify |
-| 5.5. Dogfood gate | 🟢 active | 10 measurable criteria; gated by `feature_flags.dogfood_gate_active` |
+| 5.5. Dogfood gate | 🟢 active | 10 measurable criteria via standalone `validator/checks/p5_dogfood.py` (no feature flag); adoption clause superseded by DECISIONS.md 2026-05-19 ship-gate (S3/S4) |
 | 6. Tenant onboarding | 🟡 stub | UI wizard + onboarding API endpoint |
 | 7. Stripe + quota | 🟡 stub | webhook handler + checkout endpoint stub |
 | 8. Beta launch | 🟡 stub | pricing page |

@@ -1,0 +1,40 @@
+name: Nightly faithfulness
+on:
+  schedule:
+    - cron: "45 18 * * *"   # 03:45 KST, staggered after nightly-recall (18:30)
+  workflow_dispatch:
+concurrency:
+  group: nightly-faithfulness
+  cancel-in-progress: false
+jobs:
+  faithfulness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - name: Install deps
+        working-directory: services/sediment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e ".[dev]"
+      - name: Run faithfulness (golden 40)
+        working-directory: services/sediment
+        env:
+          SEDIMENT_FAITHFULNESS_ENABLED: "1"
+          SEDIMENT_E2E_API_URL: https://hypeproof-sediment.fly.dev
+          SEDIMENT_E2E_JWT: ${{ secrets.SEDIMENT_CI_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VALIDATOR_OUTPUT_DIR: ${{ github.workspace }}/services/sediment/output/validation
+        run: .venv/bin/python -m validator --phase P2 --only-layers L4
+      - name: Upload faithfulness history + per-query
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-faithfulness-${{ github.run_id }}
+          path: |
+            services/sediment/output/validation/history/*.jsonl
+            services/sediment/output/validation/p2-faithfulness-per-query.json
+          if-no-files-found: ignore
+          retention-days: 30
