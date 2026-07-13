@@ -1,24 +1,104 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { signIn as githubSignIn } from "next-auth/react";
+import { ApiError, api, clearToken, getToken } from "../lib/api";
 import { SectionHeader, Surface } from "../components/ui";
 
 export default function AdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [authState, setAuthState] = useState<
+    "checking" | "signed-out" | "forbidden" | "error" | "ready"
+  >("checking");
+
+  const checkAccess = () => {
+    if (!getToken()) {
+      setAuthState("signed-out");
+      return;
+    }
+    setAuthState("checking");
+    setError(null);
+    api<{ items: any[] }>("/api/v1/admin/tenants")
+      .then((d) => {
+        setTenants(d.items);
+        setAuthState("ready");
+      })
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 401) {
+          clearToken();
+          setAuthState("signed-out");
+          setError("Session expired or missing. Sign in again with a Sediment admin GitHub account.");
+          return;
+        }
+        if (e instanceof ApiError && e.status === 403) {
+          setAuthState("forbidden");
+          setError("This Sediment member is not an admin for the current tenant.");
+          return;
+        }
+        // Non-auth failure (5xx, network error): keep the raw backend
+        // message out of the UI and offer a retry instead.
+        setAuthState("error");
+      });
+  };
 
   useEffect(() => {
-    api<{ items: any[] }>("/api/v1/admin/tenants")
-      .then((d) => setTenants(d.items))
-      .catch((e) => setError(e.message));
+    checkAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (error) {
+  if (authState === "checking") {
     return (
-      <div className="rounded-md border border-ochre/30 bg-ochre-soft/40 p-4 text-sm text-ink-2">
-        <strong>admin only.</strong> {error}
-      </div>
+      <Surface className="p-4">
+        <SectionHeader title="Admin" description="Checking your Sediment admin session." />
+      </Surface>
+    );
+  }
+
+  if (authState === "signed-out") {
+    return (
+      <Surface className="mx-auto max-w-md p-6">
+        <h2 className="mb-2 text-lg font-semibold">Admin sign in</h2>
+        <p className="mb-4 text-sm text-ink-2">
+          Sign in with a GitHub account mapped to a Sediment admin member.
+        </p>
+        <button
+          onClick={() => githubSignIn("github", { callbackUrl: "/sediment/admin" })}
+          className="flex w-full items-center justify-center rounded-md bg-ink px-4 py-2 text-paper transition-colors hover:bg-accent-ink"
+        >
+          Sign in with GitHub
+        </button>
+        {error && <p className="mt-3 text-sm text-ochre">{error}</p>}
+      </Surface>
+    );
+  }
+
+  if (authState === "forbidden") {
+    return (
+      <Surface className="p-4">
+        <SectionHeader
+          title="Admin only"
+          description={error ?? "This Sediment member is not an admin for the current tenant."}
+        />
+      </Surface>
+    );
+  }
+
+  if (authState === "error") {
+    return (
+      <Surface className="mx-auto max-w-md p-6">
+        <h2 className="mb-2 text-lg font-semibold">Something went wrong</h2>
+        <p className="mb-4 text-sm text-ink-2">
+          We couldn&apos;t verify your admin access. The Sediment API may be temporarily
+          unavailable — please try again.
+        </p>
+        <button
+          onClick={checkAccess}
+          className="flex w-full items-center justify-center rounded-md bg-ink px-4 py-2 text-paper transition-colors hover:bg-accent-ink"
+        >
+          Retry
+        </button>
+      </Surface>
     );
   }
 
