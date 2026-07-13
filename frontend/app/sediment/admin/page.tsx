@@ -8,13 +8,17 @@ import { SectionHeader, Surface } from "../components/ui";
 export default function AdminPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [authState, setAuthState] = useState<"checking" | "signed-out" | "forbidden" | "ready">("checking");
+  const [authState, setAuthState] = useState<
+    "checking" | "signed-out" | "forbidden" | "error" | "ready"
+  >("checking");
 
-  useEffect(() => {
+  const checkAccess = () => {
     if (!getToken()) {
       setAuthState("signed-out");
       return;
     }
+    setAuthState("checking");
+    setError(null);
     api<{ items: any[] }>("/api/v1/admin/tenants")
       .then((d) => {
         setTenants(d.items);
@@ -32,9 +36,15 @@ export default function AdminPage() {
           setError("This Sediment member is not an admin for the current tenant.");
           return;
         }
-        setAuthState("forbidden");
-        setError(e instanceof Error ? e.message : String(e));
+        // Non-auth failure (5xx, network error): keep the raw backend
+        // message out of the UI and offer a retry instead.
+        setAuthState("error");
       });
+  };
+
+  useEffect(() => {
+    checkAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (authState === "checking") {
@@ -63,10 +73,31 @@ export default function AdminPage() {
     );
   }
 
-  if (error) {
+  if (authState === "forbidden") {
     return (
       <Surface className="p-4">
-        <SectionHeader title="Admin only" description={error} />
+        <SectionHeader
+          title="Admin only"
+          description={error ?? "This Sediment member is not an admin for the current tenant."}
+        />
+      </Surface>
+    );
+  }
+
+  if (authState === "error") {
+    return (
+      <Surface className="mx-auto max-w-md p-6">
+        <h2 className="mb-2 text-lg font-semibold">Something went wrong</h2>
+        <p className="mb-4 text-sm text-ink-2">
+          We couldn&apos;t verify your admin access. The Sediment API may be temporarily
+          unavailable — please try again.
+        </p>
+        <button
+          onClick={checkAccess}
+          className="flex w-full items-center justify-center rounded-md bg-ink px-4 py-2 text-paper transition-colors hover:bg-accent-ink"
+        >
+          Retry
+        </button>
       </Surface>
     );
   }
