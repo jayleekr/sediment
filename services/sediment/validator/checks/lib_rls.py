@@ -9,6 +9,17 @@ from lab_lib.db import app_session, service_session
 MARKER_LAB = "rls-marker-lab"
 MARKER_ACME = "rls-marker-acme"
 
+# Every tenant-scoped table (init.sql + migrations 001/002). The RLS backstop
+# must hold on ALL of these, not just artifacts — many chat/CRUD queries rely
+# on RLS alone (no explicit tenant_id filter), so this is the real leak guard.
+# Keep in sync with infra/init.sql + infra/migrations/*. (sediment P2)
+TENANT_TABLES = (
+    "tenants", "subscriptions", "integrations", "members", "artifacts", "chunks",
+    "conversations", "messages", "decisions", "actions", "events",
+    "usage_events", "usage_daily", "audit_log",
+    "mcp_call_log", "message_signals", "message_judge_scores",
+)
+
 
 async def _get_tenant_id(slug: str) -> str:
     async with service_session() as s:
@@ -69,25 +80,33 @@ async def check_cross_tenant_chunks(spec: dict, **_) -> dict:
 
 
 async def check_no_tenant_yields_empty(spec: dict, **_) -> dict:
-    """Without SET LOCAL app.tenant_id, app role should see 0 rows (fail-safe)."""
+    """Without SET LOCAL app.tenant_id, the app role must see 0 rows on EVERY
+    tenant-scoped table (fail-safe deny). This is the RLS backstop: a query that
+    forgets an explicit tenant_id filter still cannot leak. (sediment P2 — was
+    artifacts-only, now sweeps all tenant tables.)"""
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from lab_lib.settings import settings
 
     engine = create_async_engine(settings.database_url_app)
     Session = async_sessionmaker(engine, expire_on_commit=False)
+    leaks: dict[str, int] = {}
     try:
         async with Session() as s:
-            # NO SET LOCAL — current_tenant_id() returns NULL → policy denies
-            n = (await s.execute(text("SELECT count(*) FROM artifacts"))).scalar_one()
-        ok = n == 0
-        return {
-            "passed": ok,
-            "actual": {"rows_visible_without_tenant": n},
-            "expected": {"rows_visible_without_tenant": 0},
-            "message": "" if ok else f"FAIL-SAFE BROKEN: {n} rows visible without tenant ctx",
-        }
+            for tbl in TENANT_TABLES:
+                # NO SET LOCAL — current_tenant_id() returns NULL → policy denies.
+                # Table names come from a hardcoded constant tuple (no injection).
+                n = (await s.execute(text(f"SELECT count(*) FROM {tbl}"))).scalar_one()
+                if n != 0:
+                    leaks[tbl] = n
     finally:
         await engine.dispose()
+    ok = not leaks
+    return {
+        "passed": ok,
+        "actual": {"tables_checked": len(TENANT_TABLES), "leaking": leaks},
+        "expected": {"leaking": {}},
+        "message": "" if ok else f"FAIL-SAFE BROKEN on {list(leaks)} — rows visible without tenant ctx",
+    }
 
 
 async def check_service_bypass_rls(spec: dict, **_) -> dict:

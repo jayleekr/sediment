@@ -3,12 +3,16 @@
 Run after `make seed`. Asserts:
   1. App role with tenant A cannot see tenant B's artifacts.
   2. Service role bypasses RLS (sees all).
+  3. (sediment P2) The RLS backstop holds on EVERY tenant table:
+     - no tenant context  -> 0 rows (fail-safe deny)
+     - RLS enabled+forced + a policy exists (schema-level, needs no seed)
 """
 import asyncio
 import pytest
 from sqlalchemy import text
 
-from lab_lib.db import app_session, service_session
+from lab_lib.db import app_session, service_session, SessionApp
+from validator.checks.lib_rls import TENANT_TABLES
 
 
 async def _ids() -> tuple[str, str]:
@@ -74,3 +78,43 @@ async def test_service_bypasses_rls():
         # Without SET, service role sees all tenants' rows
         n = (await s.execute(text("SELECT count(*) FROM artifacts"))).scalar_one()
         assert n >= 2, f"service should see ≥ 2 rls-test markers, got {n}"
+
+
+# ============================================================
+# sediment P2 — RLS backstop on EVERY tenant table
+# Many chat/CRUD queries rely on RLS alone (no explicit tenant_id filter),
+# so the backstop must be provably reliable on all tables, not just artifacts.
+# ============================================================
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tbl", TENANT_TABLES)
+async def test_no_tenant_context_yields_zero(tbl):
+    """App role with NO tenant context must see 0 rows on every tenant table.
+    This is what makes a query that forgets `WHERE tenant_id=...` still safe."""
+    async with SessionApp() as s:
+        # No set_config('app.tenant_id', ...) → current_tenant_id() is NULL → deny.
+        # Table name is from a hardcoded constant tuple (no injection surface).
+        n = (await s.execute(text(f"SELECT count(*) FROM {tbl}"))).scalar_one()
+    assert n == 0, f"{tbl}: fail-safe broken — {n} rows visible without tenant ctx"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tbl", TENANT_TABLES)
+async def test_rls_enabled_forced_and_policy(tbl):
+    """Every tenant table must have RLS ENABLED + FORCED + ≥1 policy.
+    Schema-level (needs no seed) — catches a new table or a dropped policy
+    at PR time, before it can leak in production."""
+    async with service_session() as s:
+        row = (await s.execute(text(
+            """
+            SELECT c.relrowsecurity, c.relforcerowsecurity,
+                   (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid)
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = :t AND n.nspname = 'public'
+            """), {"t": tbl})).first()
+    assert row is not None, f"{tbl}: table not found in public schema"
+    enabled, forced, n_pol = row
+    assert enabled, f"{tbl}: RLS not ENABLED"
+    assert forced, f"{tbl}: RLS not FORCED (table owner could bypass)"
+    assert n_pol >= 1, f"{tbl}: no RLS policy present"
