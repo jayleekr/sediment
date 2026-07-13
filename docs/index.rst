@@ -91,6 +91,7 @@ Sediment는 HypeProof의 팀 메모리, 검색, 근거 기반 답변, 세션 보
 
    MEMBER-GUIDE.ko
    sediment-cli-quickstart
+   operations/BOOTSTRAPPING
    runbooks/supabase-pro-upgrade
    demo/boah-dental-flow
 
