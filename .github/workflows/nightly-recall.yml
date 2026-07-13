@@ -54,13 +54,16 @@ jobs:
           SEDIMENT_EMAIL: jayleekr0125@gmail.com
           RECALL_MIN_PASS: "20"
           RECALL_JSON_OUT: ${{ github.workspace }}/recall.json
+          VALIDATOR_OUTPUT_DIR: ${{ github.workspace }}/services/sediment/output/validation
         run: python -m validator.scripts.recall_live
       - name: Upload recall JSON
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nightly-recall-${{ github.run_id }}
-          path: recall.json
+          path: |
+            recall.json
+            services/sediment/output/validation/history/recall_at_3_prod.jsonl
           if-no-files-found: ignore
           retention-days: 30
       - name: Notify on regression
@@ -73,11 +76,20 @@ jobs:
           pip install --quiet jinja2
           # Try to read the JSON summary if it was written; otherwise just
           # fire a minimal payload pointing at the run.
+          AUTH=False
           if [ -f recall.json ]; then
             PREV=$(python -c "import json; d=json.load(open('recall.json')); print(d.get('threshold',20))")
             CURR=$(python -c "import json; d=json.load(open('recall.json')); print(d.get('pass_n',0))")
+            AUTH=$(python -c "import json; d=json.load(open('recall.json')); print(d.get('auth_error',False))")
           else
             PREV=20; CURR=0
+          fi
+          # An expired/invalid CI token 401s every query, which otherwise reads
+          # as "recall collapsed to 0". Surface it as a token-rotation ask, not
+          # a quality regression. Single event type — just annotate the reason.
+          EXTRA=()
+          if [ "$AUTH" = "True" ]; then
+            EXTRA=(--data "reason=SEDIMENT_CI_TOKEN expired/invalid - rotate secret (NOT a quality regression)")
           fi
           python scripts/notify/notify.py send recall.regression \
             --routes services/sediment/config/notify_routes.yaml \
@@ -85,4 +97,5 @@ jobs:
             --data "prev_pass=$PREV" \
             --data "current_pass=$CURR" \
             --data "threshold=$PREV" \
-            --data "url=$RUN_URL"
+            --data "url=$RUN_URL" \
+            "${EXTRA[@]}"

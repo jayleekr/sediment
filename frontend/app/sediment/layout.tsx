@@ -47,7 +47,7 @@ export default function CuratorLayout({ children }: { children: ReactNode }) {
           <div className="mt-5 border-t-2 border-ink">
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-rule py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <span className={badge.cls}>● {badge.label}</span>
+                <span data-testid="env-badge" className={badge.cls}>● {badge.label}</span>
                 <FreshnessBadge />
               </div>
               <span className="text-ink-3">vault-only · evidence first</span>

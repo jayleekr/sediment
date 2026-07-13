@@ -27,6 +27,7 @@ from typing import Optional
 import httpx
 
 from lab_lib.settings import settings
+from validator.history import append_history
 
 
 # ============================================================
@@ -140,10 +141,13 @@ async def _judge_one(query: str, answer: str, citations: list[dict]) -> Faithful
 # ============================================================
 
 def _derive_langgraph_url(platform_url: str) -> str:
-    """Local dev: platform=:10101 + langgraph=:10020. Prod: same host
-    (nginx fronts both behind one URL). Same swap rule as the CLI in
-    services/sediment-cli/src/commands.rs:derive_langgraph_base."""
-    return platform_url.replace(":10101", ":10020").replace(":10100", ":10020")
+    """Local dev: platform=:10100 + langgraph=:10020. Prod: same host
+    (nginx fronts both behind one URL), so the swap is a no-op. Same rule as
+    the CLI in services/sediment-cli/src/commands.rs:derive_langgraph_base."""
+    plat = f":{settings.sediment_platform_port}"   # :10100
+    lg = f":{settings.sediment_langgraph_port}"     # :10020
+    # legacy :10101 kept for any stale env still pinned to the old wrong port
+    return platform_url.replace(plat, lg).replace(":10101", lg)
 
 
 async def _run_chat(
@@ -238,6 +242,7 @@ async def check_faithfulness_mean(spec: dict, **_) -> dict:
     if not rs:
         return {"passed": False, "actual": 0.0, "reason": "no results"}
     m = mean(r.score for r in rs)
+    append_history("faithfulness_mean", round(m, 3), phase="P2", n=len(rs))
     threshold = float(spec.get("threshold", 0.75))
     return {
         "passed": m >= threshold,
@@ -254,6 +259,7 @@ async def check_faithfulness_p25(spec: dict, **_) -> dict:
         return {"passed": True, "actual": None, "reason": "n<4"}
     qs = quantiles((r.score for r in rs), n=4)
     p25 = qs[0]
+    append_history("faithfulness_p25", round(p25, 3), phase="P2", n=len(rs))
     threshold = float(spec.get("threshold", 0.50))
     return {
         "passed": p25 >= threshold,
@@ -274,7 +280,7 @@ async def _collect_results(spec: dict) -> list[FaithfulnessResult]:
         return _CACHED_RESULTS[key]
 
     base_url = spec.get("base_url") or os.environ.get(
-        "SEDIMENT_E2E_API_URL", "http://localhost:10101"
+        "SEDIMENT_E2E_API_URL", f"http://localhost:{settings.sediment_platform_port}"
     )
     token = spec.get("token") or os.environ.get("SEDIMENT_E2E_JWT")
     if not token:

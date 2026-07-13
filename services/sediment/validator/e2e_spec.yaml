@@ -365,9 +365,13 @@ flows:
         selector: "h1:has-text('Sediment')"
       # The env badge must read 'prod' on this URL — proves the deploy
       # picked up the right NEXT_PUBLIC_* vars and isn't lying about its env.
+      # Selector is a stable data-testid (layout.tsx), not a styling class:
+      # the old `span.bg-emerald-100` broke when the Editorial Archive
+      # redesign (#76) restyled the badge, failing prod_smoke from
+      # 2026-06-16 onward.
       - action: assert
         type: text_contains
-        selector: "span.bg-emerald-100"
+        selector: "[data-testid='env-badge']"
         value: "prod"
       - action: navigate
         url: "/sediment/library"
