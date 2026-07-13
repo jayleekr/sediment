@@ -275,7 +275,8 @@ The catalog stays generic. Tenant specifics live in tenant config rows. If you f
 - [04-collection-engine.md §5](./04-collection-engine.md) — `decide()` function consuming this catalog
 - [05-distillation-pipeline.md §4](./05-distillation-pipeline.md) — strategy selection per transcript kind
 - [07-notifications.md §7](./07-notifications.md) — `new_decision` / `release_deployed` event types this catalog emits
-- [13-tenant-catalog.md](./13-tenant-catalog.md) — per-tenant inventory using this catalog
+- Tenant inventory is maintained in the operational tenant registry; this public
+  catalog stays limited to reusable source-kind defaults.
 - (planned) `services/sediment/lab_lib/collection_agent.py` — code home for these defaults
 
 ## Changelog

@@ -171,7 +171,9 @@ See [08-cost-and-observability.md](./08-cost-and-observability.md) for the log s
 | Slack ingest | ❌ Phase 2 | ❌ Phase 2 | — | Optional |
 | Notion ingest | ❌ Phase 3 | ❌ Phase 3 | — | Optional |
 
-See [13-tenant-catalog.md](./13-tenant-catalog.md) for the full per-tenant config.
+Detailed per-tenant inventory is maintained in the operational tenant registry,
+not in the public design docs. Keep this page limited to product-level defaults,
+safe examples, and source-kind boundaries.
 
 ---
 
