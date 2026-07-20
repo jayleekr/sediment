@@ -26,6 +26,13 @@
       "columnType": "A",
       "status": "active",
       "githubLogin": "jayleekr"
+    },
+    {
+      "displayName": "Jkim",
+      "email": "jkimak1124@gmail.com",
+      "role": "creator",
+      "status": "active",
+      "githubLogin": "ico1036"
     }
   ]
 }
