@@ -145,7 +145,26 @@ location /webhook/        { proxy_pass http://127.0.0.1:11000; }
 location /healthz         { return 200 "OK\n"; }
 ```
 
-CORS allowed origins: `https://sediment.hypeproof-ai.xyz` + the Vercel preview pattern. Tightened from `*` after the first prod soak.
+### CORS (credentialed) — sediment#80
+
+Credentialed CORS (`allow_credentials=True`) is centralized in `lab_lib/cors.py`
+(`build_cors_kwargs()`), shared by both `sediment_platform` and
+`sediment_langgraph`. Policy:
+
+- **Production / default**: only first-party origins are allowed — `http://localhost:3000`,
+  `http://127.0.0.1:3000`, `https://sediment.hypeproof-ai.xyz`, `https://hypeproof-ai.xyz`,
+  `https://hypeproof.studio`. The prod frontend lives on the custom domain, so this is all
+  prod needs. There is **no** blanket `*.vercel.app` allowance.
+- **Why not `*.vercel.app`**: `vercel.app` is a shared, multi-tenant apex — anyone can deploy
+  `attacker.vercel.app`. Combined with `allow_credentials=True`, a blanket regex let any such
+  origin send the victim's cookies/session and read the response. Removed.
+- **Preview / staging opt-in**: set `SEDIMENT_VERCEL_TEAM_SLUG=<team-slug>` (e.g. `hypeprooflab`)
+  to allow Vercel preview origins scoped to this project's team only — the regex requires the
+  trailing `-<slug>.vercel.app` label, which off-team deployments cannot forge. Off by default.
+  Set `SEDIMENT_CORS_EXTRA_ORIGINS=<csv>` for any additional explicit staging domains.
+- **Guard**: `build_cors_kwargs()` refuses (raises `ValueError`) any credentialed config that
+  would match a hostile probe origin (broad shared-apex regex) or a `*` wildcard, so the
+  vulnerable pattern cannot regress back in.
 
 ## 7. start.sh
 
