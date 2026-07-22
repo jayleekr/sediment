@@ -11,6 +11,7 @@ import datetime as _dt
 import hashlib
 import hmac
 import os
+import sys
 import time
 from typing import Optional, Union
 import frontmatter
@@ -41,10 +42,35 @@ def _coerce_date(v: Union[str, _dt.date, _dt.datetime, None]) -> Optional[_dt.da
     except ValueError:
         return None
 from lab_lib.logging import configure_logging, get_logger
-from lab_lib.settings import settings
+from lab_lib.settings import settings, _is_prod
 
 configure_logging()
 log = get_logger("ingester")
+
+
+def _require_webhook_secret_in_prod() -> None:
+    """Fail-loud at boot (sediment#115): the ingester serves two unauthenticated-
+    by-default webhooks (/webhook/ingest, /webhook/discord-ingest). In prod both
+    MUST authenticate inbound requests via GITHUB_WEBHOOK_SECRET. If the secret is
+    unset in prod we refuse to boot, mirroring lab_lib.settings.validate_runtime_secrets
+    for jwt/onboarding/stripe. Without this, a misconfigured deploy would (pre-#115)
+    silently accept forged webhooks, or (post-#115) reject every legitimate push
+    with an opaque 401 — better to fail the deploy loudly. No-op in dev/test/CI.
+    """
+    if _is_prod() and not os.environ.get("GITHUB_WEBHOOK_SECRET"):
+        print(
+            "FATAL SECRET CONFIG: GITHUB_WEBHOOK_SECRET is unset in prod. The vault "
+            "ingester webhooks (/webhook/ingest, /webhook/discord-ingest) authenticate "
+            "callers with this HMAC secret; without it every request is rejected and, "
+            "before sediment#115, forged webhooks could inject data into any repo-mapped "
+            "tenant. Set the Fly secret GITHUB_WEBHOOK_SECRET.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
+# Fail-loud at boot in prod if the webhook secret is unset. No-op in dev/test/CI.
+_require_webhook_secret_in_prod()
 
 app = FastAPI(title="Curator Vault Ingester", version="0.1.0")
 
@@ -271,12 +297,23 @@ async def _resolve_webhook_tenant(repo: Optional[str]) -> str:
 
 def _verify_github_sig(raw: bytes, header: Optional[str]) -> bool:
     """HMAC-SHA256 of the raw body against GITHUB_WEBHOOK_SECRET.
-    If the secret is unset, skip the check (start.sh already WARNs about this)
-    so local/un-provisioned envs still function — matches existing behaviour.
+
+    Fail-CLOSED in production (sediment#115): if the secret is unset, REJECT.
+    Previously an unset secret skipped verification entirely and returned True.
+    With #104's tenant-by-repo resolution that let any caller inject vault data
+    into ANY repo-mapped tenant (blast radius grew from default-tenant-only to
+    all mapped tenants); the same function guards /webhook/discord-ingest, so an
+    unset secret also let anyone inject forged Discord events. The old skip-if-
+    unset convenience is kept ONLY in non-prod so local/CI still work without a
+    provisioned secret. (Boot is additionally blocked in prod without the secret
+    — see _require_webhook_secret_in_prod — this is the request-time backstop.)
     """
     secret = os.environ.get("GITHUB_WEBHOOK_SECRET")
     if not secret:
-        log.warning("webhook.no_secret — signature check skipped")
+        if _is_prod():
+            log.error("webhook.no_secret_in_prod — rejecting (fail-closed)")
+            return False
+        log.warning("webhook.no_secret — signature check skipped (non-prod)")
         return True
     if not header or not header.startswith("sha256="):
         return False
