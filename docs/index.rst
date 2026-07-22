@@ -95,12 +95,6 @@ Sediment는 HypeProof의 팀 메모리, 검색, 근거 기반 답변, 세션 보
    runbooks/supabase-pro-upgrade
    demo/boah-dental-flow
 
-다이어그램
-----------
-
-* `Architecture diagram <architecture-diagram.html>`_
-* `System flow <system-flow.html>`_
-
 .. toctree::
    :hidden:
 

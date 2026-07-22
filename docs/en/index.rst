@@ -70,9 +70,3 @@ Runbooks and Guides
    ../sediment-cli-quickstart
    ../runbooks/supabase-pro-upgrade
    ../demo/boah-dental-flow
-
-Diagrams
---------
-
-* `Architecture diagram <../architecture-diagram.html>`_
-* `System flow <../system-flow.html>`_

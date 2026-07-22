@@ -21,10 +21,6 @@ html_title = "Sediment 문서"
 html_short_title = "Sediment"
 html_copy_source = False
 html_show_sourcelink = False
-html_extra_path = [
-    "architecture-diagram.html",
-    "system-flow.html",
-]
 
 myst_enable_extensions = [
     "colon_fence",
