@@ -1,0 +1,30 @@
+name: repo-governance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - '.github/**'
+      - 'SECURITY.md'
+
+permissions:
+  contents: read
+
+jobs:
+  repo-files:
+    name: repo-governance (repo files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Required governance files
+        run: |
+          test -f .github/CODEOWNERS
+          test -f .github/pull_request_template.md
+          test -f SECURITY.md
+      - name: No pull_request_target workflows
+        run: |
+          if grep -R "^[[:space:]]*pull_request_target:" .github/workflows; then
+            echo "pull_request_target is not allowed in HypeProof public repos" >&2
+            exit 1
+          fi

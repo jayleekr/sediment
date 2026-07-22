@@ -1,0 +1,489 @@
+{
+  "phase_id": "P1",
+  "phase_name": "Read-only index (ingest + search + golden RAG)",
+  "iteration": 1,
+  "timestamp": "2026-05-24T10:25:59.128123+00:00",
+  "elapsed_s": 6.08,
+  "cost_usd": 0.0,
+  "score": 126,
+  "max_score": 161,
+  "score_pct": 78.3,
+  "blockers_passed": 9,
+  "blockers_total": 12,
+  "all_blockers_passed": false,
+  "passed": false,
+  "results": [
+    {
+      "id": "P1-SEED-01",
+      "title": "hypeproof-lab tenant exists",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 51,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEED-02",
+      "title": "acme-test tenant exists (RLS regression target)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 7,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEED-03",
+      "title": "8 members seeded for hypeproof-lab",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1,
+        "value": 9
+      },
+      "expected": {
+        "expected_min_value": 7
+      },
+      "message": "",
+      "duration_ms": 10,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEED-04",
+      "title": "Subscription row exists for hypeproof-lab",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 5,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEED-05",
+      "title": "Jay member is admin",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-01",
+      "title": "vault-ingester /healthz returns 200",
+      "layer": "L2",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "status": 200,
+        "url": "http://localhost:11000/healthz"
+      },
+      "expected": {
+        "status": 200
+      },
+      "message": "",
+      "duration_ms": 313,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-02",
+      "title": "metadata-svc /healthz returns 200",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "status": 200,
+        "url": "http://localhost:12000/healthz"
+      },
+      "expected": {
+        "status": 200
+      },
+      "message": "",
+      "duration_ms": 51,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-03",
+      "title": "Ingest single document → artifact persists",
+      "layer": "L2",
+      "severity": "blocker",
+      "passed": false,
+      "actual": {
+        "status": 500,
+        "body": "Internal Server Error"
+      },
+      "expected": null,
+      "message": "ingester returned non-200",
+      "duration_ms": 693,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-04",
+      "title": "Re-ingest same ref is idempotent (no duplicate chunks)",
+      "layer": "L2",
+      "severity": "major",
+      "passed": false,
+      "actual": {
+        "r1": 500,
+        "r2": 500
+      },
+      "expected": null,
+      "message": "one of two ingests failed",
+      "duration_ms": 352,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-05",
+      "title": "Embeddings have correct dim (1536)",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "dim": 1536
+      },
+      "expected": {
+        "dim": 1536
+      },
+      "message": "",
+      "duration_ms": 22,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-06",
+      "title": "Repo corpus ingested ≥ 30 artifacts",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "rows": 1,
+        "value": 392
+      },
+      "expected": {
+        "expected_min_value": 30
+      },
+      "message": "",
+      "duration_ms": 6,
+      "artifacts": []
+    },
+    {
+      "id": "P1-INGEST-07",
+      "title": "Repo corpus chunks ≥ 100",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "rows": 1,
+        "value": 3373
+      },
+      "expected": {
+        "expected_min_value": 100
+      },
+      "message": "",
+      "duration_ms": 13,
+      "artifacts": []
+    },
+    {
+      "id": "P1-CHUNK-01",
+      "title": "Heading-aware split produces multiple chunks for multi-heading doc",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "chunks": 2
+      },
+      "expected": {
+        "chunks": ">=2"
+      },
+      "message": "",
+      "duration_ms": 175,
+      "artifacts": []
+    },
+    {
+      "id": "P1-CHUNK-02",
+      "title": "Overlap applied between consecutive chunks",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": false,
+      "actual": {
+        "chunks": 2,
+        "second_has_alpha": false
+      },
+      "expected": "second chunk contains tail of first",
+      "message": "overlap not present",
+      "duration_ms": 1,
+      "artifacts": []
+    },
+    {
+      "id": "P1-CHUNK-03",
+      "title": "Avg chunk size in 500-1500 token range",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": false,
+      "actual": {
+        "avg_tokens_est": 176.7
+      },
+      "expected": {
+        "avg_tokens": "200..1800"
+      },
+      "message": "avg chunk size out of range: 177 tokens",
+      "duration_ms": 104,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEARCH-01",
+      "title": "BM25 search returns relevant chunk (literal token match)",
+      "layer": "L4",
+      "severity": "blocker",
+      "passed": false,
+      "actual": null,
+      "expected": null,
+      "message": "exception: HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:11000/v1/ingest/document'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+      "duration_ms": 202,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEARCH-02",
+      "title": "Vector search returns chunk for semantic query",
+      "layer": "L4",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "results": 5
+      },
+      "expected": {
+        "min_results": 1
+      },
+      "message": "",
+      "duration_ms": 357,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEARCH-03",
+      "title": "Hybrid (RRF) returns valid result",
+      "layer": "L4",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "hits": 8
+      },
+      "expected": {
+        "min_hits": 1
+      },
+      "message": "",
+      "duration_ms": 1371,
+      "artifacts": []
+    },
+    {
+      "id": "P1-SEARCH-04",
+      "title": "Library /search HTTP endpoint responds",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "hits": 8
+      },
+      "expected": {
+        "min_hits": 1
+      },
+      "message": "",
+      "duration_ms": 93,
+      "artifacts": []
+    },
+    {
+      "id": "P1-RLS-01",
+      "title": "Cross-tenant artifact leak = 0 (lab cannot see acme)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "acme_visible": 0,
+        "lab_visible": 1
+      },
+      "expected": {
+        "acme_visible": 0,
+        "lab_visible": 1
+      },
+      "message": "",
+      "duration_ms": 49,
+      "artifacts": []
+    },
+    {
+      "id": "P1-RLS-02",
+      "title": "Cross-tenant chunk leak = 0",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": false,
+      "actual": {
+        "acme_chunks_visible": 1
+      },
+      "expected": {
+        "acme_chunks_visible": 0
+      },
+      "message": "LEAK: acme sees 1 chunks (lab's)",
+      "duration_ms": 6,
+      "artifacts": []
+    },
+    {
+      "id": "P1-RLS-03",
+      "title": "Missing tenant_id → app role sees 0 rows (fail-safe)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows_visible_without_tenant": 0
+      },
+      "expected": {
+        "rows_visible_without_tenant": 0
+      },
+      "message": "",
+      "duration_ms": 27,
+      "artifacts": []
+    },
+    {
+      "id": "P1-RLS-04",
+      "title": "service role can see both tenants (BYPASSRLS works)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows_visible_as_service": 394
+      },
+      "expected": {
+        "rows_visible_as_service": ">= 2"
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P1-RLS-05",
+      "title": "RLS active on all 13 tables (regression check)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "missing_rls": []
+      },
+      "expected": "rowsecurity=true on all tenant tables",
+      "message": "",
+      "duration_ms": 6,
+      "artifacts": []
+    },
+    {
+      "id": "P1-GOLDEN-RAG-01",
+      "title": "Golden 40 queries: recall@3 ≥ 80%",
+      "layer": "L4",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "recall_at_k_pct": 86.2,
+        "failed_ids": [
+          "GQ-002",
+          "GQ-003",
+          "GQ-004"
+        ],
+        "total": 40
+      },
+      "expected": {
+        "recall@3_pct": ">= 80"
+      },
+      "message": "",
+      "duration_ms": 760,
+      "artifacts": []
+    },
+    {
+      "id": "P1-GOLDEN-RAG-02",
+      "title": "Golden 40 queries: MRR ≥ 0.50",
+      "layer": "L4",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "mrr": 0.631
+      },
+      "expected": {
+        "mrr": ">= 0.5"
+      },
+      "message": "",
+      "duration_ms": 615,
+      "artifacts": []
+    },
+    {
+      "id": "P1-GOLDEN-RAG-03",
+      "title": "Golden queries: median latency ≤ 1.0s",
+      "layer": "L8",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "p50_ms": 12,
+        "p95_ms": 17,
+        "n": 40
+      },
+      "expected": {
+        "p50_ms": "<= 1000"
+      },
+      "message": "",
+      "duration_ms": 530,
+      "artifacts": []
+    },
+    {
+      "id": "P1-FRESH-01",
+      "title": "Vault freshness telemetry exposes capture/index/distill axes",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "missing": [],
+        "github_sync_event": true
+      },
+      "expected": {
+        "freshness_axes": "all present",
+        "github_sync_event": true
+      },
+      "message": "",
+      "duration_ms": 236,
+      "artifacts": []
+    },
+    {
+      "id": "P1-FRESH-02",
+      "title": "Vault freshness flags artifact/chunk mismatch",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "missing": []
+      },
+      "expected": {
+        "artifact_chunk_mismatch_violation": true
+      },
+      "message": "",
+      "duration_ms": 0,
+      "artifacts": []
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+queries:
+  - id: BOA-GQ-001
+    scenario: nas_orientation
+    q: "보아 NAS에서 데스크 업무와 교정 업무 자료는 어떻게 나뉘어 있어?"
+    expected_terms: ["데스크 업무", "교정", "보험", "스텝", "비급여"]
+  - id: BOA-GQ-002
+    scenario: private_insurance
+    q: "라이나 치아보험 청구할 때 필요한 서류와 데스크 확인사항을 정리해줘"
+    expected_terms: ["라이나", "보험금 청구서", "치과치료 확인서", "개인정보 동의서"]
+  - id: BOA-GQ-003
+    scenario: orthodontic_consent
+    q: "교정 유지장치 제거 동의서가 필요한 상황과 환자 안내 포인트는?"
+    expected_terms: ["유지장치", "동의서", "주의사항", "재제작"]
+  - id: BOA-GQ-004
+    scenario: implant_workflow
+    q: "임플란트 상담부터 수술 전까지 데스크가 챙겨야 할 문서는?"
+    expected_terms: ["임플란트 준비표", "CT", "동의서", "수술 전 안내"]
+  - id: BOA-GQ-005
+    scenario: noncovered_fee_reporting
+    q: "2026 비급여 보고 제출자료 준비 체크리스트를 만들어줘"
+    expected_terms: ["2026", "비급여", "보고월", "수가", "제출"]
+  - id: BOA-GQ-006
+    scenario: desk_training
+    q: "신입 데스크 직원에게 보험청구 실수 Top 5를 교육하려면 어떤 자료를 보면 돼?"
+    expected_terms: ["신입", "데스크", "보험청구", "체크리스트", "실수"]

@@ -1,0 +1,125 @@
+{
+  "phase_id": "P3",
+  "phase_name": "Ingest automation (cron + GHA + Discord)",
+  "iteration": 1,
+  "timestamp": "2026-07-08T00:15:06.525132+00:00",
+  "elapsed_s": 2.44,
+  "cost_usd": 0.0,
+  "score": 26,
+  "max_score": 27,
+  "score_pct": 96.3,
+  "blockers_passed": 2,
+  "blockers_total": 2,
+  "all_blockers_passed": true,
+  "passed": true,
+  "results": [
+    {
+      "id": "P3-CRON-01",
+      "title": "daily_ingest.sh is executable",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "exit": 0
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "",
+      "duration_ms": 10,
+      "artifacts": []
+    },
+    {
+      "id": "P3-CRON-02",
+      "title": "daily_ingest.sh dry-run reaches ingester check",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "syntax_check_exit": 0
+      },
+      "expected": null,
+      "message": "",
+      "duration_ms": 11,
+      "artifacts": []
+    },
+    {
+      "id": "P3-CRON-03",
+      "title": "dream.py runs end-to-end (idempotent)",
+      "layer": "L2",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "first_exit": 0,
+        "second_exit": 0
+      },
+      "expected": null,
+      "message": "",
+      "duration_ms": 1079,
+      "artifacts": []
+    },
+    {
+      "id": "P3-CRON-04",
+      "title": "retro.py runs without error",
+      "layer": "L2",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "exit": 0
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "",
+      "duration_ms": 300,
+      "artifacts": []
+    },
+    {
+      "id": "P3-DISCORD-01",
+      "title": "discord_ingest.py creates fixture if missing",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "exit": 0,
+        "fixture_created": true
+      },
+      "expected": null,
+      "message": "",
+      "duration_ms": 253,
+      "artifacts": []
+    },
+    {
+      "id": "P3-DISCORD-02",
+      "title": "discord_ingest.py inserts events when fixture present",
+      "layer": "L2",
+      "severity": "minor",
+      "passed": false,
+      "actual": {
+        "exit": 1
+      },
+      "expected": null,
+      "message": "Traceback (most recent call last):\n  File \"asyncpg/protocol/prepared_stmt.pyx\", line 175, in asyncpg.protocol.protocol.PreparedStatementState._encode_bind_msg\n  File \"asyncpg/protocol/codecs/base.pyx\", line 251, in asyncpg.protocol.protocol.Codec.encode\n  File \"asyncpg/protocol/codecs/base.pyx\", lin",
+      "duration_ms": 364,
+      "artifacts": []
+    },
+    {
+      "id": "P3-RLS-01",
+      "title": "dream cron respects tenant boundaries (no cross-tenant promotion)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "dream_exit": 0,
+        "acme_boost_sum": 0.0
+      },
+      "expected": {
+        "dream_exit": 0,
+        "acme_boost_sum": 0.0
+      },
+      "message": "",
+      "duration_ms": 413,
+      "artifacts": []
+    }
+  ]
+}

@@ -1,0 +1,425 @@
+version: 1
+tenant_slug: boa-demo
+target_profile:
+  name: lecture_360
+  total_files: 360
+  target_chunks_min: 1500
+  target_chunks_max: 3000
+  purpose: "1-2 hour lecture corpus that looks like a Korean dental clinic NAS"
+
+execution_policy:
+  default_mode: strict-local
+  non_interactive: true
+  ask_permission_mid_run: false
+  allow_fallback: false
+  fail_fast_on_missing_dependency: true
+  fail_fast_on_missing_required_format: true
+  fail_fast_on_skipped_required_check: true
+  remove_fallback_code_when_found: true
+  require_network_default: false
+  require_llm_for_strict_local: false
+  require_embedding_for_strict_local: false
+  require_embedding_for_strict_online: true
+  allowed_write_roots:
+    - "assets/generated/boa_nas"
+    - "assets/generated/boa_vault_md"
+    - "assets/generated/boa_reports"
+  cleanup_policy: manifest_only
+  subprocess_timeout_seconds: 120
+  http_timeout_seconds: 20
+  deterministic_seed: 20260525
+  substitute_outputs_allowed: false
+  forbidden_substitute_extensions:
+    - ".docx.txt"
+    - ".pdf.txt"
+    - ".png.txt"
+    - ".jpg.txt"
+
+profiles:
+  sample_60:
+    total_files: 60
+    purpose: "fast harness smoke test"
+    target_chunks_min: 220
+    target_chunks_max: 600
+  lecture_360:
+    total_files: 360
+    purpose: "actual 1-2 hour lecture corpus"
+    target_chunks_min: 1500
+    target_chunks_max: 3000
+  stress_1200:
+    total_files: 1200
+    purpose: "separate local performance expansion"
+    target_chunks_min: 5000
+    target_chunks_max: 10000
+    required_for_lecture: false
+
+global_rules:
+  synthetic_only: true
+  contains_real_phi: false
+  language: ko
+  root: "assets/generated/boa_nas"
+  vault_root: "assets/generated/boa_vault_md"
+  metadata_sidecar: true
+  modification_date_range:
+    start: "2021-01-01"
+    end: "2026-05-25"
+  filename_style:
+    - "Korean clinic NAS style"
+    - "year prefixes for annual reports and schedules"
+    - "revision suffixes such as 수정, 최종, v2"
+    - "mixed dental English terms such as MARPE, Mini screw, OHC, EMS"
+
+file_type_mix:
+  xlsx: 120
+  docx: 95
+  pdf: 95
+  png_jpg: 30
+  md_json: 20
+
+areas:
+  - id: boa_related
+    folder: "업무자료/보아/★보아관련★"
+    files: 55
+    lecture_modules:
+      - nas_orientation
+      - operations
+      - implant_workflow
+    doc_types:
+      - id: work_manual
+        count: 12
+        extensions: ["docx", "pdf"]
+        filename_examples:
+          - "2025 업무매뉴얼_데스크_최종.docx"
+          - "보아 보고 프로세스_v2.pdf"
+        required_sections:
+          - "업무 목적"
+          - "담당자"
+          - "일일 체크리스트"
+          - "오류 발생 시 보고 경로"
+      - id: equipment_lab_manual
+        count: 10
+        extensions: ["docx", "xlsx"]
+        filename_examples:
+          - "기계실 매뉴얼_점검표.xlsx"
+          - "기공실 매뉴얼_보철물 입출고.docx"
+        required_sections:
+          - "점검 주기"
+          - "담당자 확인"
+          - "이상 발생 시 조치"
+      - id: implant_preparation
+        count: 12
+        extensions: ["xlsx", "docx", "pdf", "png", "jpg"]
+        filename_examples:
+          - "임플란트 준비표_상담실_2026.xlsx"
+          - "임플란트 수술 전 데스크 체크리스트.docx"
+        required_sections:
+          - "상담 전 확인"
+          - "CT 및 파노라마 확인"
+          - "동의서"
+          - "수술 전 안내"
+      - id: expense_report
+        count: 8
+        extensions: ["xlsx", "pdf"]
+        filename_examples:
+          - "지출결의서_양식_2026.xlsx"
+          - "지출결의서 작성방법.pdf"
+        required_sections:
+          - "결의 항목"
+          - "증빙 첨부"
+          - "승인자"
+      - id: clinic_branding
+        count: 13
+        extensions: ["png", "jpg", "pdf", "docx"]
+        filename_examples:
+          - "보아 로고_가로형.png"
+          - "명찰 시안_상담실.jpg"
+
+  - id: orthodontics
+    folder: "업무자료/보아/☆보아 교정과☆"
+    files: 60
+    lecture_modules:
+      - orthodontic_consent
+      - patient_guidance
+    doc_types:
+      - id: ortho_consent
+        count: 16
+        extensions: ["docx", "pdf"]
+        filename_examples:
+          - "교정동의서_성인.docx"
+          - "인비절라인 교정 동의서.pdf"
+        required_sections:
+          - "치료 목적"
+          - "예상 기간"
+          - "주의사항"
+          - "환자 확인"
+      - id: retainer_guidance
+        count: 14
+        extensions: ["docx", "pdf"]
+        filename_examples:
+          - "교정 유지장치 주의사항-수정.docx"
+          - "교정 유지장치 제거 동의서.pdf"
+        required_sections:
+          - "장착 시간"
+          - "파손 시 연락"
+          - "재제작 비용"
+      - id: marpe_mini_screw
+        count: 12
+        extensions: ["docx", "pdf"]
+        filename_examples:
+          - "MARPE 주의사항.pdf"
+          - "Mini screw Implant 안내문.docx"
+        required_sections:
+          - "시술 전 확인"
+          - "시술 후 불편감"
+          - "응급 연락 기준"
+      - id: ortho_price_schedule
+        count: 10
+        extensions: ["xlsx"]
+        filename_examples:
+          - "교정수가변경2026.xlsx"
+          - "교정 장치별 비용정리.xlsx"
+      - id: ortho_case_note
+        count: 8
+        extensions: ["docx", "md", "png", "jpg"]
+        filename_examples:
+          - "교정 상담 케이스_발치교정_샘플.docx"
+
+  - id: desk_insurance
+    folder: "업무자료/보아/데스크 업무/치아보험서류"
+    files: 95
+    lecture_modules:
+      - private_insurance
+      - desk_training
+    insurers:
+      - "ABL"
+      - "AIA"
+      - "AXA"
+      - "DB"
+      - "KB"
+      - "MG"
+      - "NH"
+      - "교보"
+      - "농협"
+      - "동양"
+      - "라이나"
+      - "롯데"
+      - "메리츠"
+      - "미래에셋"
+      - "삼성생명"
+    doc_types:
+      - id: claim_form
+        count: 30
+        extensions: ["pdf"]
+        filename_pattern: "{insurer}_보험금 청구서.pdf"
+        required_sections:
+          - "보험금 청구인"
+          - "치료 구분"
+          - "첨부 서류"
+      - id: dental_treatment_confirmation
+        count: 25
+        extensions: ["pdf", "docx"]
+        filename_pattern: "{insurer}_치과치료 확인서.pdf"
+        required_sections:
+          - "치료일"
+          - "치아번호"
+          - "치료내용"
+          - "진단명"
+      - id: privacy_consent
+        count: 15
+        extensions: ["pdf"]
+        filename_pattern: "{insurer}_개인정보 동의서.pdf"
+      - id: desk_claim_checklist
+        count: 15
+        extensions: ["xlsx", "docx"]
+        filename_examples:
+          - "치아보험 청구 체크리스트_데스크.xlsx"
+          - "보험사별 추가서류 정리.docx"
+      - id: claim_error_case
+        count: 10
+        extensions: ["md", "docx"]
+        filename_examples:
+          - "보험청구 실수_TOP5_신입교육.md"
+
+  - id: staff_personal
+    folder: "업무자료/보아/보아 스텝 (개인)/이혜진"
+    files: 70
+    lecture_modules:
+      - staff_ops
+      - desk_training
+    doc_types:
+      - id: desk_training
+        count: 15
+        extensions: ["docx", "pdf"]
+        filename_examples:
+          - "데스크 질문지_신입교육용.docx"
+          - "예약카드 안내.docx"
+      - id: staff_schedule
+        count: 16
+        extensions: ["xlsx"]
+        filename_examples:
+          - "직원연차_2026.xlsx"
+          - "토요일 근무표_2026.6.xlsx"
+      - id: vendor_contact
+        count: 8
+        extensions: ["xlsx"]
+        filename_examples:
+          - "거래처_기공소_장비_AS.xlsx"
+      - id: consultation_discount
+        count: 10
+        extensions: ["xlsx", "docx"]
+        filename_examples:
+          - "상담 할인 기준.xlsx"
+          - "OHC용 비용정리.xlsx"
+      - id: interview_staffing
+        count: 8
+        extensions: ["docx", "xlsx"]
+        filename_examples:
+          - "면접질문_데스크.docx"
+          - "직원교육_기초.docx"
+      - id: yearly_archive
+        count: 13
+        extensions: ["xlsx", "docx", "pdf"]
+        filename_examples:
+          - "2024 업무정리.docx"
+          - "2025 데스크 개선사항.xlsx"
+
+  - id: staff_2026
+    folder: "업무자료/보아/보아 스텝 (개인)/이혜진/2026"
+    files: 45
+    lecture_modules:
+      - noncovered_fee_reporting
+      - staff_ops
+    doc_types:
+      - id: noncovered_fee_report
+        count: 12
+        extensions: ["xlsx", "pdf", "docx"]
+        filename_examples:
+          - "2026 비급여_보고항목_진료과목_및_수가정리.xlsx"
+          - "2026 비급여보고 제출자료.docx"
+        required_sections:
+          - "보고월"
+          - "보고 항목"
+          - "비용"
+          - "제출 전 확인"
+      - id: insurance_training
+        count: 8
+        extensions: ["xlsx", "docx"]
+        filename_examples:
+          - "2026 보험교육.xlsx"
+          - "보험청구 교육자료_데스크.docx"
+      - id: schedule_calendar
+        count: 10
+        extensions: ["xlsx"]
+        filename_examples:
+          - "2026 달력-D1 수정.xlsx"
+          - "2026 일정표_출근.xlsx"
+      - id: government_support
+        count: 5
+        extensions: ["pdf", "docx"]
+        filename_examples:
+          - "2026 청년일자리도약장려금_제출서류.pdf"
+      - id: intern_training
+        count: 5
+        extensions: ["docx", "xlsx"]
+        filename_examples:
+          - "실습생관련_체크리스트.docx"
+      - id: meeting_note
+        count: 5
+        extensions: ["docx", "md"]
+        filename_examples:
+          - "회의실정리_2026-04.md"
+
+  - id: fees_management_brand
+    folder: "업무자료/보아"
+    files: 35
+    lecture_modules:
+      - fees
+      - nas_orientation
+      - operations
+    doc_types:
+      - id: fee_table
+        count: 14
+        extensions: ["xlsx", "pdf"]
+        folder_override: "업무자료/보아/수가표"
+        filename_examples:
+          - "2026 수가표_보존_보철.xlsx"
+          - "제증명 수수료_2026.pdf"
+      - id: business_form
+        count: 8
+        extensions: ["pdf", "docx", "png", "jpg"]
+        folder_override: "업무자료/보아/병원서류&로고"
+        filename_examples:
+          - "사업자등록증_mock.pdf"
+          - "병원 기본 서류 발급 안내.docx"
+      - id: logo_photozone
+        count: 7
+        extensions: ["png", "jpg"]
+        folder_override: "업무자료/보아/포토존사진,포토존리스트"
+        filename_examples:
+          - "포토존_리스트_2026.xlsx"
+          - "보아 포토존 샘플.jpg"
+      - id: management_support
+        count: 6
+        extensions: ["xlsx", "docx"]
+        folder_override: "업무자료/보아/보아 경영지원실"
+        filename_examples:
+          - "월별 지출 요약_2026.xlsx"
+          - "경영지원 요청 프로세스.docx"
+
+golden_scenarios:
+  - id: nas_orientation
+    anchor_query: "보아 NAS에서 데스크 업무와 교정 업무 자료는 어떻게 나뉘어 있어?"
+    expected_terms: ["데스크 업무", "교정", "보험", "스텝", "비급여"]
+  - id: private_insurance
+    anchor_query: "라이나 치아보험 청구할 때 필요한 서류와 데스크 확인사항을 정리해줘"
+    expected_terms: ["라이나", "보험금 청구서", "치과치료 확인서", "개인정보 동의서"]
+  - id: orthodontic_consent
+    anchor_query: "교정 유지장치 제거 동의서가 필요한 상황과 환자 안내 포인트는?"
+    expected_terms: ["유지장치", "동의서", "주의사항", "재제작"]
+  - id: implant_workflow
+    anchor_query: "임플란트 상담부터 수술 전까지 데스크가 챙겨야 할 문서는?"
+    expected_terms: ["임플란트 준비표", "CT", "동의서", "수술 전 안내"]
+  - id: noncovered_fee_reporting
+    anchor_query: "2026 비급여 보고 제출자료 준비 체크리스트를 만들어줘"
+    expected_terms: ["2026", "비급여", "보고월", "수가", "제출"]
+  - id: desk_training
+    anchor_query: "신입 데스크 직원에게 보험청구 실수 Top 5를 교육하려면 어떤 자료를 보면 돼?"
+    expected_terms: ["신입", "데스크", "보험청구", "체크리스트", "실수"]
+
+validation_thresholds:
+  file_count_tolerance_pct: 2
+  search_recall_at_3_min: 0.80
+  search_recall_at_5_min: 0.90
+  search_p95_ms_local_max: 700
+  search_p95_ms_remote_max: 1200
+  ask_retrieval_ms_max: 2000
+  lecture_chunk_count_min: 1500
+  lecture_chunk_count_max: 3000
+
+harness_layers:
+  - id: preflight
+    command: "python3 services/sediment/scripts/boa_demo_harness.py --preflight"
+    blocks_generation: true
+    requires_network: false
+  - id: generate
+    command: "python3 services/sediment/scripts/generate_boa_synthetic_files.py --profile lecture_360"
+    requires_network: false
+  - id: validate_files
+    command: "python3 services/sediment/scripts/validate_boa_synthetic_files.py --profile lecture_360"
+    requires_network: false
+  - id: convert_vault
+    command: "python3 services/sediment/scripts/convert_boa_files_to_vault.py --profile lecture_360"
+    requires_network: false
+  - id: local_retrieval
+    command: "python3 services/sediment/scripts/boa_local_retrieval_check.py --profile lecture_360"
+    requires_network: false
+  - id: performance
+    command: "python3 services/sediment/scripts/boa_perf_check.py --profile lecture_360 --mode strict-local"
+    requires_network: false
+  - id: e2e_strict_local
+    command: "python3 services/sediment/scripts/boa_e2e.py --profile lecture_360 --mode strict-local"
+    requires_network: false
+  - id: e2e_strict_online
+    command: "python3 services/sediment/scripts/boa_demo_harness.py --profile lecture_360 --mode strict-online"
+    required_for_live_studio_demo: true
+    requires_network: true

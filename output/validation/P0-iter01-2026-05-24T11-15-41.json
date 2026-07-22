@@ -1,0 +1,346 @@
+{
+  "phase_id": "P0",
+  "phase_name": "Scaffolding (infra + DDL + RLS)",
+  "iteration": 1,
+  "timestamp": "2026-05-24T11:15:41.040268+00:00",
+  "elapsed_s": 0.75,
+  "cost_usd": 0.0,
+  "score": 155,
+  "max_score": 155,
+  "score_pct": 100.0,
+  "blockers_passed": 14,
+  "blockers_total": 14,
+  "all_blockers_passed": true,
+  "passed": true,
+  "results": [
+    {
+      "id": "P0-INFRA-01",
+      "title": "Postgres reachable on :5433",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "exit": 0
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "",
+      "duration_ms": 417,
+      "artifacts": []
+    },
+    {
+      "id": "P0-INFRA-02",
+      "title": "Redis reachable on :6380",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "exit": 0
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "",
+      "duration_ms": 174,
+      "artifacts": []
+    },
+    {
+      "id": "P0-INFRA-03",
+      "title": "pgvector extension installed",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 53,
+      "artifacts": []
+    },
+    {
+      "id": "P0-INFRA-04",
+      "title": "uuid-ossp extension installed",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-INFRA-05",
+      "title": "pg_trgm extension installed",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-DDL-01",
+      "title": "All 14 tenant-scoped tables exist",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "found": 14,
+        "missing": []
+      },
+      "expected": {
+        "required": 14
+      },
+      "message": "",
+      "duration_ms": 41,
+      "artifacts": []
+    },
+    {
+      "id": "P0-DDL-02",
+      "title": "chunks.embedding column is vector(1536)",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 8,
+      "artifacts": []
+    },
+    {
+      "id": "P0-DDL-03",
+      "title": "chunks.tsv tsvector column exists",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-DDL-04",
+      "title": "HNSW index on chunks.embedding",
+      "layer": "L1",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_min_rows": 1
+      },
+      "message": "",
+      "duration_ms": 9,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-01",
+      "title": "RLS enabled on all tenant-scoped tables",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "missing_rls": []
+      },
+      "expected": "rowsecurity=true on all tenant tables",
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-02",
+      "title": "FORCE ROW LEVEL SECURITY on all tenant-scoped tables",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "missing_force": []
+      },
+      "expected": "FORCE ROW LEVEL SECURITY on all",
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-03",
+      "title": "tenant_isolation policy exists per table (>= 13 policies)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1,
+        "value": 16
+      },
+      "expected": {
+        "expected_min_value": 13
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-04",
+      "title": "tenant_self policy on tenants table",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-05",
+      "title": "curator_app role exists",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-06",
+      "title": "curator_service role exists",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-07",
+      "title": "curator_service has BYPASSRLS",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 1,
+      "artifacts": []
+    },
+    {
+      "id": "P0-RLS-08",
+      "title": "current_tenant_id() function exists",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "rows": 1
+      },
+      "expected": {
+        "expected_rows": 1
+      },
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-META-01",
+      "title": "DECISIONS.md exists with 20 numbered answers",
+      "layer": "L1",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "answered_count": 20,
+        "missing": []
+      },
+      "expected": "20 numbered answers (1..20)",
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-META-02",
+      "title": ".env.example contains all required env vars",
+      "layer": "L1",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "missing": []
+      },
+      "expected": "16 required env vars",
+      "message": "",
+      "duration_ms": 1,
+      "artifacts": []
+    },
+    {
+      "id": "P0-META-03",
+      "title": "Makefile defines all 9 essential targets",
+      "layer": "L1",
+      "severity": "major",
+      "passed": true,
+      "actual": {
+        "missing": []
+      },
+      "expected": "all essential make targets",
+      "message": "",
+      "duration_ms": 2,
+      "artifacts": []
+    },
+    {
+      "id": "P0-META-04",
+      "title": "SPEC.md + README.md exist + non-empty",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "exit": 0
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "",
+      "duration_ms": 7,
+      "artifacts": []
+    }
+  ]
+}

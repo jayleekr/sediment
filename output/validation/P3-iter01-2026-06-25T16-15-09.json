@@ -1,0 +1,118 @@
+{
+  "phase_id": "P3",
+  "phase_name": "Ingest automation (cron + GHA + Discord)",
+  "iteration": 1,
+  "timestamp": "2026-06-25T16:15:09.820602+00:00",
+  "elapsed_s": 1.41,
+  "cost_usd": 0.0,
+  "score": 12,
+  "max_score": 27,
+  "score_pct": 44.4,
+  "blockers_passed": 1,
+  "blockers_total": 2,
+  "all_blockers_passed": false,
+  "passed": false,
+  "results": [
+    {
+      "id": "P3-CRON-01",
+      "title": "daily_ingest.sh is executable",
+      "layer": "L1",
+      "severity": "blocker",
+      "passed": true,
+      "actual": {
+        "exit": 0
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "",
+      "duration_ms": 13,
+      "artifacts": []
+    },
+    {
+      "id": "P3-CRON-02",
+      "title": "daily_ingest.sh dry-run reaches ingester check",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "syntax_check_exit": 0
+      },
+      "expected": null,
+      "message": "",
+      "duration_ms": 11,
+      "artifacts": []
+    },
+    {
+      "id": "P3-CRON-03",
+      "title": "dream.py runs end-to-end (idempotent)",
+      "layer": "L2",
+      "severity": "major",
+      "passed": false,
+      "actual": {
+        "exit": 1
+      },
+      "expected": null,
+      "message": "first run failed: Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/Users/jaylee/CodeWorkspace/sediment/services/sediment/scripts/cron/dream.py\", line 156, in <module>\n    asyncio.run(main())\n  File \"/Users/jaylee/.loca",
+      "duration_ms": 355,
+      "artifacts": []
+    },
+    {
+      "id": "P3-CRON-04",
+      "title": "retro.py runs without error",
+      "layer": "L2",
+      "severity": "minor",
+      "passed": false,
+      "actual": {
+        "exit": 1
+      },
+      "expected": {
+        "exit": 0
+      },
+      "message": "exit=1 (expected 0)\nstdout: \nstderr: Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/Users/jaylee/CodeWorkspace/sediment/services/sediment/scripts/cron/retro.py\", line 56, in <module>\n    asyncio.run(main())\n  File \"/Users/jaylee/.local/share/uv/python/cpython-3.11.13-macos-aarch64-none/lib/python3.11/asyncio/runners.py\", line 190, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/Users/jaylee/.local/share/uv/p",
+      "duration_ms": 258,
+      "artifacts": []
+    },
+    {
+      "id": "P3-DISCORD-01",
+      "title": "discord_ingest.py creates fixture if missing",
+      "layer": "L1",
+      "severity": "minor",
+      "passed": true,
+      "actual": {
+        "exit": 0,
+        "fixture_created": true
+      },
+      "expected": null,
+      "message": "",
+      "duration_ms": 248,
+      "artifacts": []
+    },
+    {
+      "id": "P3-DISCORD-02",
+      "title": "discord_ingest.py inserts events when fixture present",
+      "layer": "L2",
+      "severity": "minor",
+      "passed": false,
+      "actual": {
+        "exit": 1
+      },
+      "expected": null,
+      "message": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/Users/jaylee/CodeWorkspace/sediment/services/sediment/scripts/discord_ingest.py\", line 95, in <module>\n    asyncio.run(main())\n  File \"/Users/jaylee/.l",
+      "duration_ms": 258,
+      "artifacts": []
+    },
+    {
+      "id": "P3-RLS-01",
+      "title": "dream cron respects tenant boundaries (no cross-tenant promotion)",
+      "layer": "L3",
+      "severity": "blocker",
+      "passed": false,
+      "actual": null,
+      "expected": null,
+      "message": "exception: OSError: Multiple exceptions: [Errno 61] Connect call failed ('127.0.0.1', 5433), [Errno 61] Connect call failed ('::1', 5433, 0, 0)",
+      "duration_ms": 263,
+      "artifacts": []
+    }
+  ]
+}
