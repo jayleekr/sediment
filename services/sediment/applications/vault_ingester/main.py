@@ -271,13 +271,22 @@ async def _resolve_webhook_tenant(repo: Optional[str]) -> str:
 
 def _verify_github_sig(raw: bytes, header: Optional[str]) -> bool:
     """HMAC-SHA256 of the raw body against GITHUB_WEBHOOK_SECRET.
-    If the secret is unset, skip the check (start.sh already WARNs about this)
-    so local/un-provisioned envs still function — matches existing behaviour.
+
+    Fail CLOSED (sediment#81): the signature is the only gate against forged
+    webhook payloads, so every uncertain state is a rejection —
+      * secret unset          → reject (was: skip check + accept, the fail-open)
+      * header missing/malformed → reject
+      * signature mismatch    → reject
+    start.sh already refuses to boot a prod container without
+    GITHUB_WEBHOOK_SECRET; this makes the app itself refuse too, so a
+    misconfigured/dev/test process can never silently accept unsigned traffic.
     """
     secret = os.environ.get("GITHUB_WEBHOOK_SECRET")
     if not secret:
-        log.warning("webhook.no_secret — signature check skipped")
-        return True
+        # Never skip the check. An unprovisioned secret means we cannot verify
+        # anyone, so we trust no one.
+        log.warning("webhook.no_secret — rejecting (fail closed)")
+        return False
     if not header or not header.startswith("sha256="):
         return False
     expected = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()

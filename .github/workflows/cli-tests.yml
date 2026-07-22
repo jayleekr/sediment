@@ -93,6 +93,7 @@ jobs:
             tests/test_rate_limit_edges.py \
             tests/test_audit.py \
             tests/test_security.py \
+            tests/test_webhook_signature.py \
             tests/test_rls.py \
             tests/test_rls_cross_tenant_via_api.py \
             tests/test_cross_tenant_full.py \
