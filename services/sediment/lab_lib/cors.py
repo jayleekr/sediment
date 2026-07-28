@@ -12,10 +12,13 @@ Policy enforced here:
 * Allow only first-party origins we own: localhost dev + the custom domains
   (``sediment.hypeproof-ai.xyz``, ``hypeproof-ai.xyz``, ``hypeproof.studio``).
   Prod frontend lives on the custom domain, so this is all prod needs.
-* Allow Vercel *preview* origins ONLY when scoped to this project's Vercel team
-  slug — the trailing ``-<slug>.vercel.app`` label Vercel appends to every
-  deployment URL, which an off-team attacker cannot forge. Off by default
-  (secure); ops opts in per environment via ``SEDIMENT_VERCEL_TEAM_SLUG``.
+* Allow *no* pattern-matched ``*.vercel.app`` origin at all. A hostname label
+  cannot identify a tenant on a shared apex: a real preview URL
+  (``sediment-git-main-<team>.vercel.app``) and an attacker-controlled
+  ``evil-<team>.vercel.app`` are both a single label in front of
+  ``vercel.app``, so no regex can tell them apart — anyone can register a
+  project name that ends in ``-<team>``. Preview/staging origins must therefore
+  be enumerated explicitly via ``SEDIMENT_CORS_EXTRA_ORIGINS`` (CSV).
 * Refuse to build a credentialed config that also matches a hostile probe
   origin — defense in depth so a broad regex can't quietly regress back in.
 
@@ -43,6 +46,11 @@ _HOSTILE_PROBES = (
     "https://evil.vercel.app",
     "https://attacker.vercel.app",
     "https://vercel.app",
+    # Shaped like a team-scoped preview URL but attacker-registrable: on a
+    # shared apex "evil-<team>" is just another project name. Kept here so any
+    # future "-<slug>.vercel.app" regex — or an ops typo in
+    # SEDIMENT_CORS_EXTRA_ORIGINS — fails the build instead of shipping.
+    "https://evil-hypeprooflab.vercel.app",
     "https://hypeproof-ai.xyz.attacker.com",
     "https://evil.hypeproof.studio.attacker.com",
 )
@@ -55,24 +63,16 @@ def _split_csv(raw: str) -> list[str]:
 def build_cors_kwargs(env: Mapping[str, str] | None = None) -> dict:
     """Build the kwargs dict for ``CORSMiddleware`` from the environment.
 
-    Safe by default: no ``*.vercel.app`` allowance unless a team slug is
-    explicitly configured. Raises ``ValueError`` if the resulting credentialed
-    policy would trust a hostile origin.
+    Safe by default: no ``*.vercel.app`` allowance at all, and no
+    ``allow_origin_regex`` is ever emitted — the allowed set is an explicit
+    list of first-party origins plus whatever ops enumerates in
+    ``SEDIMENT_CORS_EXTRA_ORIGINS``. Raises ``ValueError`` if the resulting
+    credentialed policy would trust a hostile origin.
     """
     env = os.environ if env is None else env
 
     allow_origins = list(_FIRST_PARTY_ORIGINS)
     allow_origins.extend(_split_csv(env.get("SEDIMENT_CORS_EXTRA_ORIGINS", "")))
-
-    allow_origin_regex: str | None = None
-    team_slug = env.get("SEDIMENT_VERCEL_TEAM_SLUG", "").strip().lower()
-    if team_slug:
-        slug = re.escape(team_slug)
-        # Vercel preview URL shape: "<project>-<git-or-hash>-<team-slug>.vercel.app".
-        # The team slug is the final label before ".vercel.app" and cannot be
-        # forged by a deployment outside the team, so require it explicitly
-        # instead of trusting the whole "*.vercel.app" apex.
-        allow_origin_regex = rf"https://[a-z0-9-]+-{slug}\.vercel\.app"
 
     kwargs: dict = {
         "allow_origins": allow_origins,
@@ -80,8 +80,6 @@ def build_cors_kwargs(env: Mapping[str, str] | None = None) -> dict:
         "allow_methods": ["*"],
         "allow_headers": ["*"],
     }
-    if allow_origin_regex is not None:
-        kwargs["allow_origin_regex"] = allow_origin_regex
 
     _assert_safe(kwargs)
     return kwargs
@@ -118,5 +116,7 @@ def _assert_safe(kwargs: Mapping) -> None:
             "CORS misconfig: this credentialed policy would allow hostile "
             f"origin(s) {hits}. A broad regex over a shared apex (e.g. "
             "*.vercel.app) must not be combined with allow_credentials=True "
-            "(sediment#80). Scope Vercel previews to the team slug instead."
+            "(sediment#80). A hostname label cannot identify a tenant on a "
+            "shared apex — enumerate preview origins explicitly in "
+            "SEDIMENT_CORS_EXTRA_ORIGINS instead."
         )

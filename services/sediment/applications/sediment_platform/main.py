@@ -30,10 +30,10 @@ app = FastAPI(title="Curator Platform", version="0.1.0")
 
 app.add_middleware(TenantContextMiddleware)
 # Credentialed CORS policy is centralized in lab_lib.cors so both FastAPI apps
-# stay in lockstep. It allows only first-party origins (localhost + owned custom
-# domains) by default, and scoped Vercel preview origins only when
-# SEDIMENT_VERCEL_TEAM_SLUG is set. It refuses to trust the shared *.vercel.app
-# apex under allow_credentials=True (sediment#80).
+# stay in lockstep. It allows only an explicit list of origins: first-party
+# (localhost + owned custom domains) plus anything ops enumerates in
+# SEDIMENT_CORS_EXTRA_ORIGINS. No pattern over the shared *.vercel.app apex is
+# trusted under allow_credentials=True (sediment#80).
 app.add_middleware(CORSMiddleware, **build_cors_kwargs())
 
 

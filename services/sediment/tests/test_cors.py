@@ -68,16 +68,56 @@ def test_arbitrary_vercel_preview_blocked_by_default():
         assert _preflight_allow_origin(client, origin) == "", f"{origin} must not be echoed"
 
 
-def test_scoped_preview_allowed_only_for_configured_team_slug():
+def test_team_slug_env_no_longer_grants_any_vercel_origin():
+    """Regression for the review blocker on PR #133.
+
+    The earlier fix allowed ``https://[a-z0-9-]+-<slug>\\.vercel\\.app``. Because
+    ``[a-z0-9-]+`` includes hyphens, ANY project ending in ``-<slug>`` matched —
+    ``evil-hypeprooflab.vercel.app`` is attacker-registrable and passed. On a
+    shared apex both the real preview URL and the attacker URL are a single
+    label in front of ``vercel.app``, so no regex can separate them. The env var
+    is gone; setting it must grant nothing.
+    """
     client = _client({"SEDIMENT_VERCEL_TEAM_SLUG": "hypeprooflab"})
-    good = "https://sediment-git-main-hypeprooflab.vercel.app"
-    assert _preflight_allow_origin(client, good) == good
-    # An off-team preview URL is still rejected even with a slug configured.
     for origin in [
-        "https://evil.vercel.app",
+        "https://evil-hypeprooflab.vercel.app",
+        "https://hypeprooflab.vercel.app",
+        "https://sediment-git-main-hypeprooflab.vercel.app",
         "https://sediment-git-main-otherteam.vercel.app",
+        "https://evil.vercel.app",
     ]:
-        assert _preflight_allow_origin(client, origin) == ""
+        assert _preflight_allow_origin(client, origin) == "", f"{origin} must not be echoed"
+
+
+def test_no_origin_regex_is_ever_emitted():
+    """Preview allowance is an explicit origin list only — never a pattern."""
+    for env in (
+        {},
+        {"SEDIMENT_VERCEL_TEAM_SLUG": "hypeprooflab"},
+        {"SEDIMENT_CORS_EXTRA_ORIGINS": "https://sediment-git-main-hypeprooflab.vercel.app"},
+    ):
+        assert "allow_origin_regex" not in build_cors_kwargs(env=env)
+
+
+def test_guard_rejects_slug_suffix_regex():
+    """The specific regex from PR #133 must be refused by the safety guard."""
+    with pytest.raises(ValueError):
+        _assert_safe(
+            {
+                "allow_origins": [],
+                "allow_origin_regex": r"https://[a-z0-9-]+-hypeprooflab\.vercel\.app",
+                "allow_credentials": True,
+            }
+        )
+
+
+def test_explicit_preview_origin_can_be_enumerated():
+    """The supported way to allow a preview URL: list it verbatim."""
+    origin = "https://sediment-git-main-hypeprooflab.vercel.app"
+    client = _client({"SEDIMENT_CORS_EXTRA_ORIGINS": origin})
+    assert _preflight_allow_origin(client, origin) == origin
+    # Neighbouring origins on the same apex stay blocked.
+    assert _preflight_allow_origin(client, "https://evil-hypeprooflab.vercel.app") == ""
 
 
 def test_extra_origins_env_are_added():
@@ -98,8 +138,15 @@ def test_guard_rejects_wildcard_with_credentials():
         _assert_safe({"allow_origins": ["*"], "allow_credentials": True})
 
 
-def test_build_never_returns_broad_regex_even_with_slug():
-    kwargs = build_cors_kwargs(env={"SEDIMENT_VERCEL_TEAM_SLUG": "hypeprooflab"})
-    # build_cors_kwargs runs _assert_safe internally; assert the scoped regex
-    # shape explicitly too.
-    assert kwargs["allow_origin_regex"] == r"https://[a-z0-9-]+-hypeprooflab\.vercel\.app"
+def test_build_allows_only_the_explicit_origin_list():
+    kwargs = build_cors_kwargs(env={"SEDIMENT_CORS_EXTRA_ORIGINS": "https://staging.hypeproof-ai.xyz"})
+    assert kwargs["allow_credentials"] is True
+    assert "allow_origin_regex" not in kwargs
+    assert kwargs["allow_origins"] == [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://sediment.hypeproof-ai.xyz",
+        "https://hypeproof-ai.xyz",
+        "https://hypeproof.studio",
+        "https://staging.hypeproof-ai.xyz",
+    ]
