@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from lab_lib.cors import build_cors_kwargs
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.settings import validate_runtime_secrets
 from lab_lib.tenant_middleware import TenantContextMiddleware
@@ -28,18 +29,12 @@ validate_runtime_secrets()
 app = FastAPI(title="Curator Platform", version="0.1.0")
 
 app.add_middleware(TenantContextMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    # Frontend deploys to Vercel (preview = *.vercel.app, prod = the custom
-    # domain) so the exact origin isn't known until deploy. Regex covers
-    # local dev + every Vercel deploy + hypeproof domains. allow_credentials
-    # forbids "*", hence the regex form.
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_origin_regex=r"https://([a-z0-9-]+\.)?(vercel\.app|hypeproof-ai\.xyz|hypeproof\.studio)",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Credentialed CORS policy is centralized in lab_lib.cors so both FastAPI apps
+# stay in lockstep. It allows only an explicit list of origins: first-party
+# (localhost + owned custom domains) plus anything ops enumerates in
+# SEDIMENT_CORS_EXTRA_ORIGINS. No pattern over the shared *.vercel.app apex is
+# trusted under allow_credentials=True (sediment#80).
+app.add_middleware(CORSMiddleware, **build_cors_kwargs())
 
 
 @app.get("/healthz")

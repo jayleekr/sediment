@@ -145,7 +145,37 @@ location /webhook/        { proxy_pass http://127.0.0.1:11000; }
 location /healthz         { return 200 "OK\n"; }
 ```
 
-CORS allowed origins: `https://sediment.hypeproof-ai.xyz` + the Vercel preview pattern. Tightened from `*` after the first prod soak.
+### CORS (credentialed) — sediment#80
+
+Credentialed CORS (`allow_credentials=True`) is centralized in `lab_lib/cors.py`
+(`build_cors_kwargs()`), shared by both `sediment_platform` and
+`sediment_langgraph`. Policy:
+
+- **Production / default**: only first-party origins are allowed — `http://localhost:3000`,
+  `http://127.0.0.1:3000`, `https://sediment.hypeproof-ai.xyz`, `https://hypeproof-ai.xyz`,
+  `https://hypeproof.studio`. The prod frontend lives on the custom domain, so this is all
+  prod needs. There is **no** blanket `*.vercel.app` allowance.
+- **Why not `*.vercel.app`**: `vercel.app` is a shared, multi-tenant apex — anyone can deploy
+  `attacker.vercel.app`. Combined with `allow_credentials=True`, a blanket regex let any such
+  origin send the victim's cookies/session and read the response. Removed.
+- **No team-slug regex either**: scoping previews with `https://[a-z0-9-]+-<team>\.vercel\.app`
+  does **not** work. `[a-z0-9-]+` spans hyphens, so `evil-<team>.vercel.app` — a project name
+  anyone can register — fullmatches. More fundamentally, a real preview URL and an attacker URL
+  are both a single label in front of `vercel.app`, so no regex can tell tenants apart on a
+  shared apex. `SEDIMENT_VERCEL_TEAM_SLUG` has been removed; setting it does nothing.
+- **Preview / staging opt-in**: enumerate the exact origins in
+  `SEDIMENT_CORS_EXTRA_ORIGINS=<csv>` — e.g.
+  `fly secrets set SEDIMENT_CORS_EXTRA_ORIGINS="https://sediment-git-main-hypeprooflab.vercel.app,https://staging.hypeproof-ai.xyz"`.
+  Each entry must be a full scheme+host origin (no path, no trailing slash, no wildcard).
+  Unset by default. Vercel preview URLs change per branch/deploy, so prefer a stable alias
+  domain over pinning a per-commit URL.
+- **Guard**: `build_cors_kwargs()` refuses (raises `ValueError`) any credentialed config that
+  would match a hostile probe origin (broad shared-apex regex, or a `-<team>.vercel.app`-shaped
+  origin) or a `*` wildcard, so the vulnerable pattern cannot regress back in.
+- **Rollback**: that `ValueError` is raised at import time, so a bad
+  `SEDIMENT_CORS_EXTRA_ORIGINS` value makes the app fail to boot — if a deploy comes up
+  unhealthy right after a CORS change, `fly secrets unset SEDIMENT_CORS_EXTRA_ORIGINS` and
+  redeploy to restore the first-party-only default.
 
 ## 7. start.sh
 

@@ -185,16 +185,26 @@ async def test_token_never_echoed_in_error_response(client):
 # CORS / origin
 # ============================================================
 
-async def test_cors_blocks_arbitrary_origin(client):
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://evil.example",
+        # sediment#80: *.vercel.app is a shared apex — an arbitrary preview
+        # deploy must NOT be trusted for credentialed requests.
+        "https://evil.vercel.app",
+        "https://attacker-app.vercel.app",
+    ],
+)
+async def test_cors_blocks_arbitrary_origin(client, origin):
     """Whoami from a random origin must NOT get permissive CORS."""
     r = await client.options(
         "/api/v1/auth/whoami",
         headers={
-            "Origin": "https://evil.example",
+            "Origin": origin,
             "Access-Control-Request-Method": "GET",
         },
     )
     # Either 4xx, or 200 without Access-Control-Allow-Origin echoed.
     allow = r.headers.get("access-control-allow-origin", "")
-    assert allow not in ("https://evil.example", "*"), \
-        f"CORS too permissive: Allow-Origin={allow!r}"
+    assert allow not in (origin, "*"), \
+        f"CORS too permissive for {origin!r}: Allow-Origin={allow!r}"
