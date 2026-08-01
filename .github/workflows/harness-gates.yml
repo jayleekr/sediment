@@ -9,6 +9,8 @@
 #   - settings boot-guard regression (jwt_secret default, etc.)
 #   - GitHub connector PAT mandate regression
 #   - Discord circuit breaker primitives
+#   - credentialed CORS regression (sediment#80): no broad/shared-apex origin
+#     pattern may be paired with allow_credentials=True
 #
 # Runs fast (<60s typical). Required to pass before merge.
 
@@ -30,6 +32,8 @@ on:
       - 'services/sediment/validator/rubric.yaml'
       - 'harness/scripts/**'
       - 'services/sediment/pyproject.toml'
+      # The CORS guard itself — a push that only edits the test must still run it.
+      - 'services/sediment/tests/test_cors.py'
       - '.github/workflows/harness-gates.yml'
 
 defaults:
@@ -89,6 +93,23 @@ jobs:
           .venv/bin/pip install -e ".[dev]"
       - name: Run smoke tests
         run: bash harness/scripts/smoke-tests.sh
+
+      - name: CORS credentialed-origin guard (sediment#80)
+        # tests/test_cors.py is the only regression guard for sediment#80:
+        # allow_credentials=True must never be paired with a wildcard or with
+        # any origin pattern over a shared apex (*.vercel.app), and
+        # build_cors_kwargs must never emit allow_origin_regex at all.
+        #
+        # It lives here, not in cli-tests' "Backend + shim + rate-limit UT",
+        # because it needs no database: it builds a throwaway Starlette app and
+        # fires real preflights (~1s). That job boots Postgres, applies
+        # init.sql, runs migrations and seeds before its first assertion — the
+        # wrong place for a canary that must stay fast. SKIP_DB=1 matches how
+        # the file is meant to be run (see its module docstring).
+        working-directory: services/sediment
+        env:
+          SKIP_DB: "1"
+        run: .venv/bin/python -m pytest tests/test_cors.py -v
 
   deploy-check-offline:
     name: Pre-push readiness (offline — fly auth not required)
