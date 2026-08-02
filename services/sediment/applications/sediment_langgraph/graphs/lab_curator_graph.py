@@ -19,9 +19,10 @@ from lab_lib.logging import get_logger
 # (and the workspace_mcp.py zero-vector guard was MISSING — a confirmed
 # LEARNINGS-class drift). Local underscore aliases preserved so any
 # remaining call sites continue to resolve without further edits.
+# sediment#139: detect_query_type / detect_project_path left search_utils —
+# they were one tenant's proper nouns, now rows in `tenant_aliases`.
+from lab_lib.aliases import demote_case_sql, load_alias_index
 from lab_lib.search_utils import (
-    detect_query_type as _detect_query_type,
-    detect_project_path as _detect_project_path,
     slug_regex as _slug_regex,
     build_ts_or_query as _build_ts_or_query,
     prefer_bm25_first,
@@ -192,13 +193,18 @@ async def node_library_search(state: CuratorState) -> dict:
                 return {"citations": []}
             # Pass "" when no type hint — avoids asyncpg AmbiguousParameterError
             # on NULL parameters (asyncpg can't infer type from CASE expression).
-            type_hint = _detect_query_type(q) or ""
-            project_hint = _detect_project_path(q)
+            # Which terms boost is the tenant's data now (sediment#139); the
+            # multipliers below stay in code. A tenant with no aliases gets
+            # plain BM25 rather than another tenant's vocabulary.
+            aliases = await load_alias_index(s, tid)
+            type_hint = aliases.detect_type(q) or ""
+            project_hint = aliases.detect_ref_prefix(q)
             slug_re = _slug_regex(q)
+            demote_sql, demote_params = demote_case_sql(aliases, "a")
             # Type-boost (3x): artifact.type matches the implied type.
             # Project-boost (2x): ref contains the implied project path (e.g. "donga").
             # Filename-boost (2x): a token in the query appears in slug or ref —
-            #   catches "VALIDATION_PLAN", "hypeproof-roadmap-2026Q2", etc.
+            #   catches e.g. "VALIDATION_PLAN", "<project>-2026Q2".
             # Meta-doc penalty (0.5x): SPEC/README/TEST_/DECISIONS verbatim-quote
             #   validation queries, so they over-rank on every search.
             # CAST(:hint AS text) forces param type inference for asyncpg.
@@ -215,19 +221,18 @@ async def node_library_search(state: CuratorState) -> dict:
                                    AND (LOWER(a.ref) ~ CAST(:slug_re AS text)
                                         OR LOWER(COALESCE(a.slug,'')) ~ CAST(:slug_re AS text))
                               THEN 2.0 ELSE 1.0 END
-                       -- Meta-doc penalty: SPEC/README/TEST_/DECISIONS verbatim-
-                       -- quote validation queries, so they used to over-rank on
-                       -- every search. With the project_hint + filename + type
-                       -- boosts above, legitimate hits already outrank them.
-                       -- Penalty kept at 0.8x (soft tiebreaker) — anything lower
-                       -- broke queries that LEGITIMATELY want SPEC.md
-                       -- (e.g. "AI Curator 도메인 모델"). 0.5x was found to drop
-                       -- GQ-031 and GQ-033 from PASS to MISS.
-                       * CASE WHEN a.ref LIKE 'products/sediment/SPEC%'
-                                OR a.ref LIKE 'products/sediment/README%'
-                                OR a.ref LIKE 'products/sediment/TEST_%'
-                                OR a.ref LIKE 'products/sediment/DECISIONS%'
-                              THEN 0.8 ELSE 1.0 END AS score,
+                       -- Meta-doc demotion: docs that verbatim-quote validation
+                       -- queries used to over-rank on every search. With the
+                       -- project_hint + filename + type boosts above,
+                       -- legitimate hits already outrank them.
+                       -- Kept at 0.8x (soft tiebreaker) — anything lower broke
+                       -- queries that LEGITIMATELY want SPEC.md (e.g. "AI
+                       -- Curator 도메인 모델"); 0.5x dropped GQ-031 and GQ-033
+                       -- from PASS to MISS.
+                       -- Which refs get demoted is the tenant's data now
+                       -- (sediment#139) and collapses to the constant 1.0 for a
+                       -- tenant that configured none.
+                       * {demote} AS score,
                    a.ref, a.type, a.date::text AS date, a.slug,
                    a.frontmatter -> 'provenance' AS provenance,
                    CASE
@@ -242,8 +247,9 @@ async def node_library_search(state: CuratorState) -> dict:
               AND a.tenant_id = CAST(:tid AS uuid)
               AND c.tenant_id = CAST(:tid AS uuid)
             ORDER BY score DESC LIMIT 8;
-            """
+            """.replace("{demote}", demote_sql)
             r = await s.execute(text(sql_bm25), {
+                **demote_params,
                 "tsq": ts_or,
                 "type_hint": type_hint,
                 "project_hint": project_hint,

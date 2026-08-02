@@ -1,182 +1,31 @@
-"""Library — vault browser + search."""
+"""Library — vault browser + search.
+
+sediment#139: this module used to carry verbatim copies of _STOP_WORDS,
+_KO_PARTICLE_SUFFIXES, _build_ts_or_query, _prefer_bm25_first and _slug_regex,
+even though WO-7 (2026-05-23) had already extracted them to lab_lib.search_utils
+precisely so they would stop drifting. They are now imported. The two keyword
+boost maps that also lived here are gone entirely — they were one tenant's
+vocabulary and now live in `tenant_aliases` (lab_lib.aliases).
+"""
 from __future__ import annotations
-import re
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
+from lab_lib.aliases import demote_case_sql, load_alias_index
 from lab_lib.auth import Identity, require_identity
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import get_logger
+from lab_lib.search_utils import (
+    build_ts_or_query as _build_ts_or_query,
+    prefer_bm25_first as _prefer_bm25_first,
+    slug_regex as _slug_regex,
+)
 
 log = get_logger("sediment.platform.library")
 
-# English stop-words filtered out of BM25 OR-tsquery. PostgreSQL's
-# to_tsquery('simple', ...) does NOT remove stop-words, so without this filter
-# common tokens like "is", "the", "what", "about" generate spurious matches
-# against any document containing them — drowning out real signal in long
-# corpora and crashing recall@3. See P1-GOLDEN-RAG-01.
-# Korean tokens (가-힣 range) are NEVER filtered — they're rare and meaningful.
-_STOP_WORDS = frozenset({
-    "is", "the", "a", "an", "of", "in", "at", "to", "for", "on", "with", "by",
-    "about", "what", "how", "why", "when", "where", "which", "this", "that",
-    "are", "was", "were", "be", "been", "being", "have", "has", "had",
-    "do", "does", "did", "will", "would", "could", "should", "may", "might",
-    "its", "it", "and", "or", "if", "not", "but", "so", "too", "also",
-    "can", "more", "my", "me", "we", "you", "he", "she", "they", "their",
-})
-
-# Korean particle suffixes stripped when normalizing BM25 tokens.
-# "라이언이" → "라이언", "4월에" → "4월". Ordered longest-first to avoid partial strips.
-# Only strips when the remaining base form is >= 2 chars. See P1-RAG-KO-particle.
-_KO_PARTICLE_SUFFIXES: tuple[str, ...] = (
-    "입니다", "했던",
-    "하는", "에서", "에게", "으로", "이다",
-    "한", "쓴",
-    "이", "가", "을", "를", "의", "에", "로", "는", "은", "와", "과",
-)
-
-
-def _strip_korean_particles(tok: str) -> str | None:
-    """Return tok with one trailing Korean particle removed, or None if no match."""
-    for p in _KO_PARTICLE_SUFFIXES:
-        if tok.endswith(p):
-            base = tok[: -len(p)]
-            if len(base) >= 2:
-                return base
-    return None
-
-
-# Maps query keywords to artifact type for BM25 type-boosting (3x weight).
-# When a query contains a type hint, boost matching artifact types so that
-# e.g. "AI 보안 칼럼" returns column artifacts ahead of SPEC.md/README.md.
-_TYPE_HINT_MAP: dict[str, str] = {
-    "칼럼": "column",
-    "column": "column",
-    "리서치": "research",
-    "research": "research",
-    "daily": "research",
-    "소설": "novel",
-    "novel": "novel",
-    # Research-typical signals — "evaluation harness", "agents", "benchmark"
-    # phrasing comes from daily research notes far more often than columns.
-    "evaluation": "research",
-    "harness": "research",
-    "benchmark": "research",
-    "agents": "research",
-}
-
-
-def _detect_query_type(q: str) -> Optional[str]:
-    """Return artifact-type hint implied by the query, or None.
-
-    Uses token-based matching (not substring) to avoid false positives like
-    "칼럼이나" (= column-or) triggering the column boost for non-column queries.
-    """
-    tokens = set(re.findall(r"[A-Za-z0-9가-힣]+", q.lower()))
-    for keyword, atype in _TYPE_HINT_MAP.items():
-        if keyword in tokens:
-            return atype
-    return None
-
-
-# Maps project keywords (KO/EN) to a substring of artifacts.ref. When a query
-# names a project explicitly, boost artifacts under that path. Solves the
-# "동아일보 관련 칼럼이나 제안" → products/donga-roi class of failures where the
-# project nickname isn't in the document body verbatim. Mirrored from
-# lab_curator_graph.
-_PROJECT_HINT_MAP: dict[str, str] = {
-    "donga": "donga", "동아": "donga", "동아일보": "donga",
-    "academy": "ai-architect-academy", "아카데미": "ai-architect-academy",
-    "curator": "ai-curator", "큐레이터": "ai-curator",
-    "simulacra": "simulacra", "시뮬라크라": "simulacra",
-    "roadmap": "hypeproof-roadmap", "로드맵": "hypeproof-roadmap",
-    "validation": "sediment/VALIDATION", "validator": "sediment/VALIDATION",
-}
-
-
-def _detect_project_path(q: str) -> str:
-    ql = q.lower()
-    for kw, path in _PROJECT_HINT_MAP.items():
-        if kw in ql:
-            return path
-    return ""
-
-
-def _slug_regex(q: str) -> str:
-    """POSIX regex of alphanumeric query tokens (>=3 chars) for filename match.
-
-    A token that appears in `a.slug` or the last segment of `a.ref` is a
-    near-certain signal of intent. We boost those hits 2x to overcome BM25
-    score plateaus on documents that don't repeat their own name in the body.
-    Use a sentinel that never matches when no tokens exist (keeps the SQL
-    parameter type stable for asyncpg).
-    """
-    tokens = re.findall(r"[A-Za-z0-9]{3,}", q)
-    if not tokens:
-        return "___NEVER___"
-    return "(" + "|".join(re.escape(t.lower()) for t in tokens) + ")"
-
 router = APIRouter()
-
-
-def _build_ts_or_query(q: str) -> str:
-    """Tokenize free-text query into an OR-joined to_tsquery expression.
-
-    plainto_tsquery uses AND between terms — too strict for offline mode where
-    embedding API is unavailable and we can't fall back to vector similarity.
-    Mirrors the pattern used by lab_curator_graph.node_library_search so that
-    the platform /search endpoint behaves identically to the LangGraph node.
-
-    English stop-words are filtered out (see _STOP_WORDS); Korean tokens are
-    always kept because to_tsquery('simple', ...) won't dedupe them and they
-    carry strong signal in this corpus.
-    """
-    raw = re.findall(r"[A-Za-z0-9가-힣_]+", q)
-    result: list[str] = []
-    seen: set[str] = set()
-
-    def _add(tok: str) -> None:
-        if tok not in seen:
-            seen.add(tok)
-            result.append(tok)
-
-    for t in raw:
-        t_lower = t.lower()
-        if len(t_lower) < 2:
-            continue
-        has_korean = any("가" <= c <= "힣" for c in t_lower)
-        if has_korean:
-            _add(t_lower)
-            # Strip Korean particles — "라이언이" → "라이언", "4월에" → "4월" —
-            # so tokens match the base forms stored in the tsvector index.
-            stripped = _strip_korean_particles(t_lower)
-            if stripped is not None:
-                _add(stripped)
-            # Mixed Latin+Korean (e.g. "learning이"): also emit Latin-only form
-            # so it matches ts_vectors that stored the term without Korean postfix.
-            latin_only = re.sub(r"[가-힣]+", "", t_lower)
-            if latin_only and len(latin_only) >= 2 and latin_only not in _STOP_WORDS:
-                _add(latin_only)
-        elif t_lower not in _STOP_WORDS:
-            _add(t_lower)
-
-    if not result:
-        return ""
-    return " | ".join(result)
-
-
-def _prefer_bm25_first(q: str) -> bool:
-    tokens = re.findall(r"[A-Za-z0-9가-힣_]+", q)
-    if any(any("가" <= c <= "힣" for c in tok) for tok in tokens):
-        return True
-    signal_tokens = [
-        tok.lower()
-        for tok in tokens
-        if len(tok) >= 2 and tok.lower() not in _STOP_WORDS
-    ]
-    return len(signal_tokens) >= 4
 
 
 def _embed_for_search(q: str, *, bm25_first: bool) -> list[float]:
@@ -272,15 +121,21 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                 return {"q": q, "items": []}
             # Pass "" when no type hint — avoids asyncpg AmbiguousParameterError
             # on NULL parameters (asyncpg can't infer type from CASE expression).
-            type_hint = _detect_query_type(q) or ""
-            project_hint = _detect_project_path(q)
+            # sediment#139: which TERMS match is now the tenant's data
+            # (tenant_aliases); the multipliers below stay in code because they
+            # are retrieval tuning, not tenant vocabulary. A tenant with no
+            # aliases gets no boosts — plain BM25 — instead of another
+            # tenant's proper nouns.
+            aliases = await load_alias_index(s, str(identity.tenant_id))
+            type_hint = aliases.detect_type(q) or ""
+            project_hint = aliases.detect_ref_prefix(q)
             slug_re = _slug_regex(q)
+            demote_sql, demote_params = demote_case_sql(aliases, "a")
             # Boost stack (multiplicative on ts_rank):
             #   type-boost 3x      — artifact.type matches implied type
-            #   project-boost 2x   — ref contains project keyword (donga, academy, …)
+            #   project-boost 2x   — ref contains a tenant ref_prefix alias
             #   filename-boost 2x  — query token appears in ref or slug
-            #   meta-doc penalty   — SPEC/README/TEST_/DECISIONS halved (they
-            #                        verbatim-quote validation queries)
+            #   meta-doc demotion  — tenant's demote_ref_prefix rows, 0.8x
             # Per-artifact dedup keeps the highest-scoring chunk per artifact so
             # one long doc can't dominate top-3.
             # CAST(:hint AS text) forces parameter type inference for asyncpg.
@@ -298,14 +153,13 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                                        AND (LOWER(a.ref) ~ CAST(:slug_re AS text)
                                             OR LOWER(COALESCE(a.slug,'')) ~ CAST(:slug_re AS text))
                                   THEN 2.0 ELSE 1.0 END
-                           -- Soft 0.8x meta-doc penalty (was 0.5x → broke
+                           -- Soft 0.8x meta-doc demotion (was 0.5x → broke
                            -- GQ-031/GQ-033 which legitimately wanted SPEC.md).
-                           -- The new boosts above carry most of the work now.
-                           * CASE WHEN a.ref LIKE 'products/sediment/SPEC%'
-                                    OR a.ref LIKE 'products/sediment/README%'
-                                    OR a.ref LIKE 'products/sediment/TEST_%'
-                                    OR a.ref LIKE 'products/sediment/DECISIONS%'
-                                  THEN 0.8 ELSE 1.0 END AS score,
+                           -- The boosts above carry most of the work now.
+                           -- Prefixes come from the tenant's demote_ref_prefix
+                           -- aliases; collapses to the constant 1.0 when a
+                           -- tenant has configured none.
+                           * {demote} AS score,
                        a.ref, a.type, a.date, a.slug
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)
@@ -323,10 +177,13 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             {type_filter}
             ORDER BY score DESC LIMIT :limit;
             """.replace(
+                "{demote}", demote_sql
+            ).replace(
                 "{type_filter}",
                 "WHERE type = :type_strict" if type else ""
             )
             params_bm25 = {
+                **demote_params,
                 "tsq": ts_or, "limit": limit, "type_hint": type_hint,
                 "project_hint": project_hint, "slug_re": slug_re,
                 "tid": str(identity.tenant_id),
