@@ -8,11 +8,20 @@ Run after `make seed`. Asserts:
      - RLS enabled+forced + a policy exists (schema-level, needs no seed)
 """
 import asyncio
+import os
+
 import pytest
 from sqlalchemy import text
 
 from lab_lib.db import app_session, service_session, SessionApp
 from validator.checks.lib_rls import TENANT_TABLES
+
+# Every test in this module talks to Postgres. The marker that was supposed to
+# cover it lived in conftest.py, where pytest ignores it — see sediment#154.
+# Without it, `SKIP_DB=1` left 37 connection errors in every DB-less run, and
+# that permanently red baseline hid two real regressions (#155, #156).
+pytestmark = pytest.mark.skipif(
+    os.environ.get("SKIP_DB") == "1", reason="DB not available")
 
 
 async def _ids() -> tuple[str, str]:
