@@ -431,6 +431,40 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
         return {"q": q, "items": [dict(row._mapping) for row in r]}
 
 
+@router.get("/revisions/{ref:path}")
+async def revisions(ref: str, limit: int = Query(default=50, le=200),
+                    identity: Identity = Depends(require_identity)):
+    """Body history for one artifact, newest superseded revision first.
+
+    sediment#138: before this, a re-distill that collided on a topic slug
+    erased the previous decision — text, source and rationale — with nothing
+    anywhere recording that it had existed. This is the read side of the fix.
+
+    MUST be registered before `/{ref:path}`, which would otherwise swallow
+    "revisions/..." as a ref. Routes match in declaration order.
+
+    Bodies are omitted from the listing; ask for one revision at a time via
+    `?rev=` when you actually want the text.
+    """
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            SELECT rv.rev, rv.replaced_at, rv.source_ref,
+                   length(rv.body) AS body_length,
+                   m.display_name AS author_name,
+                   a.rev AS current_rev
+            FROM artifact_revisions rv
+            JOIN artifacts a ON a.id = rv.artifact_id
+            LEFT JOIN members m ON m.id = rv.author_id
+            WHERE a.ref = :ref AND {visibility}
+            ORDER BY rv.rev DESC
+            LIMIT :limit
+        """.replace("{visibility}", visibility_filter_sql("a"))),
+            {"ref": ref, "limit": limit,
+             "viewer_member_id": viewer_member_id(identity)})
+        items = [dict(row._mapping) for row in r]
+    return {"ref": ref, "items": items}
+
+
 @router.get("/{ref:path}")
 async def read_one(ref: str, identity: Identity = Depends(require_identity)):
     async with app_session(identity.tenant_id) as s:
