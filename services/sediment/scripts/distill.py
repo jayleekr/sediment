@@ -38,6 +38,7 @@ from lab_lib.db import service_session
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.prompts import load_strategy
 from lab_lib.settings import settings
+from lab_lib.visibility import inherit_visibility
 from scripts.consolidate_memory import (
     _extract,
     _insert_action,
@@ -222,11 +223,32 @@ def _decision_markdown(d: dict, src: str, title: str, provenance: dict | None = 
     return ref, body
 
 
+def _source_visibilities(source: dict) -> list[str | None]:
+    """Visibility of each thing this decision was distilled from (sediment#140).
+
+    A decision page is composed from a conversation transcript or a day of
+    Discord events — NOT from artifacts — and neither `conversations` nor
+    `events` carries a visibility column today. So this returns an empty list,
+    and `inherit_visibility` yields DEFAULT_VISIBILITY: exactly the behaviour
+    distill has always had.
+
+    It exists as a real call site rather than a hardcoded 'tenant' so that the
+    day conversations or events become scoped, the inheritance rule applies by
+    filling in this one function — instead of someone having to remember that
+    synthesis is a disclosure path. That memory is what the rule exists to
+    replace.
+    """
+    return []
+
+
 async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
-                            body: str) -> str | None:
+                            body: str, visibility: str) -> str | None:
     try:
         r = await client.post(INGESTER_URL, timeout=120, json={
             "tenant_id": tid, "ref": ref, "type": "decision", "body": body,
+            # This page was synthesized by us, not ingested from a source doc.
+            "origin": "derived",
+            "visibility": visibility,
         })
         if r.status_code == 200:
             return r.json().get("artifact_id")
@@ -363,7 +385,10 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 )
                 if did:
                     topic_to_did[d.get("topic", "")] = did
-                aid = await _ingest_artifact(client, tid, ref, md)
+                aid = await _ingest_artifact(
+                    client, tid, ref, md,
+                    visibility=inherit_visibility(_source_visibilities(s)),
+                )
                 if aid:
                     summary["artifacts"] += 1
                     if did:
