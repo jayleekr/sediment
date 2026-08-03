@@ -55,6 +55,7 @@ from lab_lib.embeddings import embed_one
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.search_utils import build_ts_or_query, is_zero_vector
 from lab_lib.settings import settings
+from lab_lib.visibility import visibility_filter_sql
 
 configure_logging()
 log = get_logger("workspace_mcp")
@@ -76,6 +77,7 @@ async def vault_search(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     limit: int = 8,
+    viewer_member_id: Optional[str] = None,
 ) -> list[dict]:
     """Hybrid search (BM25 + vector) over the tenant's vault.
     Returns chunks with citations sorted by RRF rank.
@@ -93,9 +95,18 @@ async def vault_search(
     qvec_zero = is_zero_vector(qvec)
     qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
 
-    # Build filters
-    filters = ["a.tenant_id = current_tenant_id()"]
-    params: dict = {"q": query, "qvec": qvec_str, "limit": limit}
+    # Build filters.
+    # The visibility predicate (sediment#140) joins the shared filter list, so
+    # it applies inside the bm25/vec CTEs too — this file's CTEs already join
+    # artifacts, unlike the platform /search hybrid path where it can only be
+    # applied post-fusion. `viewer_member_id=None` → tenant-visible rows only
+    # (fail-closed): an MCP caller that has not identified a member does not
+    # get that member's restricted pages.
+    filters = ["a.tenant_id = current_tenant_id()", visibility_filter_sql("a")]
+    params: dict = {
+        "q": query, "qvec": qvec_str, "limit": limit,
+        "viewer_member_id": viewer_member_id or "",
+    }
     if type:
         filters.append("a.type = :type"); params["type"] = type
     if author_external_id:

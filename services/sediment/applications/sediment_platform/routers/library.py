@@ -9,6 +9,7 @@ from lab_lib.auth import Identity, require_identity
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import get_logger
+from lab_lib.visibility import viewer_member_id, visibility_filter_sql
 
 log = get_logger("sediment.platform.library")
 
@@ -204,13 +205,22 @@ async def browse(
     include_test: bool = Query(default=False, alias="include_test"),
     identity: Identity = Depends(require_identity),
 ):
+    # sediment#140: `origin` distinguishes ingested sources from pages Sediment
+    # synthesized; the visibility predicate is the intra-tenant boundary RLS
+    # does not express.
     sql = """
         SELECT a.id::text, a.ref, a.type, a.date, a.slug, a.lang, a.frontmatter,
+               a.origin, a.confidence, a.synthesized_at,
                m.display_name AS author_name, m.external_id AS author_external_id
         FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
         WHERE 1=1
-    """
-    params: dict = {"limit": limit, "offset": offset}
+          AND {visibility}
+    """.replace("{visibility}", visibility_filter_sql("a"))
+    params: dict = {
+        "limit": limit,
+        "offset": offset,
+        "viewer_member_id": viewer_member_id(identity),
+    }
     if not include_test:
         sql += " AND NOT (a.ref ~ '^validator/(idem|sample)-')"
     if type:
@@ -306,25 +316,33 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                                     OR a.ref LIKE 'products/sediment/TEST_%'
                                     OR a.ref LIKE 'products/sediment/DECISIONS%'
                                   THEN 0.8 ELSE 1.0 END AS score,
-                       a.ref, a.type, a.date, a.slug, c.heading_path
+                       a.ref, a.type, a.date, a.slug, a.origin, c.heading_path
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)
                   AND c.tenant_id = CAST(:tid AS uuid)
                   AND a.tenant_id = CAST(:tid AS uuid)
+                  -- Intra-tenant boundary (sediment#140). Applied inside `raw`
+                  -- rather than after dedup so a restricted chunk cannot win
+                  -- DISTINCT ON and suppress a visible chunk of the same
+                  -- artifact — which would turn a permission check into
+                  -- missing results.
+                  AND {visibility}
             ),
             deduped AS (
                 SELECT DISTINCT ON (artifact_id)
                        chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
-                       heading_path
+                       origin, heading_path
                 FROM raw
                 ORDER BY artifact_id, score DESC
             )
             SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
-                   heading_path
+                   origin, heading_path
             FROM deduped
             {type_filter}
             ORDER BY score DESC LIMIT :limit;
             """.replace(
+                "{visibility}", visibility_filter_sql("a")
+            ).replace(
                 "{type_filter}",
                 "WHERE type = :type_strict" if type else ""
             )
@@ -332,6 +350,7 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                 "tsq": ts_or, "limit": limit, "type_hint": type_hint,
                 "project_hint": project_hint, "slug_re": slug_re,
                 "tid": str(identity.tenant_id),
+                "viewer_member_id": viewer_member_id(identity),
             }
             if type:
                 params_bm25["type_strict"] = type
@@ -380,16 +399,27 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
           ) u GROUP BY id, artifact_id, seq, content
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content, f.score,
-               a.ref, a.type, a.date, a.slug, ch.heading_path
+               a.ref, a.type, a.date, a.slug, a.origin, ch.heading_path
         -- heading_path is joined back from chunks by PK rather than threaded
         -- through the bm25/vec/fused CTEs: it would have to be added to the RRF
         -- GROUP BY, and f.id IS the chunk id so this is an index lookup.
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
         JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
+          -- Intra-tenant boundary (sediment#140). Applied here rather than in
+          -- bm25_top/vec_top because those CTEs deliberately do NOT join
+          -- artifacts — that is what lets Postgres push LIMIT 50 down to the
+          -- GIN/HNSW top-K (the sediment#58 latency fix). Consequence: once
+          -- restricted rows actually exist, they consume top-50 slots before
+          -- being filtered, so a viewer can see fewer than `limit` results.
+          -- Harmless today (nothing sets visibility <> 'tenant'); revisit
+          -- alongside the first writer that produces restricted pages.
+          AND {visibility}
         {type_filter}
         ORDER BY f.score DESC LIMIT :limit;
         """.replace(
+            "{visibility}", visibility_filter_sql("a")
+        ).replace(
             "{type_filter}",
             "AND a.type = :type_strict" if type else ""
         )
@@ -398,6 +428,7 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             "qvec": qvec_str,
             "limit": limit,
             "tid": str(identity.tenant_id),
+            "viewer_member_id": viewer_member_id(identity),
         }
         if type:
             params_hyb["type_strict"] = type
@@ -410,11 +441,12 @@ async def read_one(ref: str, identity: Identity = Depends(require_identity)):
     async with app_session(identity.tenant_id) as s:
         r = await s.execute(text("""
             SELECT a.id::text, a.ref, a.type, a.date, a.slug, a.lang,
-                   a.frontmatter, a.body,
+                   a.frontmatter, a.body, a.origin, a.confidence, a.synthesized_at,
                    m.display_name AS author_name
             FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
-            WHERE a.ref = :ref LIMIT 1
-        """), {"ref": ref})
+            WHERE a.ref = :ref AND {visibility} LIMIT 1
+        """.replace("{visibility}", visibility_filter_sql("a"))),
+            {"ref": ref, "viewer_member_id": viewer_member_id(identity)})
         row = r.first()
         if not row:
             raise HTTPException(status_code=404, detail="not found")

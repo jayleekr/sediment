@@ -22,6 +22,12 @@ from sqlalchemy import text
 from lab_lib.chunker import chunk_markdown
 from lab_lib.db import service_session
 from lab_lib.embeddings import embed
+from lab_lib.visibility import (
+    DEFAULT_VISIBILITY,
+    UnknownVisibility,
+    rank as visibility_rank,
+    sql_rank_expr,
+)
 
 
 def _coerce_date(v: Union[str, _dt.date, _dt.datetime, None]) -> Optional[_dt.date]:
@@ -81,6 +87,15 @@ class IngestDocReq(BaseModel):
     type: str                # 'column'|'research'|'novel'|'note'|'meeting'|...
     body: str                # raw markdown (with frontmatter)
     author_external_id: Optional[str] = None  # Discord ID or members.id
+    # ── derived knowledge layer (sediment#140) ──────────────────────────────
+    # Defaults keep every existing caller (GitHub webhook, repo ingest, Discord)
+    # on exactly today's behaviour: a raw, tenant-visible document.
+    origin: str = "raw"                       # 'raw' | 'derived'
+    confidence: Optional[float] = None        # derived pages only
+    # Callers producing derived pages MUST pass the inherited value computed by
+    # lab_lib.visibility.inherit_visibility over the source artifacts — the
+    # ingester cannot know a synthesized page's sources.
+    visibility: str = DEFAULT_VISIBILITY
 
 
 class IngestDocResp(BaseModel):
@@ -116,6 +131,16 @@ async def _delete_existing_chunks(s, artifact_id: str):
 @app.post("/v1/ingest/document", response_model=IngestDocResp)
 async def ingest_document(req: IngestDocReq):
     t0 = time.time()
+    # Reject unknown origin/visibility here rather than letting the CHECK
+    # constraint surface as a 500. A typo'd visibility must never fall through
+    # to the tenant-wide default (sediment#140).
+    if req.origin not in ("raw", "derived"):
+        raise HTTPException(status_code=400, detail=f"bad origin {req.origin!r}")
+    try:
+        visibility_rank(req.visibility)
+    except UnknownVisibility as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     fm = frontmatter.loads(req.body)
     fmdict = dict(fm.metadata)
     body_only = fm.content
@@ -133,9 +158,18 @@ async def ingest_document(req: IngestDocReq):
         author_id = await _resolve_author(s, req.tenant_id, req.author_external_id)
 
         # upsert artifact by (tenant_id, ref)
+        # sediment#140: origin/confidence/synthesized_at/visibility come from the
+        # request, not the frontmatter — a synthesized page's provenance is known
+        # to its producer (distill), never to the document it was written into.
+        # synthesized_at is set only for derived rows so raw ingests stay NULL.
         r = await s.execute(text("""
-            INSERT INTO artifacts (tenant_id, ref, type, author_id, date, slug, lang, frontmatter, body, status, updated_at)
-            VALUES (:tid, :ref, :typ, :aid, :date, :slug, :lang, :fm, :body, COALESCE(:status, 'published'), now())
+            INSERT INTO artifacts (tenant_id, ref, type, author_id, date, slug, lang,
+                                   frontmatter, body, status, origin, confidence,
+                                   synthesized_at, visibility, updated_at)
+            VALUES (:tid, :ref, :typ, :aid, :date, :slug, :lang, :fm, :body,
+                    COALESCE(:status, 'published'), :origin, :confidence,
+                    CASE WHEN :origin = 'derived' THEN now() ELSE NULL END,
+                    :visibility, now())
             ON CONFLICT (tenant_id, ref) DO UPDATE SET
                 type = EXCLUDED.type,
                 author_id = EXCLUDED.author_id,
@@ -145,9 +179,25 @@ async def ingest_document(req: IngestDocReq):
                 frontmatter = EXCLUDED.frontmatter,
                 body = EXCLUDED.body,
                 status = EXCLUDED.status,
+                origin = EXCLUDED.origin,
+                confidence = EXCLUDED.confidence,
+                synthesized_at = EXCLUDED.synthesized_at,
+                -- Never WIDEN visibility on re-ingest. A page that was
+                -- restricted stays restricted unless the incoming value is at
+                -- least as restrictive; otherwise a careless re-ingest carrying
+                -- the default would quietly publish it tenant-wide. The rank
+                -- CASE is generated from VISIBILITY_LADDER so this comparison
+                -- cannot drift from the Python one.
+                visibility = CASE
+                    WHEN {rank_new} <= {rank_old} THEN EXCLUDED.visibility
+                    ELSE artifacts.visibility
+                END,
                 updated_at = now()
             RETURNING id
-        """), {
+        """.format(
+            rank_new=sql_rank_expr("EXCLUDED.visibility"),
+            rank_old=sql_rank_expr("artifacts.visibility"),
+        )), {
             "tid": req.tenant_id,
             "ref": req.ref,
             "typ": req.type,
@@ -158,6 +208,9 @@ async def ingest_document(req: IngestDocReq):
             "fm": _json(fmdict),
             "body": body_only,
             "status": fmdict.get("status"),
+            "origin": req.origin,
+            "confidence": req.confidence,
+            "visibility": req.visibility,
         })
         artifact_id = str(r.scalar_one())
 
