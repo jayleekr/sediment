@@ -306,7 +306,7 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                                     OR a.ref LIKE 'products/sediment/TEST_%'
                                     OR a.ref LIKE 'products/sediment/DECISIONS%'
                                   THEN 0.8 ELSE 1.0 END AS score,
-                       a.ref, a.type, a.date, a.slug
+                       a.ref, a.type, a.date, a.slug, c.heading_path
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)
                   AND c.tenant_id = CAST(:tid AS uuid)
@@ -314,11 +314,13 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             ),
             deduped AS (
                 SELECT DISTINCT ON (artifact_id)
-                       chunk_id, artifact_id, seq, content, score, ref, type, date, slug
+                       chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
+                       heading_path
                 FROM raw
                 ORDER BY artifact_id, score DESC
             )
-            SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug
+            SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
+                   heading_path
             FROM deduped
             {type_filter}
             ORDER BY score DESC LIMIT :limit;
@@ -378,8 +380,12 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
           ) u GROUP BY id, artifact_id, seq, content
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content, f.score,
-               a.ref, a.type, a.date, a.slug
+               a.ref, a.type, a.date, a.slug, ch.heading_path
+        -- heading_path is joined back from chunks by PK rather than threaded
+        -- through the bm25/vec/fused CTEs: it would have to be added to the RRF
+        -- GROUP BY, and f.id IS the chunk id so this is an index lookup.
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
         {type_filter}
         ORDER BY f.score DESC LIMIT :limit;

@@ -229,6 +229,9 @@ async def node_library_search(state: CuratorState) -> dict:
                                 OR a.ref LIKE 'products/sediment/DECISIONS%'
                               THEN 0.8 ELSE 1.0 END AS score,
                    a.ref, a.type, a.date::text AS date, a.slug,
+                   -- Section breadcrumb for the cited chunk (sediment#137).
+                   -- NULL for rows ingested before migration 004.
+                   c.heading_path,
                    a.frontmatter -> 'provenance' AS provenance,
                    CASE
                      WHEN a.type = 'decision'
@@ -333,6 +336,9 @@ async def node_library_search(state: CuratorState) -> dict:
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content,
                f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug,
+               -- Joined back by PK instead of threaded through the RRF CTEs
+               -- (would need to enter the GROUP BY). f.id IS the chunk id.
+               ch.heading_path,
                a.frontmatter -> 'provenance' AS provenance,
                CASE
                  WHEN a.type = 'decision'
@@ -341,6 +347,7 @@ async def node_library_search(state: CuratorState) -> dict:
                  ELSE NULL
                END AS decision_provenance
         FROM deduped f JOIN artifacts a ON a.id = f.artifact_id
+        JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
         ORDER BY f.score DESC LIMIT 8;
         """

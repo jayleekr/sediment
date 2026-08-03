@@ -120,7 +120,7 @@ async def vault_search(
         sql = f"""
         SELECT c.id AS chunk_id, c.artifact_id, c.seq, c.content,
                ts_rank(c.tsv, to_tsquery('simple', :ts_or)) AS score,
-               a.ref, a.type, a.date, a.slug, a.frontmatter
+               a.ref, a.type, a.date, a.slug, a.frontmatter, c.heading_path
         FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
         WHERE {where} AND c.tsv @@ to_tsquery('simple', :ts_or)
         ORDER BY score DESC
@@ -156,8 +156,11 @@ async def vault_search(
       ) u GROUP BY id, artifact_id, seq, content
     )
     SELECT f.id AS chunk_id, f.artifact_id, f.seq, f.content, f.score,
-           a.ref, a.type, a.date, a.slug, a.frontmatter
+           a.ref, a.type, a.date, a.slug, a.frontmatter, ch.heading_path
+    -- heading_path (sediment#137) joined by PK: f.id IS the chunk id, so this
+    -- avoids threading the column through the RRF GROUP BY.
     FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+    JOIN chunks ch ON ch.id = f.id
     ORDER BY f.score DESC LIMIT :limit;
     """
 
