@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from lab_lib.chunker import chunk_markdown
+from lab_lib.context_packs import rebuild_packs
 from lab_lib.db import service_session
 from lab_lib.embeddings import embed
 from lab_lib.visibility import (
@@ -505,6 +506,17 @@ async def webhook_ingest(request: Request):
             "ref": req.ref, "n_ingested": n_ok,
             "n_deleted": len(deleted), "n_skipped": skipped,
         })})
+
+    # Refresh the tenant context pack (sediment#142) — a hot pack that lags the
+    # vault is worse than none, because a session reads it INSTEAD of looking.
+    # Only the tenant scope is rebuilt here: member packs are per-viewer and
+    # rebuilding every one on every push does not scale. They refresh lazily on
+    # read.
+    if n_ok or deleted:
+        async with service_session() as s:
+            await s.execute(
+                text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tid})
+            await rebuild_packs(s, tid, "tenant")
 
     log.info("webhook.ingest.done", ref=req.ref, ingested=n_ok,
              deleted=len(deleted), skipped=skipped)

@@ -9,10 +9,11 @@ from __future__ import annotations
 import datetime as _dt
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
 from lab_lib.auth import Identity, require_identity
+from lab_lib.context_packs import parse_scope, read_pack, rebuild_packs
 from lab_lib.db import app_session
 
 router = APIRouter()
@@ -153,3 +154,71 @@ async def freshness(identity: Identity = Depends(require_identity)):
         },
         "violations": sorted(set(violations)),
     }
+
+
+# ============================================================
+# Context packs (sediment#142)
+# ============================================================
+
+@router.get("/context")
+async def context_pack(
+    kind: str = Query(default="hot", pattern="^(hot|index)$"),
+    scope: str = Query(default="tenant"),
+    identity: Identity = Depends(require_identity),
+):
+    """Read a pre-built context pack — the cheap thing a session reads first.
+
+    `scope=me` resolves to this member's own pack. Any other `member:<uuid>` is
+    refused: a pack is built through that member's visibility, so handing one
+    to somebody else would launder exactly the boundary #140 established.
+    """
+    if scope == "me":
+        scope = f"member:{identity.member_id}"
+    try:
+        scope_kind, value = parse_scope(scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if scope_kind == "member" and value != identity.member_id:
+        raise HTTPException(
+            status_code=403,
+            detail="a member-scoped pack is readable only by that member")
+
+    async with app_session(identity.tenant_id) as s:
+        pack = await read_pack(s, identity.tenant_id, scope, kind)
+        if pack is None:
+            # Build on demand rather than 404. An absent pack means "not
+            # generated yet", which is an implementation detail the caller
+            # cannot act on.
+            built = await rebuild_packs(s, identity.tenant_id, scope)
+            pack = next(
+                ({"scope_key": p.scope_key, "kind": p.kind, "body": p.body,
+                  "token_estimate": p.token_estimate, "sources": p.sources,
+                  "updated_at": None}
+                 for p in built if p.kind == kind), None)
+        if pack is None:
+            raise HTTPException(status_code=503,
+                                detail="context pack could not be generated")
+    return pack
+
+
+@router.post("/context/rebuild")
+async def context_pack_rebuild(
+    scope: str = Query(default="tenant"),
+    identity: Identity = Depends(require_identity),
+):
+    """Force a rebuild. Ingestion already triggers this; the endpoint is for
+    when someone needs the pack to reflect a change *now*."""
+    if scope == "me":
+        scope = f"member:{identity.member_id}"
+    try:
+        scope_kind, value = parse_scope(scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if scope_kind == "member" and value != identity.member_id:
+        raise HTTPException(status_code=403, detail="not your pack")
+
+    async with app_session(identity.tenant_id) as s:
+        packs = await rebuild_packs(s, identity.tenant_id, scope)
+    return {"scope": scope,
+            "rebuilt": [{"kind": p.kind, "token_estimate": p.token_estimate}
+                        for p in packs]}
