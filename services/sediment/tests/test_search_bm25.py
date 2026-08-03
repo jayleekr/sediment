@@ -17,6 +17,7 @@ two phases avoids that without weakening coverage.
 """
 from __future__ import annotations
 
+import os
 import uuid
 
 import pytest
@@ -53,6 +54,11 @@ async def _lab_tenant_id() -> str:
         return str(r[0])
 
 
+# Only THIS test needs Postgres — the tokenizer/particle tests below are pure
+# logic and must keep running without one. Marked per-test rather than
+# per-module for that reason; the module-level marker that was supposed to
+# cover it lived in conftest.py, where pytest ignores it (sediment#154).
+@pytest.mark.skipif(os.environ.get("SKIP_DB") == "1", reason="DB not available")
 @pytest.mark.asyncio
 async def test_bm25_offline_dedup_invariants():
     """Verifies two invariants of the offline BM25 path:
@@ -257,11 +263,15 @@ import pytest
     ("라이언에서", "라이언"),
 ])
 def test_strip_korean_particles_cases(particle_tok, expected_base):
-    from applications.sediment_langgraph.graphs.lab_curator_graph import (
-        _strip_korean_particles,
-    )
+    # sediment#156: this imported `_strip_korean_particles` from
+    # lab_curator_graph, which WO-7 (2026-05-23) removed when it extracted the
+    # helper to search_utils. Every case had raised ImportError since —
+    # meaning the regression guard for the Korean-particle stripping that
+    # P1-RAG-KO-particle depends on had not actually run in months. Import the
+    # canonical location, so a future extraction breaks it loudly instead.
+    from lab_lib.search_utils import strip_korean_particles
 
-    result = _strip_korean_particles(particle_tok)
+    result = strip_korean_particles(particle_tok)
     assert result == expected_base, (
         f"_strip_korean_particles({particle_tok!r}) = {result!r}, expected {expected_base!r}"
     )

@@ -1,0 +1,17 @@
+{"ts": "2026-08-02T06:16:12.627833+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T06:36:59.500450+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T06:42:01.376808+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "a228861"}
+{"ts": "2026-08-02T06:48:15.866584+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "fa3de6f"}
+{"ts": "2026-08-02T06:48:54.330401+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "fa3de6f"}
+{"ts": "2026-08-02T06:53:32.902408+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "0507176"}
+{"ts": "2026-08-02T06:56:58.290839+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "d8a1a83"}
+{"ts": "2026-08-02T07:00:13.087234+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "d420dbb"}
+{"ts": "2026-08-02T07:02:48.284078+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T07:09:30.037389+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T07:09:51.108752+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T07:10:42.557775+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T07:13:58.254063+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "c4acab8"}
+{"ts": "2026-08-02T07:15:24.316300+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "3d72115"}
+{"ts": "2026-08-03T06:34:57.737672+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "b7ba1bf"}
+{"ts": "2026-08-03T06:36:01.972047+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "b7ba1bf"}
+{"ts": "2026-08-03T06:36:34.774386+00:00", "phase": "P2", "metric": "faithfulness_p25", "value": 0.312, "n": 4, "git_sha": "b7ba1bf"}

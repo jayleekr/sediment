@@ -218,6 +218,21 @@ def test_retrieval_source_has_no_workspace_proper_nouns(rel):
     )
 
 
+def test_harness_smoke_script_has_no_workspace_proper_nouns():
+    """The guard above only looked at Python retrieval sources, and
+    harness/scripts/smoke-tests.sh asserted on "동아일보 칼럼" — so this PR's
+    first CI run failed on a file nothing was checking. The smoke script is a
+    pre-push and CI gate; a tenant proper noun there is the same defect as one
+    in library.py, just somewhere the grep did not reach.
+    """
+    script = (REPO / "harness" / "scripts" / "smoke-tests.sh").read_text()
+    found = [n for n in WORKSPACE_PROPER_NOUNS if n in script]
+    assert not found, (
+        f"smoke-tests.sh hardcodes tenant vocabulary {found}; build an "
+        "AliasIndex from inline data instead"
+    )
+
+
 def test_library_imports_shared_helpers_instead_of_copying_them():
     """WO-7 extracted these to search_utils and library.py kept verbatim
     copies anyway. Pin the import so the copies cannot come back."""

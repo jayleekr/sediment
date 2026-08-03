@@ -114,11 +114,19 @@ from lab_lib.search_utils import build_ts_or_query
 q = build_ts_or_query("큐레이터 활동")
 assert "큐레이터" in q and "활동" in q
 '
-run "search_utils: detect_query_type token-match (NOT substring) — '"'"'칼럼이나'"'"' must NOT match column" '
+run "aliases: detect_type token-match (NOT substring) — '"'"'칼럼이나'"'"' must NOT match column" '
 import sys; sys.path.insert(0, ".")
-from lab_lib.search_utils import detect_query_type
-assert detect_query_type("동아일보 칼럼") == "column"
-assert detect_query_type("칼럼이나 제안") is None
+from lab_lib.aliases import build_index, EMPTY_INDEX
+# sediment#139: this vocabulary moved out of search_utils into the
+# tenant_aliases table, so the index is built from data here rather than
+# imported. The invariant is unchanged: matching is token-level, so
+# "칼럼이나" (= column-or) must NOT fire the column boost.
+idx = build_index([("칼럼", "type", "column")])
+assert idx.detect_type("보안 칼럼") == "column"
+assert idx.detect_type("칼럼이나 제안") is None
+# A tenant with no configured vocabulary gets no boosts at all — not another
+# tenant proper nouns, which is what the old hardcoded map handed it.
+assert EMPTY_INDEX.detect_type("보안 칼럼") is None
 '
 run "search_utils: is_zero_vector detects offline-mode zero vec" '
 import sys; sys.path.insert(0, ".")
@@ -140,7 +148,7 @@ assert "A content" not in b[0].content, "section A leaked into B"
 run "chunker: Korean overlap chunks do NOT start with U+FFFD" '
 import sys; sys.path.insert(0, ".")
 from lab_lib.chunker import chunk_markdown
-md = "# 한글\n\n" + "큐레이터는 라이언과 함께 4월에 시뮬라크라 패턴을 분석합니다. " * 80
+md = "# 한글\n\n" + "다국어 문서의 조각 경계에서 자모가 깨지지 않는지 확인합니다. " * 80
 chunks = chunk_markdown(md, max_tokens=200, overlap_tokens=30)
 assert len(chunks) >= 2
 for c in chunks[1:]:
