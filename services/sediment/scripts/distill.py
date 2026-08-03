@@ -35,6 +35,12 @@ import yaml
 from sqlalchemy import text
 
 from lab_lib.db import service_session
+from lab_lib.entities import (
+    entity_markdown,
+    extract_entities,
+    learn_aliases,
+    link_mention,
+)
 from lab_lib.links import create_link
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.prompts import load_strategy
@@ -286,6 +292,51 @@ async def _ingest_source_artifacts(client: httpx.AsyncClient, tid: str,
     return mapping
 
 
+async def _process_entities(client: httpx.AsyncClient, tid: str, source: dict,
+                            source_artifact_id: str | None, summary: dict) -> None:
+    """Extract entities from one source and wire them into the graph (#168).
+
+    Requires a landed source artifact: a `mentions` link needs something to
+    point FROM, and that is exactly what #161 created. Sources without one
+    (conversations, which are deliberately not published to the shared vault)
+    are skipped rather than half-processed.
+
+    Never raises. This is an enrichment tail — the decisions and transcripts
+    produced earlier in the run must survive its failure.
+    """
+    if not source_artifact_id:
+        return
+    transcript = "\n\n".join(
+        m.get("content", "") for m in source.get("messages") or []
+    ).strip()
+    try:
+        entities = await extract_entities(transcript, tenant_id=tid)
+    except Exception as e:
+        summary["flags"].append(f"entity extraction failed for {source['src']}: {e}")
+        return
+
+    for ent in entities:
+        ref, body = entity_markdown(ent)
+        aid = await _ingest_artifact(
+            client, tid, ref, body,
+            visibility=inherit_visibility(_source_visibilities(source)),
+            source_ref=source["src"], artifact_type="entity", origin="derived",
+        )
+        if not aid:
+            summary["flags"].append(f"entity page ingest FAILED: {ref!r}")
+            continue
+        summary["entity_pages"] = summary.get("entity_pages", 0) + 1
+        try:
+            async with service_session() as s:
+                if await link_mention(s, tid, source_artifact_id, aid):
+                    summary["entity_mentions"] = summary.get("entity_mentions", 0) + 1
+                summary["entity_aliases"] = (
+                    summary.get("entity_aliases", 0) + await learn_aliases(s, tid, ent))
+                await s.commit()
+        except Exception as e:
+            log.warning("distill.entity_wiring.err", ref=ref, err=str(e)[:200])
+
+
 async def _link_decision_to_source(tid: str, decision_artifact_id: str,
                                    source_artifact_id: str, src: str) -> bool:
     """Record that a decision page was drawn from a captured transcript.
@@ -492,6 +543,8 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                # point back at the capture they came from.
                "source_artifacts": 0, "source_artifacts_unchanged": 0,
                "evidence_links": 0,
+               # sediment#168 — entity pages, mentions links, learned aliases.
+               "entity_pages": 0, "entity_mentions": 0, "entity_aliases": 0,
                "dry_run": dry_run, "flags": []}
 
     if dry_run:
@@ -664,6 +717,11 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 await _insert_action(tid, did, owner_id, a.get("description", ""),
                                      a.get("due_date"))
                 summary["actions"] += 1
+            # sediment#168 — last, and deliberately so. Entity extraction is
+            # enrichment: if it fails, the decisions, actions and transcript
+            # this source already produced are all still persisted.
+            await _process_entities(
+                client, tid, s, source_artifact_ids.get(s["src"]), summary)
     return summary
 
 
