@@ -55,6 +55,8 @@ from lab_lib.embeddings import embed_one
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.search_utils import build_ts_or_query, is_zero_vector
 from lab_lib.settings import settings
+from lab_lib.context_packs import read_pack, rebuild_packs
+from lab_lib.visibility import visibility_filter_sql
 
 configure_logging()
 log = get_logger("workspace_mcp")
@@ -76,6 +78,7 @@ async def vault_search(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     limit: int = 8,
+    viewer_member_id: Optional[str] = None,
 ) -> list[dict]:
     """Hybrid search (BM25 + vector) over the tenant's vault.
     Returns chunks with citations sorted by RRF rank.
@@ -93,9 +96,18 @@ async def vault_search(
     qvec_zero = is_zero_vector(qvec)
     qvec_str = "[" + ",".join(f"{x:.6f}" for x in qvec) + "]"
 
-    # Build filters
-    filters = ["a.tenant_id = current_tenant_id()"]
-    params: dict = {"q": query, "qvec": qvec_str, "limit": limit}
+    # Build filters.
+    # The visibility predicate (sediment#140) joins the shared filter list, so
+    # it applies inside the bm25/vec CTEs too — this file's CTEs already join
+    # artifacts, unlike the platform /search hybrid path where it can only be
+    # applied post-fusion. `viewer_member_id=None` → tenant-visible rows only
+    # (fail-closed): an MCP caller that has not identified a member does not
+    # get that member's restricted pages.
+    filters = ["a.tenant_id = current_tenant_id()", visibility_filter_sql("a")]
+    params: dict = {
+        "q": query, "qvec": qvec_str, "limit": limit,
+        "viewer_member_id": viewer_member_id or "",
+    }
     if type:
         filters.append("a.type = :type"); params["type"] = type
     if author_external_id:
@@ -120,7 +132,7 @@ async def vault_search(
         sql = f"""
         SELECT c.id AS chunk_id, c.artifact_id, c.seq, c.content,
                ts_rank(c.tsv, to_tsquery('simple', :ts_or)) AS score,
-               a.ref, a.type, a.date, a.slug, a.frontmatter
+               a.ref, a.type, a.date, a.slug, a.frontmatter, c.heading_path
         FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
         WHERE {where} AND c.tsv @@ to_tsquery('simple', :ts_or)
         ORDER BY score DESC
@@ -156,8 +168,11 @@ async def vault_search(
       ) u GROUP BY id, artifact_id, seq, content
     )
     SELECT f.id AS chunk_id, f.artifact_id, f.seq, f.content, f.score,
-           a.ref, a.type, a.date, a.slug, a.frontmatter
+           a.ref, a.type, a.date, a.slug, a.frontmatter, ch.heading_path
+    -- heading_path (sediment#137) joined by PK: f.id IS the chunk id, so this
+    -- avoids threading the column through the RRF GROUP BY.
     FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+    JOIN chunks ch ON ch.id = f.id
     ORDER BY f.score DESC LIMIT :limit;
     """
 
@@ -392,3 +407,58 @@ if __name__ == "__main__":
     log.info("workspace_mcp.start", host=host, port=settings.workspace_mcp_port)
     # FastMCP supports stdio + http transports. We run http for langgraph to consume.
     mcp.run(transport="http", host=host, port=settings.workspace_mcp_port)
+
+
+# ============================================================
+# Context packs (sediment#142)
+# ============================================================
+# The point of exposing these over MCP: a Claude Code session can pick up team
+# context for ~500 tokens without running a single vector search. A search
+# answers a question you already know to ask; a hot pack tells you what you
+# did not know was happening.
+
+@mcp.tool()
+async def sediment_hot(tenant_id: str, viewer_member_id: Optional[str] = None) -> dict:
+    """Recent context: open contradictions, latest decisions, what changed.
+
+    Read this FIRST in a new session, before searching. Budgeted to ~500 words
+    so it is cheap enough to read unconditionally.
+
+    Pass viewer_member_id to get that member's scoped pack; without it you get
+    the shared tenant pack, which contains only tenant-visible material.
+    """
+    scope = f"member:{viewer_member_id}" if viewer_member_id else "tenant"
+    async with app_session(tenant_id) as s:
+        pack = await read_pack(s, tenant_id, scope, "hot")
+        if pack is None:
+            built = await rebuild_packs(s, tenant_id, scope)
+            for p in built:
+                if p.kind == "hot":
+                    return {"scope": p.scope_key, "body": p.body,
+                            "token_estimate": p.token_estimate}
+            return {"scope": scope, "body": "", "token_estimate": 0}
+    return {"scope": pack["scope_key"], "body": pack["body"],
+            "token_estimate": pack["token_estimate"],
+            "updated_at": str(pack["updated_at"])}
+
+
+@mcp.tool()
+async def sediment_index(tenant_id: str, viewer_member_id: Optional[str] = None) -> dict:
+    """Catalogue of what exists in this vault, by type, sources vs synthesized.
+
+    Read this when the hot pack was not enough and you need to know what KIND
+    of thing to search for — still cheaper than searching blind.
+    """
+    scope = f"member:{viewer_member_id}" if viewer_member_id else "tenant"
+    async with app_session(tenant_id) as s:
+        pack = await read_pack(s, tenant_id, scope, "index")
+        if pack is None:
+            built = await rebuild_packs(s, tenant_id, scope)
+            for p in built:
+                if p.kind == "index":
+                    return {"scope": p.scope_key, "body": p.body,
+                            "token_estimate": p.token_estimate}
+            return {"scope": scope, "body": "", "token_estimate": 0}
+    return {"scope": pack["scope_key"], "body": pack["body"],
+            "token_estimate": pack["token_estimate"],
+            "updated_at": str(pack["updated_at"])}

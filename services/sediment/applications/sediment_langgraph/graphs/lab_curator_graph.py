@@ -14,6 +14,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import get_logger
+from lab_lib.visibility import visibility_filter_sql
 # WO-7 2026-05-23: search helpers extracted to lab_lib.search_utils.
 # The 130 lines previously here were verbatim-duplicated with library.py
 # (and the workspace_mcp.py zero-vector guard was MISSING — a confirmed
@@ -182,6 +183,10 @@ async def node_library_search(state: CuratorState) -> dict:
     # the intended rls-subject role), this clause still prevents cross-tenant
     # leak. See sediment#16 for the prod incident that drove this.
     tid = str(state["tenant_id"])
+    # Viewer for the intra-tenant visibility predicate (sediment#140). '' → SQL
+    # NULL, i.e. tenant-visible rows only — fail-closed when the graph runs
+    # without a resolved member (cron/eval harnesses).
+    viewer = str(state.get("member_id") or "")
 
     async with app_session(state["tenant_id"]) as s:
         if qvec_is_zero:
@@ -227,8 +232,20 @@ async def node_library_search(state: CuratorState) -> dict:
                                 OR a.ref LIKE 'products/sediment/README%'
                                 OR a.ref LIKE 'products/sediment/TEST_%'
                                 OR a.ref LIKE 'products/sediment/DECISIONS%'
-                              THEN 0.8 ELSE 1.0 END AS score,
-                   a.ref, a.type, a.date::text AS date, a.slug,
+                              THEN 0.8 ELSE 1.0 END
+                       -- Confidence demotion (sediment#144). A page
+                       -- derived from an ANSWER is weaker evidence than the
+                       -- sources that answer cited, and must rank that way —
+                       -- otherwise answers get grounded on answers and the
+                       -- knowledge layer becomes a rumour mill. Inert for
+                       -- every existing row: only promoted pages carry a
+                       -- non-NULL confidence.
+                       * CASE WHEN a.origin = 'derived' AND a.confidence IS NOT NULL
+                              THEN a.confidence ELSE 1.0 END AS score,
+                   a.ref, a.type, a.date::text AS date, a.slug, a.origin,
+                   -- Section breadcrumb for the cited chunk (sediment#137).
+                   -- NULL for rows ingested before migration 004.
+                   c.heading_path,
                    a.frontmatter -> 'provenance' AS provenance,
                    CASE
                      WHEN a.type = 'decision'
@@ -241,14 +258,20 @@ async def node_library_search(state: CuratorState) -> dict:
               -- Defense-in-depth tenant filter (see sediment#16)
               AND a.tenant_id = CAST(:tid AS uuid)
               AND c.tenant_id = CAST(:tid AS uuid)
+              -- Intra-tenant boundary (sediment#140): a cited chunk must be
+              -- one the asking member may read. Citations are the answer's
+              -- evidence, so this is the last place a restricted source could
+              -- leak into a composed reply.
+              AND {visibility}
             ORDER BY score DESC LIMIT 8;
-            """
+            """.replace("{visibility}", visibility_filter_sql("a"))
             r = await s.execute(text(sql_bm25), {
                 "tsq": ts_or,
                 "type_hint": type_hint,
                 "project_hint": project_hint,
                 "slug_re": slug_re,
                 "tid": tid,
+                "viewer_member_id": viewer,
             })
             citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
             log.info(
@@ -333,6 +356,10 @@ async def node_library_search(state: CuratorState) -> dict:
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content,
                f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug,
+               a.origin,
+               -- Joined back by PK instead of threaded through the RRF CTEs
+               -- (would need to enter the GROUP BY). f.id IS the chunk id.
+               ch.heading_path,
                a.frontmatter -> 'provenance' AS provenance,
                CASE
                  WHEN a.type = 'decision'
@@ -341,10 +368,17 @@ async def node_library_search(state: CuratorState) -> dict:
                  ELSE NULL
                END AS decision_provenance
         FROM deduped f JOIN artifacts a ON a.id = f.artifact_id
+        JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
+          -- See the offline path: same intra-tenant boundary (sediment#140).
+          -- Applied post-join for the same top-K push-down reason as the
+          -- platform /search hybrid path.
+          AND {visibility}
         ORDER BY f.score DESC LIMIT 8;
-        """
-        r = await s.execute(text(sql), {"tsq": ts_or, "qvec": qvec_str, "tid": tid})
+        """.replace("{visibility}", visibility_filter_sql("a"))
+        r = await s.execute(text(sql), {
+            "tsq": ts_or, "qvec": qvec_str, "tid": tid, "viewer_member_id": viewer,
+        })
         citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
     log.info("node.library.search", n=len(citations), mode="hybrid", ts_or_empty=(not ts_or))
     return {"citations": citations}

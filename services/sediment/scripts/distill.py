@@ -35,9 +35,11 @@ import yaml
 from sqlalchemy import text
 
 from lab_lib.db import service_session
+from lab_lib.links import create_link
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.prompts import load_strategy
 from lab_lib.settings import settings
+from lab_lib.visibility import inherit_visibility
 from scripts.consolidate_memory import (
     _extract,
     _insert_action,
@@ -222,11 +224,38 @@ def _decision_markdown(d: dict, src: str, title: str, provenance: dict | None = 
     return ref, body
 
 
+def _source_visibilities(source: dict) -> list[str | None]:
+    """Visibility of each thing this decision was distilled from (sediment#140).
+
+    A decision page is composed from a conversation transcript or a day of
+    Discord events — NOT from artifacts — and neither `conversations` nor
+    `events` carries a visibility column today. So this returns an empty list,
+    and `inherit_visibility` yields DEFAULT_VISIBILITY: exactly the behaviour
+    distill has always had.
+
+    It exists as a real call site rather than a hardcoded 'tenant' so that the
+    day conversations or events become scoped, the inheritance rule applies by
+    filling in this one function — instead of someone having to remember that
+    synthesis is a disclosure path. That memory is what the rule exists to
+    replace.
+    """
+    return []
+
+
 async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
-                            body: str) -> str | None:
+                            body: str, visibility: str,
+                            source_ref: str | None = None) -> str | None:
     try:
         r = await client.post(INGESTER_URL, timeout=120, json={
             "tenant_id": tid, "ref": ref, "type": "decision", "body": body,
+            # This page was synthesized by us, not ingested from a source doc.
+            "origin": "derived",
+            "visibility": visibility,
+            # Attribute the superseded revision (sediment#138). Two different
+            # decisions can slug alike; when the second replaces the first, the
+            # history row must say which conversation or event batch the
+            # replaced text came from, or the collision is undiagnosable.
+            "source_ref": f"distill:{source_ref}" if source_ref else None,
         })
         if r.status_code == 200:
             return r.json().get("artifact_id")
@@ -234,6 +263,87 @@ async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
     except Exception as e:
         log.warning("distill.ingest.err", ref=ref, err=str(e))
     return None
+
+
+async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
+                                body: str) -> tuple[str, list[str]]:
+    """Pick the ref to write this decision to, and any artifacts it conflicts with.
+
+    sediment#141. Two decisions from DIFFERENT sources that slug to the same
+    topic are not one decision revised — they are two claims, and the pipeline
+    used to keep only the later one. #138 preserved the replaced text; this
+    gives the newcomer a page of its own so both remain citable, plus a
+    `contradicts` link so the disagreement is visible instead of implied.
+
+    Resolution order, cheapest and most certain first:
+
+      1. an existing sibling with an IDENTICAL body → reuse it. Same claim
+         reached twice; a second page would be noise, not knowledge.
+      2. an existing sibling from the SAME source → reuse it. This is the
+         re-decide case the original slug scheme was designed for.
+      3. otherwise → mint `<base>--N` and report every existing sibling as
+         conflicting.
+
+    Returns ``(ref, conflicting_artifact_ids)``. Never raises: if the lookup
+    fails, fall back to the base ref, which is exactly today's behaviour.
+
+    Note what this deliberately does NOT do: judge whether the two claims
+    actually contradict, merely agree, or supersede one another. That needs an
+    LLM read of both bodies. Recording the pair as an OPEN conflict is the
+    conservative move — surfacing a disagreement that turns out to be agreement
+    costs a reviewer a minute; silently merging a real one costs the knowledge.
+    """
+    try:
+        async with service_session() as s:
+            r = await s.execute(text("""
+                SELECT id::text, ref, body, frontmatter ->> 'source' AS source
+                FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid)
+                  AND (ref = :base OR ref LIKE :base_like)
+                ORDER BY ref
+            """), {"tid": tid, "base": base_ref, "base_like": f"{base_ref}--%"})
+            siblings = [dict(row._mapping) for row in r]
+    except Exception as e:
+        log.warning("distill.ref_resolve.err", ref=base_ref, err=str(e))
+        return base_ref, []
+
+    if not siblings:
+        return base_ref, []
+
+    for sib in siblings:
+        if (sib.get("body") or "") == body:
+            return sib["ref"], []
+    for sib in siblings:
+        if sib.get("source") and sib["source"] == src:
+            return sib["ref"], []
+
+    # Lowest unused suffix, so a third conflicting claim does not collide with
+    # the second.
+    taken = {sib["ref"] for sib in siblings}
+    n = 2
+    while f"{base_ref}--{n}" in taken:
+        n += 1
+    return f"{base_ref}--{n}", [sib["id"] for sib in siblings]
+
+
+async def _record_conflicts(tid: str, new_artifact_id: str,
+                            conflicting_ids: list[str], src: str) -> int:
+    """Link a newly-minted sibling to the claims it disagrees with."""
+    if not conflicting_ids:
+        return 0
+    written = 0
+    async with service_session() as s:
+        for other_id in conflicting_ids:
+            try:
+                if await create_link(
+                    s, tid, new_artifact_id, other_id, "contradicts",
+                    note=f"same decision topic, different source ({src})",
+                ):
+                    written += 1
+            except Exception as e:
+                log.warning("distill.link.err", dst=other_id, err=str(e))
+        await s.commit()
+    return written
 
 
 async def _link_source_artifact(decision_id: str, artifact_id: str) -> None:
@@ -363,9 +473,28 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 )
                 if did:
                     topic_to_did[d.get("topic", "")] = did
-                aid = await _ingest_artifact(client, tid, ref, md)
+                # sediment#141: a same-topic decision from a DIFFERENT source
+                # gets its own page plus a contradicts link, instead of
+                # overwriting the earlier claim.
+                ref, conflicting = await _resolve_decision_ref(
+                    tid, ref, s["src"], md)
+                aid = await _ingest_artifact(
+                    client, tid, ref, md,
+                    visibility=inherit_visibility(_source_visibilities(s)),
+                    source_ref=s["src"],
+                )
                 if aid:
                     summary["artifacts"] += 1
+                    if conflicting:
+                        n_links = await _record_conflicts(
+                            tid, aid, conflicting, s["src"])
+                        summary["conflicts"] = summary.get("conflicts", 0) + n_links
+                        # Loud on purpose: an unresolved contradiction is a
+                        # finding, not routine output. The hygiene job
+                        # (sediment#143) tracks the open ones.
+                        summary["flags"].append(
+                            f"conflicting decision kept as {ref!r} "
+                            f"({n_links} contradicts link(s)) — needs review")
                     if did:
                         await _link_source_artifact(did, aid)
                 else:
