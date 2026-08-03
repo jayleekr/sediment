@@ -8,6 +8,7 @@ from sqlalchemy import text
 from lab_lib.auth import Identity, require_identity
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
+from lab_lib.links import expand_with_links
 from lab_lib.logging import get_logger
 from lab_lib.visibility import viewer_member_id, visibility_filter_sql
 
@@ -355,7 +356,15 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             if type:
                 params_bm25["type_strict"] = type
             r = await s.execute(text(sql_bm25), params_bm25)
-            return {"q": q, "items": [dict(row._mapping) for row in r]}
+            items = [dict(row._mapping) for row in r]
+            # 1-hop graph expansion (sediment#141). Fills unused slots only —
+            # it can never displace a ranked hit, which is what makes it safe
+            # to enable without a recall benchmark.
+            items = await expand_with_links(
+                s, str(identity.tenant_id), items, limit=limit,
+                visibility_sql=visibility_filter_sql("a"),
+                viewer_member_id=viewer_member_id(identity))
+            return {"q": q, "items": items}
 
         # Online path: hybrid BM25 + vector with RRF rerank. Keep the
         # ORDER BY/LIMIT work inside *_top CTEs and assign row_number only
@@ -433,7 +442,52 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
         if type:
             params_hyb["type_strict"] = type
         r = await s.execute(text(sql), params_hyb)
-        return {"q": q, "items": [dict(row._mapping) for row in r]}
+        items = [dict(row._mapping) for row in r]
+        # Same 1-hop expansion as the offline path (sediment#141).
+        items = await expand_with_links(
+            s, str(identity.tenant_id), items, limit=limit,
+            visibility_sql=visibility_filter_sql("a"),
+            viewer_member_id=viewer_member_id(identity))
+        return {"q": q, "items": items}
+
+
+@router.get("/links/{ref:path}")
+async def links(ref: str, identity: Identity = Depends(require_identity)):
+    """Links touching one artifact, in both directions.
+
+    sediment#141. `contradicts` is stored one-way (the row records who raised
+    the conflict) but must READ symmetrically — a disputed page is disputed
+    whichever end you arrived from. `direction` tells the caller which end this
+    artifact sits on.
+
+    Declared before `/{ref:path}`, which would otherwise swallow "links/...".
+    """
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            SELECT l.id::text, l.kind, l.note, l.resolved_at, l.created_at,
+                   l.evidence_chunk_ids,
+                   CASE WHEN l.src_artifact_id = self.id THEN 'outgoing' ELSE 'incoming' END
+                     AS direction,
+                   other.ref AS other_ref, other.type AS other_type,
+                   other.origin AS other_origin
+            FROM artifacts self
+            JOIN artifact_links l
+              ON l.src_artifact_id = self.id OR l.dst_artifact_id = self.id
+            JOIN artifacts other
+              ON other.id = CASE WHEN l.src_artifact_id = self.id
+                                 THEN l.dst_artifact_id ELSE l.src_artifact_id END
+            WHERE self.ref = :ref
+              AND {self_visibility}
+              AND {other_visibility}
+            ORDER BY (l.kind = 'contradicts' AND l.resolved_at IS NULL) DESC,
+                     l.created_at DESC
+        """.replace("{self_visibility}", visibility_filter_sql("self"))
+           .replace("{other_visibility}", visibility_filter_sql("other"))),
+            {"ref": ref, "viewer_member_id": viewer_member_id(identity)})
+        items = [dict(row._mapping) for row in r]
+    open_conflicts = sum(
+        1 for i in items if i["kind"] == "contradicts" and i["resolved_at"] is None)
+    return {"ref": ref, "open_conflicts": open_conflicts, "items": items}
 
 
 @router.get("/revisions/{ref:path}")
@@ -468,6 +522,25 @@ async def revisions(ref: str, limit: int = Query(default=50, le=200),
              "viewer_member_id": viewer_member_id(identity)})
         items = [dict(row._mapping) for row in r]
     return {"ref": ref, "items": items}
+
+
+@router.post("/links/{link_id}/resolve")
+async def resolve_link(link_id: str, identity: Identity = Depends(require_identity)):
+    """Mark a contradiction adjudicated. The link stays — a resolved conflict is
+    still part of how the knowledge got here."""
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            UPDATE artifact_links
+            SET resolved_at = now()
+            WHERE id = CAST(:lid AS uuid) AND kind = 'contradicts'
+              AND resolved_at IS NULL
+            RETURNING id::text
+        """), {"lid": link_id})
+        if r.first() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="no open contradiction with that id in this tenant")
+    return {"ok": True, "id": link_id}
 
 
 @router.get("/{ref:path}")

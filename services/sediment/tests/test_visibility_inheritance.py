@@ -143,10 +143,20 @@ def test_read_paths_apply_the_visibility_predicate(rel):
 
 
 def test_library_binds_a_viewer_everywhere_it_filters():
-    """The predicate references :viewer_member_id, so every query that includes
-    it must also bind it — an unbound parameter is a 500, not a silent pass."""
+    """The predicate references :viewer_member_id, so every handler that uses
+    it must also bind it — an unbound parameter is a 500, not a silent pass.
+
+    Checked per handler rather than by counting occurrences: one query can
+    legitimately apply the filter to two aliases (see the links endpoint, which
+    scopes both ends of a link) while binding the viewer once.
+    """
     src = _read("applications/sediment_platform/routers/library.py")
-    assert src.count("visibility_filter_sql(") == src.count('"viewer_member_id"')
+    handlers = src.split("async def ")[1:]
+    offenders = [
+        h.split("(")[0] for h in handlers
+        if "visibility_filter_sql(" in h and "viewer_member_id" not in h
+    ]
+    assert not offenders, f"handlers filter without binding a viewer: {offenders}"
 
 
 def test_ingester_marks_derived_and_never_widens_on_reingest():
