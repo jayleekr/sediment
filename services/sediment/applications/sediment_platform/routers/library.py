@@ -316,7 +316,16 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                                     OR a.ref LIKE 'products/sediment/README%'
                                     OR a.ref LIKE 'products/sediment/TEST_%'
                                     OR a.ref LIKE 'products/sediment/DECISIONS%'
-                                  THEN 0.8 ELSE 1.0 END AS score,
+                                  THEN 0.8 ELSE 1.0 END
+                           -- Confidence demotion (sediment#144). A page
+                           -- derived from an ANSWER is weaker evidence than the
+                           -- sources that answer cited, and must rank that way —
+                           -- otherwise answers get grounded on answers and the
+                           -- knowledge layer becomes a rumour mill. Inert for
+                           -- every existing row: only promoted pages carry a
+                           -- non-NULL confidence.
+                           * CASE WHEN a.origin = 'derived' AND a.confidence IS NOT NULL
+                                  THEN a.confidence ELSE 1.0 END AS score,
                        a.ref, a.type, a.date, a.slug, a.origin, c.heading_path
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)

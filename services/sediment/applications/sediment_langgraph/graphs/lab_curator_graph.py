@@ -232,7 +232,16 @@ async def node_library_search(state: CuratorState) -> dict:
                                 OR a.ref LIKE 'products/sediment/README%'
                                 OR a.ref LIKE 'products/sediment/TEST_%'
                                 OR a.ref LIKE 'products/sediment/DECISIONS%'
-                              THEN 0.8 ELSE 1.0 END AS score,
+                              THEN 0.8 ELSE 1.0 END
+                       -- Confidence demotion (sediment#144). A page
+                       -- derived from an ANSWER is weaker evidence than the
+                       -- sources that answer cited, and must rank that way —
+                       -- otherwise answers get grounded on answers and the
+                       -- knowledge layer becomes a rumour mill. Inert for
+                       -- every existing row: only promoted pages carry a
+                       -- non-NULL confidence.
+                       * CASE WHEN a.origin = 'derived' AND a.confidence IS NOT NULL
+                              THEN a.confidence ELSE 1.0 END AS score,
                    a.ref, a.type, a.date::text AS date, a.slug, a.origin,
                    -- Section breadcrumb for the cited chunk (sediment#137).
                    -- NULL for rows ingested before migration 004.
