@@ -8,7 +8,9 @@ from sqlalchemy import text
 from lab_lib.auth import Identity, require_identity
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
+from lab_lib.links import expand_with_links
 from lab_lib.logging import get_logger
+from lab_lib.visibility import viewer_member_id, visibility_filter_sql
 
 log = get_logger("sediment.platform.library")
 
@@ -204,13 +206,22 @@ async def browse(
     include_test: bool = Query(default=False, alias="include_test"),
     identity: Identity = Depends(require_identity),
 ):
+    # sediment#140: `origin` distinguishes ingested sources from pages Sediment
+    # synthesized; the visibility predicate is the intra-tenant boundary RLS
+    # does not express.
     sql = """
         SELECT a.id::text, a.ref, a.type, a.date, a.slug, a.lang, a.frontmatter,
+               a.origin, a.confidence, a.synthesized_at,
                m.display_name AS author_name, m.external_id AS author_external_id
         FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
         WHERE 1=1
-    """
-    params: dict = {"limit": limit, "offset": offset}
+          AND {visibility}
+    """.replace("{visibility}", visibility_filter_sql("a"))
+    params: dict = {
+        "limit": limit,
+        "offset": offset,
+        "viewer_member_id": viewer_member_id(identity),
+    }
     if not include_test:
         sql += " AND NOT (a.ref ~ '^validator/(idem|sample)-')"
     if type:
@@ -305,24 +316,43 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                                     OR a.ref LIKE 'products/sediment/README%'
                                     OR a.ref LIKE 'products/sediment/TEST_%'
                                     OR a.ref LIKE 'products/sediment/DECISIONS%'
-                                  THEN 0.8 ELSE 1.0 END AS score,
-                       a.ref, a.type, a.date, a.slug
+                                  THEN 0.8 ELSE 1.0 END
+                           -- Confidence demotion (sediment#144). A page
+                           -- derived from an ANSWER is weaker evidence than the
+                           -- sources that answer cited, and must rank that way —
+                           -- otherwise answers get grounded on answers and the
+                           -- knowledge layer becomes a rumour mill. Inert for
+                           -- every existing row: only promoted pages carry a
+                           -- non-NULL confidence.
+                           * CASE WHEN a.origin = 'derived' AND a.confidence IS NOT NULL
+                                  THEN a.confidence ELSE 1.0 END AS score,
+                       a.ref, a.type, a.date, a.slug, a.origin, c.heading_path
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)
                   AND c.tenant_id = CAST(:tid AS uuid)
                   AND a.tenant_id = CAST(:tid AS uuid)
+                  -- Intra-tenant boundary (sediment#140). Applied inside `raw`
+                  -- rather than after dedup so a restricted chunk cannot win
+                  -- DISTINCT ON and suppress a visible chunk of the same
+                  -- artifact — which would turn a permission check into
+                  -- missing results.
+                  AND {visibility}
             ),
             deduped AS (
                 SELECT DISTINCT ON (artifact_id)
-                       chunk_id, artifact_id, seq, content, score, ref, type, date, slug
+                       chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
+                       origin, heading_path
                 FROM raw
                 ORDER BY artifact_id, score DESC
             )
-            SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug
+            SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
+                   origin, heading_path
             FROM deduped
             {type_filter}
             ORDER BY score DESC LIMIT :limit;
             """.replace(
+                "{visibility}", visibility_filter_sql("a")
+            ).replace(
                 "{type_filter}",
                 "WHERE type = :type_strict" if type else ""
             )
@@ -330,11 +360,20 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                 "tsq": ts_or, "limit": limit, "type_hint": type_hint,
                 "project_hint": project_hint, "slug_re": slug_re,
                 "tid": str(identity.tenant_id),
+                "viewer_member_id": viewer_member_id(identity),
             }
             if type:
                 params_bm25["type_strict"] = type
             r = await s.execute(text(sql_bm25), params_bm25)
-            return {"q": q, "items": [dict(row._mapping) for row in r]}
+            items = [dict(row._mapping) for row in r]
+            # 1-hop graph expansion (sediment#141). Fills unused slots only —
+            # it can never displace a ranked hit, which is what makes it safe
+            # to enable without a recall benchmark.
+            items = await expand_with_links(
+                s, str(identity.tenant_id), items, limit=limit,
+                visibility_sql=visibility_filter_sql("a"),
+                viewer_member_id=viewer_member_id(identity))
+            return {"q": q, "items": items}
 
         # Online path: hybrid BM25 + vector with RRF rerank. Keep the
         # ORDER BY/LIMIT work inside *_top CTEs and assign row_number only
@@ -378,12 +417,27 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
           ) u GROUP BY id, artifact_id, seq, content
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content, f.score,
-               a.ref, a.type, a.date, a.slug
+               a.ref, a.type, a.date, a.slug, a.origin, ch.heading_path
+        -- heading_path is joined back from chunks by PK rather than threaded
+        -- through the bm25/vec/fused CTEs: it would have to be added to the RRF
+        -- GROUP BY, and f.id IS the chunk id so this is an index lookup.
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
+          -- Intra-tenant boundary (sediment#140). Applied here rather than in
+          -- bm25_top/vec_top because those CTEs deliberately do NOT join
+          -- artifacts — that is what lets Postgres push LIMIT 50 down to the
+          -- GIN/HNSW top-K (the sediment#58 latency fix). Consequence: once
+          -- restricted rows actually exist, they consume top-50 slots before
+          -- being filtered, so a viewer can see fewer than `limit` results.
+          -- Harmless today (nothing sets visibility <> 'tenant'); revisit
+          -- alongside the first writer that produces restricted pages.
+          AND {visibility}
         {type_filter}
         ORDER BY f.score DESC LIMIT :limit;
         """.replace(
+            "{visibility}", visibility_filter_sql("a")
+        ).replace(
             "{type_filter}",
             "AND a.type = :type_strict" if type else ""
         )
@@ -392,11 +446,110 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             "qvec": qvec_str,
             "limit": limit,
             "tid": str(identity.tenant_id),
+            "viewer_member_id": viewer_member_id(identity),
         }
         if type:
             params_hyb["type_strict"] = type
         r = await s.execute(text(sql), params_hyb)
-        return {"q": q, "items": [dict(row._mapping) for row in r]}
+        items = [dict(row._mapping) for row in r]
+        # Same 1-hop expansion as the offline path (sediment#141).
+        items = await expand_with_links(
+            s, str(identity.tenant_id), items, limit=limit,
+            visibility_sql=visibility_filter_sql("a"),
+            viewer_member_id=viewer_member_id(identity))
+        return {"q": q, "items": items}
+
+
+@router.get("/links/{ref:path}")
+async def links(ref: str, identity: Identity = Depends(require_identity)):
+    """Links touching one artifact, in both directions.
+
+    sediment#141. `contradicts` is stored one-way (the row records who raised
+    the conflict) but must READ symmetrically — a disputed page is disputed
+    whichever end you arrived from. `direction` tells the caller which end this
+    artifact sits on.
+
+    Declared before `/{ref:path}`, which would otherwise swallow "links/...".
+    """
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            SELECT l.id::text, l.kind, l.note, l.resolved_at, l.created_at,
+                   l.evidence_chunk_ids,
+                   CASE WHEN l.src_artifact_id = self.id THEN 'outgoing' ELSE 'incoming' END
+                     AS direction,
+                   other.ref AS other_ref, other.type AS other_type,
+                   other.origin AS other_origin
+            FROM artifacts self
+            JOIN artifact_links l
+              ON l.src_artifact_id = self.id OR l.dst_artifact_id = self.id
+            JOIN artifacts other
+              ON other.id = CASE WHEN l.src_artifact_id = self.id
+                                 THEN l.dst_artifact_id ELSE l.src_artifact_id END
+            WHERE self.ref = :ref
+              AND {self_visibility}
+              AND {other_visibility}
+            ORDER BY (l.kind = 'contradicts' AND l.resolved_at IS NULL) DESC,
+                     l.created_at DESC
+        """.replace("{self_visibility}", visibility_filter_sql("self"))
+           .replace("{other_visibility}", visibility_filter_sql("other"))),
+            {"ref": ref, "viewer_member_id": viewer_member_id(identity)})
+        items = [dict(row._mapping) for row in r]
+    open_conflicts = sum(
+        1 for i in items if i["kind"] == "contradicts" and i["resolved_at"] is None)
+    return {"ref": ref, "open_conflicts": open_conflicts, "items": items}
+
+
+@router.get("/revisions/{ref:path}")
+async def revisions(ref: str, limit: int = Query(default=50, le=200),
+                    identity: Identity = Depends(require_identity)):
+    """Body history for one artifact, newest superseded revision first.
+
+    sediment#138: before this, a re-distill that collided on a topic slug
+    erased the previous decision — text, source and rationale — with nothing
+    anywhere recording that it had existed. This is the read side of the fix.
+
+    MUST be registered before `/{ref:path}`, which would otherwise swallow
+    "revisions/..." as a ref. Routes match in declaration order.
+
+    Bodies are omitted from the listing; ask for one revision at a time via
+    `?rev=` when you actually want the text.
+    """
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            SELECT rv.rev, rv.replaced_at, rv.source_ref,
+                   length(rv.body) AS body_length,
+                   m.display_name AS author_name,
+                   a.rev AS current_rev
+            FROM artifact_revisions rv
+            JOIN artifacts a ON a.id = rv.artifact_id
+            LEFT JOIN members m ON m.id = rv.author_id
+            WHERE a.ref = :ref AND {visibility}
+            ORDER BY rv.rev DESC
+            LIMIT :limit
+        """.replace("{visibility}", visibility_filter_sql("a"))),
+            {"ref": ref, "limit": limit,
+             "viewer_member_id": viewer_member_id(identity)})
+        items = [dict(row._mapping) for row in r]
+    return {"ref": ref, "items": items}
+
+
+@router.post("/links/{link_id}/resolve")
+async def resolve_link(link_id: str, identity: Identity = Depends(require_identity)):
+    """Mark a contradiction adjudicated. The link stays — a resolved conflict is
+    still part of how the knowledge got here."""
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            UPDATE artifact_links
+            SET resolved_at = now()
+            WHERE id = CAST(:lid AS uuid) AND kind = 'contradicts'
+              AND resolved_at IS NULL
+            RETURNING id::text
+        """), {"lid": link_id})
+        if r.first() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="no open contradiction with that id in this tenant")
+    return {"ok": True, "id": link_id}
 
 
 @router.get("/{ref:path}")
@@ -404,11 +557,12 @@ async def read_one(ref: str, identity: Identity = Depends(require_identity)):
     async with app_session(identity.tenant_id) as s:
         r = await s.execute(text("""
             SELECT a.id::text, a.ref, a.type, a.date, a.slug, a.lang,
-                   a.frontmatter, a.body,
+                   a.frontmatter, a.body, a.origin, a.confidence, a.synthesized_at,
                    m.display_name AS author_name
             FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
-            WHERE a.ref = :ref LIMIT 1
-        """), {"ref": ref})
+            WHERE a.ref = :ref AND {visibility} LIMIT 1
+        """.replace("{visibility}", visibility_filter_sql("a"))),
+            {"ref": ref, "viewer_member_id": viewer_member_id(identity)})
         row = r.first()
         if not row:
             raise HTTPException(status_code=404, detail="not found")

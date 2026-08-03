@@ -20,8 +20,15 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from lab_lib.chunker import chunk_markdown
+from lab_lib.context_packs import rebuild_packs
 from lab_lib.db import service_session
 from lab_lib.embeddings import embed
+from lab_lib.visibility import (
+    DEFAULT_VISIBILITY,
+    UnknownVisibility,
+    rank as visibility_rank,
+    sql_rank_expr,
+)
 
 
 def _coerce_date(v: Union[str, _dt.date, _dt.datetime, None]) -> Optional[_dt.date]:
@@ -81,12 +88,33 @@ class IngestDocReq(BaseModel):
     type: str                # 'column'|'research'|'novel'|'note'|'meeting'|...
     body: str                # raw markdown (with frontmatter)
     author_external_id: Optional[str] = None  # Discord ID or members.id
+    # ── derived knowledge layer (sediment#140) ──────────────────────────────
+    # Defaults keep every existing caller (GitHub webhook, repo ingest, Discord)
+    # on exactly today's behaviour: a raw, tenant-visible document.
+    origin: str = "raw"                       # 'raw' | 'derived'
+    confidence: Optional[float] = None        # derived pages only
+    # Callers producing derived pages MUST pass the inherited value computed by
+    # lab_lib.visibility.inherit_visibility over the source artifacts — the
+    # ingester cannot know a synthesized page's sources.
+    visibility: str = DEFAULT_VISIBILITY
+    # ── revisions (sediment#138) ────────────────────────────────────────────
+    # Names the run that produced this body ('distill:conv/<id>', 'webhook:<sha>')
+    # so a superseded revision stays traceable to the conversation or event
+    # batch behind it. Optional: unattributed history still beats none.
+    source_ref: Optional[str] = None
+    # Optimistic concurrency. Pass the rev you read; a mismatch means someone
+    # else wrote in between and you get 409 instead of silently erasing them.
+    # None = last-writer-wins, which is what every current caller does.
+    expected_rev: Optional[int] = None
 
 
 class IngestDocResp(BaseModel):
     artifact_id: str
     chunks_written: int
     elapsed_ms: int
+    # Post-write revision. Callers that want to update this artifact again
+    # should pass it back as expected_rev (sediment#138).
+    rev: int = 1
 
 
 class IngestBatchReq(BaseModel):
@@ -116,6 +144,16 @@ async def _delete_existing_chunks(s, artifact_id: str):
 @app.post("/v1/ingest/document", response_model=IngestDocResp)
 async def ingest_document(req: IngestDocReq):
     t0 = time.time()
+    # Reject unknown origin/visibility here rather than letting the CHECK
+    # constraint surface as a 500. A typo'd visibility must never fall through
+    # to the tenant-wide default (sediment#140).
+    if req.origin not in ("raw", "derived"):
+        raise HTTPException(status_code=400, detail=f"bad origin {req.origin!r}")
+    try:
+        visibility_rank(req.visibility)
+    except UnknownVisibility as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     fm = frontmatter.loads(req.body)
     fmdict = dict(fm.metadata)
     body_only = fm.content
@@ -132,10 +170,63 @@ async def ingest_document(req: IngestDocReq):
 
         author_id = await _resolve_author(s, req.tenant_id, req.author_external_id)
 
+        # Optimistic concurrency (sediment#138). distill workers, the GitHub
+        # webhook and the chat path all write artifacts and nothing serialized
+        # them; a caller that read rev N and writes against N+1 is stepping on
+        # someone. 409 lets it re-read and merge instead of erasing them.
+        if req.expected_rev is not None:
+            cur = await s.execute(text("""
+                SELECT rev FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid) AND ref = :ref
+            """), {"tid": req.tenant_id, "ref": req.ref})
+            row = cur.first()
+            current_rev = row[0] if row else 0
+            if current_rev != req.expected_rev:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"rev conflict on {req.ref!r}: expected "
+                            f"{req.expected_rev}, found {current_rev}"),
+                )
+
         # upsert artifact by (tenant_id, ref)
+        # sediment#140: origin/confidence/synthesized_at/visibility come from the
+        # request, not the frontmatter — a synthesized page's provenance is known
+        # to its producer (distill), never to the document it was written into.
+        # synthesized_at is set only for derived rows so raw ingests stay NULL.
+        #
+        # sediment#138: the `prev`/`archived` CTEs copy the CURRENT body into
+        # artifact_revisions BEFORE the upsert replaces it. Postgres runs
+        # data-modifying CTEs exactly once and to completion regardless of
+        # whether the primary query reads their output, and every CTE sees the
+        # same pre-update snapshot — so `archived` captures the old row even
+        # though the same statement overwrites it.
+        #
+        # Only real body changes are archived and only they bump `rev`: the
+        # GitHub webhook re-ingests unchanged files routinely, and filling the
+        # history with identical revisions would bury the changes that matter.
         r = await s.execute(text("""
-            INSERT INTO artifacts (tenant_id, ref, type, author_id, date, slug, lang, frontmatter, body, status, updated_at)
-            VALUES (:tid, :ref, :typ, :aid, :date, :slug, :lang, :fm, :body, COALESCE(:status, 'published'), now())
+            WITH prev AS (
+                SELECT id, tenant_id, rev, body, frontmatter, author_id
+                FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid) AND ref = :ref
+            ),
+            archived AS (
+                INSERT INTO artifact_revisions
+                    (tenant_id, artifact_id, rev, body, frontmatter, author_id, source_ref)
+                SELECT prev.tenant_id, prev.id, prev.rev, prev.body, prev.frontmatter,
+                       prev.author_id, :source_ref
+                FROM prev
+                WHERE prev.body IS DISTINCT FROM CAST(:body AS text)
+                ON CONFLICT (artifact_id, rev) DO NOTHING
+                RETURNING artifact_id
+            )
+            INSERT INTO artifacts (tenant_id, ref, type, author_id, date, slug, lang,
+                                   frontmatter, body, status, origin, confidence,
+                                   synthesized_at, visibility, updated_at)
+            VALUES (:tid, :ref, :typ, :aid, :date, :slug, :lang, :fm, :body,
+                    COALESCE(:status, 'published'), :origin, :confidence,
+                    CASE WHEN :origin = 'derived' THEN now() ELSE NULL END,
+                    :visibility, now())
             ON CONFLICT (tenant_id, ref) DO UPDATE SET
                 type = EXCLUDED.type,
                 author_id = EXCLUDED.author_id,
@@ -145,9 +236,32 @@ async def ingest_document(req: IngestDocReq):
                 frontmatter = EXCLUDED.frontmatter,
                 body = EXCLUDED.body,
                 status = EXCLUDED.status,
+                origin = EXCLUDED.origin,
+                confidence = EXCLUDED.confidence,
+                synthesized_at = EXCLUDED.synthesized_at,
+                -- Never WIDEN visibility on re-ingest. A page that was
+                -- restricted stays restricted unless the incoming value is at
+                -- least as restrictive; otherwise a careless re-ingest carrying
+                -- the default would quietly publish it tenant-wide. The rank
+                -- CASE is generated from VISIBILITY_LADDER so this comparison
+                -- cannot drift from the Python one.
+                visibility = CASE
+                    WHEN {rank_new} <= {rank_old} THEN EXCLUDED.visibility
+                    ELSE artifacts.visibility
+                END,
+                -- Bump only on a real body change, matching what `archived`
+                -- captured. Keeps rev meaning "how many distinct bodies this
+                -- artifact has had" rather than "how many times it was touched".
+                rev = CASE
+                    WHEN artifacts.body IS DISTINCT FROM EXCLUDED.body
+                    THEN artifacts.rev + 1 ELSE artifacts.rev
+                END,
                 updated_at = now()
-            RETURNING id
-        """), {
+            RETURNING id, rev
+        """.format(
+            rank_new=sql_rank_expr("EXCLUDED.visibility"),
+            rank_old=sql_rank_expr("artifacts.visibility"),
+        )), {
             "tid": req.tenant_id,
             "ref": req.ref,
             "typ": req.type,
@@ -158,27 +272,39 @@ async def ingest_document(req: IngestDocReq):
             "fm": _json(fmdict),
             "body": body_only,
             "status": fmdict.get("status"),
+            "origin": req.origin,
+            "confidence": req.confidence,
+            "visibility": req.visibility,
+            "source_ref": req.source_ref,
         })
-        artifact_id = str(r.scalar_one())
+        row = r.one()
+        artifact_id = str(row[0])
+        artifact_rev = int(row[1])
 
         await _delete_existing_chunks(s, artifact_id)
 
         # bulk insert chunks
         for c, vec in zip(chunks, embeddings):
+            # heading_path is the chunker's breadcrumb for the source section
+            # ("Design > Retrieval"). Persisting it (sediment#137) is what makes
+            # section-level citation possible — before migration 004 the column
+            # did not exist and the computed value was dropped here.
             await s.execute(text("""
-                INSERT INTO chunks (tenant_id, artifact_id, seq, content, embedding)
-                VALUES (:tid, :aid, :seq, :content, :emb)
+                INSERT INTO chunks (tenant_id, artifact_id, seq, content, heading_path, embedding)
+                VALUES (:tid, :aid, :seq, :content, :hpath, :emb)
             """), {
                 "tid": req.tenant_id,
                 "aid": artifact_id,
                 "seq": c.seq,
                 "content": c.content,
+                "hpath": c.heading_path or None,
                 "emb": _vec(vec),
             })
 
     elapsed = int((time.time() - t0) * 1000)
     log.info("ingest.document.ok", ref=req.ref, chunks=len(chunks), elapsed_ms=elapsed)
-    return IngestDocResp(artifact_id=artifact_id, chunks_written=len(chunks), elapsed_ms=elapsed)
+    return IngestDocResp(artifact_id=artifact_id, chunks_written=len(chunks),
+                         elapsed_ms=elapsed, rev=artifact_rev)
 
 
 @app.post("/v1/ingest/batch")
@@ -380,6 +506,17 @@ async def webhook_ingest(request: Request):
             "ref": req.ref, "n_ingested": n_ok,
             "n_deleted": len(deleted), "n_skipped": skipped,
         })})
+
+    # Refresh the tenant context pack (sediment#142) — a hot pack that lags the
+    # vault is worse than none, because a session reads it INSTEAD of looking.
+    # Only the tenant scope is rebuilt here: member packs are per-viewer and
+    # rebuilding every one on every push does not scale. They refresh lazily on
+    # read.
+    if n_ok or deleted:
+        async with service_session() as s:
+            await s.execute(
+                text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tid})
+            await rebuild_packs(s, tid, "tenant")
 
     log.info("webhook.ingest.done", ref=req.ref, ingested=n_ok,
              deleted=len(deleted), skipped=skipped)
