@@ -110,13 +110,15 @@ async def node_router(state: CuratorState) -> dict:
                               "몇 개", "몇개", "수", "신규", "지난 ", "최근 30",
                               "이번 달", "이번달"]):
         intent = "meta"
+    # "decision" moved out of this list to _DECISION_KEYWORDS (sediment#157) —
+    # see the note there. Everything else is a content-type noun.
     elif any(k in q for k in ["칼럼", "글", "리서치", "research", "column",
                                "소설", "novel", "메모", "회의", "노트", "note",
-                               "decision", "daily", "쓴", "작성", "published"]):
+                               "daily", "쓴", "작성", "published"]):
         intent = "library"
     elif any(k in q for k in ["who is", "expertise", "member", "라이언", "ryan", "jy", "kiwon"]):
         intent = "member"
-    elif any(k in q for k in ["결정", "action", "액션"]):
+    elif any(k in q for k in _DECISION_KEYWORDS):
         intent = "decision"
     else:
         intent = "library"
@@ -144,17 +146,45 @@ def _is_elaborate_query(ql: str) -> bool:
 # Freshness intent detector — keyword-based. Tight enough to avoid false
 # positives (we don't want every query to bypass RAG); broad enough to catch
 # the obvious cases. See sediment#16 #4 for the motivating bug.
-_FRESHNESS_KEYWORDS = [
+#
+# sediment#157: the list mixed two grammatically different things, and treating
+# them alike sent "What action items came out of last week decisions?" to the
+# freshness handler — which returns artifacts ordered by date. The user asked
+# for action items.
+#
+# SUPERLATIVES are the question itself ("the newest X"). They always win, which
+# is what keeps "최신 결정" routed to freshness, as test_ask_intent_golden pins.
+_FRESHNESS_SUPERLATIVES = [
     "최신", "가장 최근", "가장 최신", "최근에", "최근의",
-    "latest", "newest", "most recent", "last week", "this week",
-    "어제", "오늘", "yesterday", "today",
+    "latest", "newest", "most recent",
     "언제꺼", "언제 거", "언제거",
 ]
+
+# PERIODS only bound the range ("...from last week"). On their own they still
+# mean freshness — "yesterday's notes" has nothing else to go on — but they are
+# a filter, not the ask, so an explicit decision/action query outranks them.
+_FRESHNESS_PERIODS = [
+    "last week", "this week",
+    "어제", "오늘", "yesterday", "today",
+]
+
+# Shared so the router's decision branch and the freshness detector cannot
+# drift apart. English "decision" lives here rather than in the library keyword
+# list (sediment#157): Korean "결정" routed to the decision handler while its
+# English equivalent routed to a content browse, purely by which list it landed
+# in. A query naming decisions should reach the handler that reads them.
+_DECISION_KEYWORDS = ["결정", "action", "액션", "decision"]
 
 
 def _is_freshness_query(ql: str) -> bool:
     """Heuristic — true when the query is asking 'what's the newest X'."""
-    return any(kw in ql for kw in _FRESHNESS_KEYWORDS)
+    if any(kw in ql for kw in _FRESHNESS_SUPERLATIVES):
+        return True
+    if any(kw in ql for kw in _FRESHNESS_PERIODS):
+        # A bare period qualifier is a filter. If the query also names
+        # decisions or actions, that is what it is asking for.
+        return not any(kw in ql for kw in _DECISION_KEYWORDS)
+    return False
 
 
 # _build_ts_or_query was a second copy of the function imported above as
