@@ -284,14 +284,19 @@ async def ingest_document(req: IngestDocReq):
 
         # bulk insert chunks
         for c, vec in zip(chunks, embeddings):
+            # heading_path is the chunker's breadcrumb for the source section
+            # ("Design > Retrieval"). Persisting it (sediment#137) is what makes
+            # section-level citation possible — before migration 004 the column
+            # did not exist and the computed value was dropped here.
             await s.execute(text("""
-                INSERT INTO chunks (tenant_id, artifact_id, seq, content, embedding)
-                VALUES (:tid, :aid, :seq, :content, :emb)
+                INSERT INTO chunks (tenant_id, artifact_id, seq, content, heading_path, embedding)
+                VALUES (:tid, :aid, :seq, :content, :hpath, :emb)
             """), {
                 "tid": req.tenant_id,
                 "aid": artifact_id,
                 "seq": c.seq,
                 "content": c.content,
+                "hpath": c.heading_path or None,
                 "emb": _vec(vec),
             })
 
