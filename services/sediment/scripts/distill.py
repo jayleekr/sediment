@@ -242,13 +242,19 @@ def _source_visibilities(source: dict) -> list[str | None]:
 
 
 async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
-                            body: str, visibility: str) -> str | None:
+                            body: str, visibility: str,
+                            source_ref: str | None = None) -> str | None:
     try:
         r = await client.post(INGESTER_URL, timeout=120, json={
             "tenant_id": tid, "ref": ref, "type": "decision", "body": body,
             # This page was synthesized by us, not ingested from a source doc.
             "origin": "derived",
             "visibility": visibility,
+            # Attribute the superseded revision (sediment#138). Two different
+            # decisions can slug alike; when the second replaces the first, the
+            # history row must say which conversation or event batch the
+            # replaced text came from, or the collision is undiagnosable.
+            "source_ref": f"distill:{source_ref}" if source_ref else None,
         })
         if r.status_code == 200:
             return r.json().get("artifact_id")
@@ -388,6 +394,7 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 aid = await _ingest_artifact(
                     client, tid, ref, md,
                     visibility=inherit_visibility(_source_visibilities(s)),
+                    source_ref=s["src"],
                 )
                 if aid:
                     summary["artifacts"] += 1

@@ -96,12 +96,24 @@ class IngestDocReq(BaseModel):
     # lab_lib.visibility.inherit_visibility over the source artifacts — the
     # ingester cannot know a synthesized page's sources.
     visibility: str = DEFAULT_VISIBILITY
+    # ── revisions (sediment#138) ────────────────────────────────────────────
+    # Names the run that produced this body ('distill:conv/<id>', 'webhook:<sha>')
+    # so a superseded revision stays traceable to the conversation or event
+    # batch behind it. Optional: unattributed history still beats none.
+    source_ref: Optional[str] = None
+    # Optimistic concurrency. Pass the rev you read; a mismatch means someone
+    # else wrote in between and you get 409 instead of silently erasing them.
+    # None = last-writer-wins, which is what every current caller does.
+    expected_rev: Optional[int] = None
 
 
 class IngestDocResp(BaseModel):
     artifact_id: str
     chunks_written: int
     elapsed_ms: int
+    # Post-write revision. Callers that want to update this artifact again
+    # should pass it back as expected_rev (sediment#138).
+    rev: int = 1
 
 
 class IngestBatchReq(BaseModel):
@@ -157,12 +169,56 @@ async def ingest_document(req: IngestDocReq):
 
         author_id = await _resolve_author(s, req.tenant_id, req.author_external_id)
 
+        # Optimistic concurrency (sediment#138). distill workers, the GitHub
+        # webhook and the chat path all write artifacts and nothing serialized
+        # them; a caller that read rev N and writes against N+1 is stepping on
+        # someone. 409 lets it re-read and merge instead of erasing them.
+        if req.expected_rev is not None:
+            cur = await s.execute(text("""
+                SELECT rev FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid) AND ref = :ref
+            """), {"tid": req.tenant_id, "ref": req.ref})
+            row = cur.first()
+            current_rev = row[0] if row else 0
+            if current_rev != req.expected_rev:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"rev conflict on {req.ref!r}: expected "
+                            f"{req.expected_rev}, found {current_rev}"),
+                )
+
         # upsert artifact by (tenant_id, ref)
         # sediment#140: origin/confidence/synthesized_at/visibility come from the
         # request, not the frontmatter — a synthesized page's provenance is known
         # to its producer (distill), never to the document it was written into.
         # synthesized_at is set only for derived rows so raw ingests stay NULL.
+        #
+        # sediment#138: the `prev`/`archived` CTEs copy the CURRENT body into
+        # artifact_revisions BEFORE the upsert replaces it. Postgres runs
+        # data-modifying CTEs exactly once and to completion regardless of
+        # whether the primary query reads their output, and every CTE sees the
+        # same pre-update snapshot — so `archived` captures the old row even
+        # though the same statement overwrites it.
+        #
+        # Only real body changes are archived and only they bump `rev`: the
+        # GitHub webhook re-ingests unchanged files routinely, and filling the
+        # history with identical revisions would bury the changes that matter.
         r = await s.execute(text("""
+            WITH prev AS (
+                SELECT id, tenant_id, rev, body, frontmatter, author_id
+                FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid) AND ref = :ref
+            ),
+            archived AS (
+                INSERT INTO artifact_revisions
+                    (tenant_id, artifact_id, rev, body, frontmatter, author_id, source_ref)
+                SELECT prev.tenant_id, prev.id, prev.rev, prev.body, prev.frontmatter,
+                       prev.author_id, :source_ref
+                FROM prev
+                WHERE prev.body IS DISTINCT FROM CAST(:body AS text)
+                ON CONFLICT (artifact_id, rev) DO NOTHING
+                RETURNING artifact_id
+            )
             INSERT INTO artifacts (tenant_id, ref, type, author_id, date, slug, lang,
                                    frontmatter, body, status, origin, confidence,
                                    synthesized_at, visibility, updated_at)
@@ -192,8 +248,15 @@ async def ingest_document(req: IngestDocReq):
                     WHEN {rank_new} <= {rank_old} THEN EXCLUDED.visibility
                     ELSE artifacts.visibility
                 END,
+                -- Bump only on a real body change, matching what `archived`
+                -- captured. Keeps rev meaning "how many distinct bodies this
+                -- artifact has had" rather than "how many times it was touched".
+                rev = CASE
+                    WHEN artifacts.body IS DISTINCT FROM EXCLUDED.body
+                    THEN artifacts.rev + 1 ELSE artifacts.rev
+                END,
                 updated_at = now()
-            RETURNING id
+            RETURNING id, rev
         """.format(
             rank_new=sql_rank_expr("EXCLUDED.visibility"),
             rank_old=sql_rank_expr("artifacts.visibility"),
@@ -211,8 +274,11 @@ async def ingest_document(req: IngestDocReq):
             "origin": req.origin,
             "confidence": req.confidence,
             "visibility": req.visibility,
+            "source_ref": req.source_ref,
         })
-        artifact_id = str(r.scalar_one())
+        row = r.one()
+        artifact_id = str(row[0])
+        artifact_rev = int(row[1])
 
         await _delete_existing_chunks(s, artifact_id)
 
@@ -236,7 +302,8 @@ async def ingest_document(req: IngestDocReq):
 
     elapsed = int((time.time() - t0) * 1000)
     log.info("ingest.document.ok", ref=req.ref, chunks=len(chunks), elapsed_ms=elapsed)
-    return IngestDocResp(artifact_id=artifact_id, chunks_written=len(chunks), elapsed_ms=elapsed)
+    return IngestDocResp(artifact_id=artifact_id, chunks_written=len(chunks),
+                         elapsed_ms=elapsed, rev=artifact_rev)
 
 
 @app.post("/v1/ingest/batch")
