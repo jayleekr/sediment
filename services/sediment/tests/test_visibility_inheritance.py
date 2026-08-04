@@ -169,9 +169,20 @@ def test_ingester_marks_derived_and_never_widens_on_reingest():
 
 
 def test_distill_writes_derived_pages_through_the_inheritance_rule():
+    """sediment#161 generalized _ingest_artifact so it can also land captured
+    transcripts, so `origin` is a parameter rather than an inline literal. The
+    invariant is unchanged and now has two halves: synthesized pages default to
+    'derived', and the one caller that is NOT synthesis says so explicitly.
+    """
     src = _read("scripts/distill.py")
-    assert '"origin": "derived"' in src
-    assert "inherit_visibility(_source_visibilities(s))" in src, (
+    assert 'origin: str = "derived"' in src, (
+        "a distilled page is synthesis; that must stay the default"
+    )
+    assert 'origin="raw"' in src, (
+        "the captured-transcript caller must opt out of 'derived' explicitly — "
+        "we stored that text, we did not write it"
+    )
+    assert "inherit_visibility(_source_visibilities(" in src, (
         "distill must go through the inheritance rule, not hardcode a visibility"
     )
 
