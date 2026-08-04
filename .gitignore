@@ -15,13 +15,19 @@ node_modules/
 docker-volumes/
 docs/_build/
 
+# Generated validator outputs. `**/` prefixed on purpose: validator/history.py
+# resolves its output dir from the CWD (`VALIDATOR_OUTPUT_DIR`, default
+# "output/validation"), so running from services/sediment writes to
+# services/sediment/output/... A root-anchored pattern silently misses those —
+# which is how three metric-history files ended up committed (sediment#166).
+# The writer is CWD-relative, so the ignore has to be CWD-independent too.
 # Auto-updated pointers to most-recent validation run — noise in commits.
-output/validation/P*-latest.json
-output/validation/P*-latest.md
+**/output/validation/P*-latest.json
+**/output/validation/P*-latest.md
 # Per-run metric history — VM/CI-local, uploaded as a workflow artifact.
-output/validation/history/
+**/output/validation/history/
 # Playwright screenshots from E2E runs (local dev + CI smoke uploads).
-output/validation/screenshots/
+**/output/validation/screenshots/
 # Ralph runtime state — restored from templates each run.
 harness/ralph/STATE.json
 harness/ralph/TODO.md
@@ -33,6 +39,8 @@ output/ralph/iter-*.prompt
 output/ralph/iter-*.bak
 output/ralph/supervisor.log
 output/dogfood/*.json
+# `scripts.distill --dry-run` writes .md fixtures here — same class of noise.
+output/dogfood/distilled/
 # AI commit ephemeral state files (per-CHECK_ID).
 output/ai-commit/
 
