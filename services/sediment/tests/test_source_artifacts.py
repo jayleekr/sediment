@@ -168,7 +168,7 @@ async def test_unchanged_day_is_not_re_embedded():
     src = _discord_source()
     _ref, _body, content = _source_artifact_markdown(src)
     mapping, summary, client = await _run(
-        [src], existing={"discord/weekly/2026-05-19": ("aid-existing", content)})
+        [src], existing={"discord/weekly/2026-05-19": ("aid-existing", content, 3)})
     assert client.posts == [], "identical body must not be re-ingested"
     assert mapping == {"discord/weekly/2026-05-19": "aid-existing"}
     assert summary["source_artifacts_unchanged"] == 1
@@ -177,7 +177,7 @@ async def test_unchanged_day_is_not_re_embedded():
 async def test_changed_day_is_re_ingested():
     src = _discord_source()
     mapping, summary, client = await _run(
-        [src], existing={"discord/weekly/2026-05-19": ("aid-existing", "older text")})
+        [src], existing={"discord/weekly/2026-05-19": ("aid-existing", "older text", 3)})
     assert len(client.posts) == 1
     assert mapping["discord/weekly/2026-05-19"] == "aid-1"
 
