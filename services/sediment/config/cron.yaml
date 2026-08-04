@@ -3,12 +3,20 @@
 # Loaded by services/sediment/scripts/scheduler.py at startup. Edit this file
 # + redeploy to add/remove channels or adjust frequency.
 #
-# When this graduates to multi-tenant, channels move into
-# `tenant_connectors.config.resources` (DB-driven). For dogfood + first
-# external tenant demo, YAML is the simplest auditable source of truth.
+# sediment#163: this list is now a FALLBACK, not the source of truth.
+# The scheduler reads channels from `integrations` (kind='discord',
+# config.resources) — the same table and shape the GitHub connector already
+# uses — and only falls back here when no tenant has a discord row. There is
+# no separate `tenant_connectors` table; `integrations` is canonical.
+#
+# The fallback exists so a deployment without that row keeps capturing: a
+# config change that silently stops ingestion is worse than a duplicated list.
+# It logs loudly when it fires.
 
 discord:
-  # Fetch every 30 minutes. Per-channel watermark stored in events.payload.
+  # Fetch every 30 minutes. Per-channel watermark is stored in
+  # integrations.config.state.watermarks, falling back to the derived
+  # MAX(events.payload->>'message_id') when nothing is stored yet.
   # Tip: `*/30 * * * *` cron expression; APScheduler parses standard 5-field.
   fetch_schedule: "*/30 * * * *"
   channels:

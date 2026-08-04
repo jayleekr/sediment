@@ -64,8 +64,55 @@ def _load_config() -> dict[str, Any]:
 # Job wrappers — thin, catch exceptions so one failure doesn't kill the loop
 # ---------------------------------------------------------------------------
 
+async def _discord_targets(yaml_channels: list[dict[str, str]]) -> list[dict]:
+    """Which (tenant, channel) pairs to fetch this tick (sediment#163).
+
+    Tenant data wins: every tenant with an `integrations` row of kind='discord'
+    contributes the channels it opted into via `config.resources`, exactly as
+    the GitHub connector already works.
+
+    config/cron.yaml is the FALLBACK, not the source of truth. It stays because
+    removing it would silently stop capture on the current deployment, which
+    has no discord integration row yet — a config migration that turns off
+    ingestion is worse than a duplicated list. The fallback logs loudly so the
+    state is visible rather than assumed.
+    """
+    from scripts.discord_fetch import channels_from_config, load_discord_integrations
+
+    try:
+        integrations = await load_discord_integrations()
+    except Exception as e:
+        log.warning("scheduler.discord.integrations_unreadable",
+                    err=str(e)[:200], fallback="cron.yaml")
+        integrations = []
+
+    targets: list[dict] = []
+    for integ in integrations:
+        for ch in channels_from_config(integ["config"]):
+            targets.append({
+                "tenant_id": integ["tenant_id"],
+                "integration_id": integ["id"],
+                "integration_config": integ["config"],
+                "channel": ch,
+            })
+
+    if targets:
+        return targets
+
+    log.warning(
+        "scheduler.discord.no_db_config — falling back to config/cron.yaml. "
+        "Add an integrations row (kind='discord', config.resources) to make "
+        "channel opt-in tenant data (sediment#163).",
+        channels=len(yaml_channels))
+    return [
+        {"tenant_id": None, "integration_id": None, "integration_config": {},
+         "channel": ch}
+        for ch in yaml_channels if ch.get("id")
+    ]
+
+
 async def _run_discord_fetch_all(channels: list[dict[str, str]]) -> None:
-    """Fetch all channels incrementally. Logs per-channel result.
+    """Fetch every opted-in channel of every tenant, incrementally.
 
     Sequential (not parallel): keeps DB connection count predictable and
     Discord API rate limit headroom intact. Each channel takes < 2s typically.
@@ -73,22 +120,25 @@ async def _run_discord_fetch_all(channels: list[dict[str, str]]) -> None:
     from scripts.discord_fetch import cmd_fetch
     import argparse as _ap
 
-    for ch in channels:
-        cid = ch.get("id")
-        cname = ch.get("name") or cid
-        if not cid:
-            continue
+    for target in await _discord_targets(channels):
+        ch = target["channel"]
+        cid, cname = ch["id"], ch.get("name") or ch["id"]
         # Synthesize the argparse namespace cmd_fetch expects.
         args = _ap.Namespace(
             channel_id=cid, channel_name=cname,
             limit=100, after=None, incremental=True,
             dry_run=False, list_resources=False,
+            tenant_id=target["tenant_id"],
+            integration_id=target["integration_id"],
+            integration_config=target["integration_config"],
         )
         try:
             rc = await cmd_fetch(args)
-            log.info("scheduler.fetch.done", channel=cname, rc=rc)
+            log.info("scheduler.fetch.done", channel=cname,
+                     tenant=target["tenant_id"], rc=rc)
         except Exception as e:
-            log.warning("scheduler.fetch.error", channel=cname, err=str(e)[:200])
+            log.warning("scheduler.fetch.error", channel=cname,
+                        tenant=target["tenant_id"], err=str(e)[:200])
 
 
 async def _run_distill(since_hours: int) -> None:
