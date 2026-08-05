@@ -156,6 +156,16 @@ async def promote_to_question(req: PromoteQuestionReq,
 
         title = req.title or (user_query.strip().splitlines()[0][:120])
         ref = f"question/{_slug(title)}"
+        # sediment#162: two members promoting answers to the same question slug
+        # is a real race — the second would otherwise silently replace the
+        # first's page. Read the current rev in the same session that decided
+        # the ref, and arm the optimistic lock with it.
+        rv = await s.execute(text("""
+            SELECT rev FROM artifacts
+            WHERE tenant_id = current_tenant_id() AND ref = :ref
+        """), {"ref": ref})
+        rev_row = rv.first()
+        expected_rev = int(rev_row[0]) if rev_row else None
         markdown = _page_markdown(title, user_query.strip(), answer, refs, req.note)
 
     # Ingest outside the read session — the ingester owns its own transaction
@@ -170,7 +180,15 @@ async def promote_to_question(req: PromoteQuestionReq,
             "confidence": PROMOTED_ANSWER_CONFIDENCE,
             "visibility": DEFAULT_VISIBILITY,
             "source_ref": f"promote-question:{mid}",
+            "expected_rev": expected_rev,
         })
+    if resp.status_code == 409:
+        # Interactive caller, unlike distill's batch path: tell them to re-read
+        # rather than silently overwriting the other promotion.
+        raise HTTPException(
+            status_code=409,
+            detail=(f"{ref!r} was updated by someone else while this promotion "
+                    "was being prepared — re-read the page and retry"))
     if resp.status_code != 200:
         raise HTTPException(status_code=502,
                             detail=f"ingest failed ({resp.status_code}) — page not created")
