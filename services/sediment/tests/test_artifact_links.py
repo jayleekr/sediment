@@ -70,45 +70,56 @@ async def _resolve_async(siblings, base="decision/use-postgres",
 
 
 async def test_no_existing_page_uses_the_base_ref():
-    ref, conflicts = await _resolve_async([])
+    ref, conflicts, expected_rev = await _resolve_async([])
     assert ref == "decision/use-postgres"
     assert conflicts == []
+    # Nothing to race on when the ref is new (sediment#162).
+    assert expected_rev is None
 
 
 async def test_identical_body_reuses_the_existing_page():
     """Same claim reached twice. A second page would be noise, not knowledge."""
-    ref, conflicts = await _resolve_async([
-        {"id": "a1", "ref": "decision/use-postgres", "body": "B", "source": "conv/9"},
+    ref, conflicts, expected_rev = await _resolve_async([
+        {"id": "a1", "ref": "decision/use-postgres", "body": "B",
+         "source": "conv/9", "rev": 4},
     ])
     assert ref == "decision/use-postgres"
     assert conflicts == []
+    # Reusing an existing page arms the optimistic lock with its rev (#162).
+    assert expected_rev == 4
 
 
 async def test_same_source_updates_in_place():
     """The re-decide case the original topic-slug scheme was designed for."""
-    ref, conflicts = await _resolve_async([
-        {"id": "a1", "ref": "decision/use-postgres", "body": "OLD", "source": "conv/1"},
+    ref, conflicts, expected_rev = await _resolve_async([
+        {"id": "a1", "ref": "decision/use-postgres", "body": "OLD",
+         "source": "conv/1", "rev": 7},
     ], src="conv/1", body="NEW")
     assert ref == "decision/use-postgres"
     assert conflicts == []
+    assert expected_rev == 7, "an in-place update is exactly what must be locked"
 
 
 async def test_different_source_mints_a_sibling_and_reports_the_conflict():
     """The bug. Before #141 this overwrote conv/9's decision."""
-    ref, conflicts = await _resolve_async([
-        {"id": "a1", "ref": "decision/use-postgres", "body": "OLD", "source": "conv/9"},
+    ref, conflicts, expected_rev = await _resolve_async([
+        {"id": "a1", "ref": "decision/use-postgres", "body": "OLD",
+         "source": "conv/9", "rev": 2},
     ], src="conv/1", body="NEW")
     assert ref == "decision/use-postgres--2"
     assert conflicts == ["a1"]
+    # A minted sibling is a fresh ref — locking it would be meaningless.
+    assert expected_rev is None
 
 
 async def test_third_claim_does_not_collide_with_the_second():
-    ref, conflicts = await _resolve_async([
+    ref, conflicts, expected_rev = await _resolve_async([
         {"id": "a1", "ref": "decision/use-postgres", "body": "X", "source": "conv/9"},
         {"id": "a2", "ref": "decision/use-postgres--2", "body": "Y", "source": "conv/8"},
     ], src="conv/1", body="Z")
     assert ref == "decision/use-postgres--3"
     assert set(conflicts) == {"a1", "a2"}
+    assert expected_rev is None
 
 
 async def test_lookup_failure_falls_back_to_todays_behaviour():
@@ -122,10 +133,13 @@ async def test_lookup_failure_falls_back_to_todays_behaviour():
             return False
 
     with patch.object(distill, "service_session", lambda: _Boom()):
-        ref, conflicts = await distill._resolve_decision_ref(
+        ref, conflicts, expected_rev = await distill._resolve_decision_ref(
             "t", "decision/x", "conv/1", "B")
     assert ref == "decision/x"
     assert conflicts == []
+    # Lookup failed, so we know nothing about the current rev — locking on a
+    # guess would be worse than last-writer-wins.
+    assert expected_rev is None
 
 
 # ---------------------------------------------------------------------------
