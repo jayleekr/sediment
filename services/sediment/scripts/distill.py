@@ -659,7 +659,7 @@ async def run(since_hours: int, dry_run: bool) -> dict:
     if not have_llm:
         summary["flags"].append(
             "ANTHROPIC_API_KEY not configured — extraction skipped (honest no-op, "
-            "not a fake pass). Borrowed Sonatus key must NOT be used in prod."
+            "not a fake pass). A key borrowed from another org must NOT be used in prod."
         )
         return summary
 
