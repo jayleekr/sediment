@@ -53,7 +53,9 @@ export default function PricingPage() {
         "10,000 events / month",
         "RAG chat with citations",
         "Member attribution + roles",
-        "Multi-source connectors (Discord/Slack/Notion/GitHub)",
+        // 슬래시 구분자는 카드 폭에서 끊기지 않는 한 덩어리라 넘쳐 잘렸다.
+        // 쉼표+공백은 자연스러운 줄바꿈 지점을 만들고 영어 조판으로도 옳다.
+        "Multi-source connectors (Discord, Slack, Notion, GitHub)",
       ],
       cta: "Start 14-day trial",
       featured: true,
@@ -142,11 +144,11 @@ export default function PricingPage() {
               {t.highlights.map((h) => (
                 <li key={h} className="flex gap-2">
                   <span className="shrink-0 text-accent">✓</span>
-                  {/* min-w-0 이 실제 수정이다. flex 자식의 기본 min-width 는
-                      auto 라서 "(Discord/Slack/Notion/GitHub)" 같은 긴 토큰이
-                      줄바꿈 대신 카드를 넘쳐 잘렸다. break-words 는 쓰지 않는다 —
-                      단어 중간("Notio / n")을 끊어 조판이 무너진다. 브라우저는
-                      슬래시에서 끊을 수 있으므로 그걸로 충분하다. */}
+                  {/* 넘침에는 원인이 둘이었다. (1) flex 자식의 기본 min-width 가
+                      auto 라 칸이 좁아져도 줄어들지 못한다 → min-w-0. (2) 그래도
+                      줄바꿈 지점이 없는 긴 토큰은 넘친다 → 구분자를 슬래시에서
+                      쉼표로 바꿨다(위 tiers 참고). break-words 는 쓰지 않는다.
+                      단어 중간("Notio / n")을 끊어 조판이 무너지기 때문이다. */}
                   <span className="min-w-0">{h}</span>
                 </li>
               ))}
