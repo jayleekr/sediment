@@ -53,7 +53,7 @@ export default function AuthBridge() {
   return (
     <div
       role="alert"
-      className="mx-auto mb-4 max-w-md rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800"
+      className="mx-auto mb-4 max-w-md rounded-md border border-accent/30 bg-claret-soft/50 px-4 py-2 text-sm text-accent-ink"
     >
       GitHub 로그인은 됐지만 Sediment 멤버 매칭에 실패했습니다 — {err}
     </div>

@@ -126,7 +126,7 @@ export default function AdminPage() {
             </thead>
             <tbody>
               {tenants.map((t) => (
-                <tr key={t.id} className="border-t">
+                <tr key={t.id} className="border-t border-rule transition-colors hover:bg-paper-2/50">
                   <td className="font-mono">{t.slug}</td>
                   <td>{t.plan}</td>
                   <td>{t.status}</td>

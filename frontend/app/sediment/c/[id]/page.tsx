@@ -232,12 +232,13 @@ export default function ConversationPage() {
           </div>
         </Surface>
 
-        <form
+        <Surface
+          as="form"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
-          className="mt-4 flex flex-col gap-2 rounded-md border border-rule bg-card p-3 shadow-sm sm:flex-row"
+          className="mt-4 flex flex-col gap-2 p-3 sm:flex-row"
         >
           <input
             className="min-h-11 flex-1 rounded-md border border-rule bg-paper-2/30 px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card"
@@ -252,7 +253,7 @@ export default function ConversationPage() {
           >
             Send
           </button>
-        </form>
+        </Surface>
         <label className="mt-2.5 flex items-start gap-2 text-[13px] leading-6 text-ink-2">
           <input
             className="mt-1 accent-accent"

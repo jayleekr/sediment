@@ -14,6 +14,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PLATFORM_BASE, getToken } from "../lib/api";
+import { Surface } from "../components/ui";
 
 type Phase = "loading" | "needs_auth" | "ready" | "approving" | "approved" | "error";
 
@@ -193,13 +194,13 @@ export default function DeviceApprovePage() {
 function Wrapper({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-md py-10">
-      <div className="reveal-item rounded-md border border-rule bg-card p-7 shadow-[0_1px_2px_rgba(34,30,22,0.04),0_8px_24px_-16px_rgba(34,30,22,0.25)]">
+      <Surface className="reveal-item p-7">
         <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
           Device authorization
         </p>
         <h1 className="mb-4 font-display text-2xl font-semibold text-ink">{title}</h1>
         {children}
-      </div>
+      </Surface>
     </div>
   );
 }

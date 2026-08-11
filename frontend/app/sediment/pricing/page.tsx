@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Surface } from "../components/ui";
 
 export default function PricingPage() {
   // Tenant-tier flat pricing (NOT per-seat). Internal rationale + cost math
@@ -116,11 +117,13 @@ export default function PricingPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {tiers.map((t) => (
-          <div
+          // flex-col + 아래 CTA 의 mt-auto 가 한 쌍이다. 이게 없으면 카드마다
+          // 항목 수가 달라 CTA 가 세로로 제각각 서고, 5장이 나란히 놓였을 때
+          // 그 어긋남이 가장 먼저 눈에 띈다.
+          <Surface
             key={t.name}
-            className={`relative rounded-md border bg-card p-6 ${
-              t.featured ? "ring-2 ring-accent shadow-lg" : "shadow-sm"
-            }`}
+            as="div"
+            className={`relative flex flex-col p-6 ${t.featured ? "ring-2 ring-accent" : ""}`}
           >
             {t.featured && t.badge && (
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-accent px-3 py-0.5 text-xs font-medium text-paper">
@@ -138,27 +141,36 @@ export default function PricingPage() {
             <ul className="mt-4 space-y-2 text-sm">
               {t.highlights.map((h) => (
                 <li key={h} className="flex gap-2">
-                  <span className="text-accent">✓</span>
-                  <span>{h}</span>
+                  <span className="shrink-0 text-accent">✓</span>
+                  {/* min-w-0 이 실제 수정이다. flex 자식의 기본 min-width 는
+                      auto 라서 "(Discord/Slack/Notion/GitHub)" 같은 긴 토큰이
+                      줄바꿈 대신 카드를 넘쳐 잘렸다. break-words 는 쓰지 않는다 —
+                      단어 중간("Notio / n")을 끊어 조판이 무너진다. 브라우저는
+                      슬래시에서 끊을 수 있으므로 그걸로 충분하다. */}
+                  <span className="min-w-0">{h}</span>
                 </li>
               ))}
             </ul>
-            <Link
-              href={`/sediment/onboard?tier=${encodeURIComponent(t.name.toLowerCase())}`}
-              className={`mt-6 w-full rounded px-4 py-2 text-sm ${
-                t.featured
-                  ? "bg-accent text-paper hover:bg-accent-ink"
-                  : "bg-paper-2 text-ink hover:bg-rule"
-              } block text-center`}
-            >
-              {t.cta}
-            </Link>
-          </div>
+            {/* mt-auto 는 이 래퍼가 갖는다. Link 자신에게 주면 버튼 안쪽
+                여백과 바깥 간격이 한 속성에 섞여 조정이 어려워진다. */}
+            <div className="mt-auto pt-6">
+              <Link
+                href={`/sediment/onboard?tier=${encodeURIComponent(t.name.toLowerCase())}`}
+                className={`block w-full rounded-md px-4 py-2.5 text-center text-sm font-medium transition-colors ${
+                  t.featured
+                    ? "bg-accent text-paper hover:bg-accent-ink"
+                    : "border border-rule bg-paper-2 text-ink hover:border-rule-2 hover:bg-card-2"
+                }`}
+              >
+                {t.cta}
+              </Link>
+            </div>
+          </Surface>
         ))}
       </div>
 
       {/* 10-seat math — main conversion lever per pricing strategy memo */}
-      <div className="rounded-md border bg-paper-2/50 p-6">
+      <div className="rounded-md border border-rule bg-paper-2/50 p-6">
         <h3 className="font-display text-lg font-semibold text-ink">
           10-seat team monthly cost — Sediment vs alternatives
         </h3>
@@ -168,7 +180,7 @@ export default function PricingPage() {
         </p>
         <table className="mt-4 w-full text-sm">
           <caption className="sr-only">Ten seat monthly cost comparison</caption>
-          <thead className="text-left text-xs uppercase tracking-wide text-ink-3">
+          <thead className="border-b border-rule-2 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
             <tr>
               <th scope="col" className="py-2 pr-4">Tool</th>
               <th scope="col" className="py-2 pr-4">10-seat monthly</th>
@@ -179,7 +191,7 @@ export default function PricingPage() {
             {compare.map((row) => (
               <tr
                 key={row.tool}
-                className={`border-t ${row.us ? "bg-ochre-soft/40 font-medium" : ""}`}
+                className={`border-t border-rule ${row.us ? "bg-ochre-soft/40 font-medium" : ""}`}
               >
                 <td className="py-2 pr-4">{row.tool}</td>
                 <td className="py-2 pr-4">{row.price}</td>
