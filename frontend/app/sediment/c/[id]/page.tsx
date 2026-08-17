@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { api, citeExport, sendSignal, promoteToGolden, getFreshness, type Citation, type Freshness, type Message } from "../../lib/api";
 import { streamCurator } from "../../lib/sse";
+import { useSmoothStream, useStickToBottom } from "../../lib/motion";
 import { EmptyState, SectionHeader, Surface, TrustBadge } from "../../components/ui";
 
 // Backend phrases emitted by lab_lib/grounding.no_evidence_answer when the
@@ -45,6 +47,16 @@ export default function ConversationPage() {
   // sets this for the member's one owned task; persisted per browser.
   const [ownedMode, setOwnedMode] = useState(false);
   const aborter = useRef<AbortController | null>(null);
+  // The assistant row that `onDone` pulled back from the server to replace the
+  // live bubble. It is a brand-new key, so it would otherwise play the arrival
+  // animation — over text the reader has already been watching stream in. That
+  // reads as a flash, not an entrance, so this one row opts out.
+  const persistedStreamIdRef = useRef<string | null>(null);
+
+  // Display is paced separately from arrival — see useSmoothStream.
+  const streaming = !stream.done;
+  const shownBuffer = useSmoothStream(stream.buffer, streaming);
+  const { stuck, scrollToBottom } = useStickToBottom(shownBuffer, streaming);
 
   useEffect(() => {
     setOwnedMode(localStorage.getItem("sediment.owned_task") === "1");
@@ -99,6 +111,10 @@ export default function ConversationPage() {
           ...m,
           { id: "tmp-" + Date.now(), role: "user", content: q, citations: [], ts: new Date().toISOString() },
         ]);
+        // Follow the reader's own turn down. Unconditional, unlike the stream
+        // autoscroll: they just pressed Send, so the bottom is where they mean
+        // to be even if they had scrolled up to re-read something first.
+        requestAnimationFrame(scrollToBottom);
       }
     } catch (e: unknown) {
       setStream({
@@ -130,9 +146,13 @@ export default function ConversationPage() {
           }));
           try {
             const msgs = await load(); // re-pull messages so citations are persisted
-            if (msgs[msgs.length - 1]?.role === "assistant") {
+            const last = msgs[msgs.length - 1];
+            if (last?.role === "assistant") {
               // The persisted row now renders the answer; hide the live bubble
-              // so the answer isn't shown twice.
+              // so the answer isn't shown twice. Both updates land in one
+              // commit, so the swap is a single frame — but the incoming row
+              // must not also animate in, or that frame reads as a flash.
+              persistedStreamIdRef.current = last.id;
               setStream((s) => (s.error ? s : { ...s, buffer: "" }));
             }
           } catch {
@@ -185,7 +205,7 @@ export default function ConversationPage() {
 
   return (
     <div className="grid grid-cols-12 gap-6">
-      <main className="col-span-12 md:col-span-8">
+      <main className="reveal-item col-span-12 md:col-span-8" style={{ "--i": 0 } as CSSProperties}>
         <Surface className="p-5 md:p-6">
           <SectionHeader
             title={conv?.title || "(untitled)"}
@@ -201,7 +221,14 @@ export default function ConversationPage() {
           />
           <div className="space-y-4">
             {messages.map((m, i) => (
-              <div key={m.id}>
+              // `.enter-item` rides the element's mount: React only creates
+              // this node once per message id, so the CSS animation plays
+              // exactly once and re-renders during streaming never restart it.
+              <div
+                key={m.id}
+                className={m.id === persistedStreamIdRef.current ? undefined : "enter-item"}
+                style={{ "--i": Math.min(i, 5) } as CSSProperties}
+              >
                 <Bubble role={m.role} content={m.content} citations={m.citations} />
                 {m.role === "assistant" && !m.id.startsWith("tmp-") && (
                   <MessageActions convId={id} messageId={m.id} content={m.content} />
@@ -214,14 +241,18 @@ export default function ConversationPage() {
               </div>
             ))}
             {!stream.done || stream.buffer ? (
-              <>
-                <Bubble role="assistant" content={stream.buffer || "thinking…"} citations={stream.citations} streaming />
+              <div className="enter-item">
+                {shownBuffer ? (
+                  <Bubble role="assistant" content={shownBuffer} citations={stream.citations} streaming={streaming} />
+                ) : (
+                  <ThinkingBubble />
+                )}
                 {stream.done &&
                   stream.citations.length === 0 &&
                   isNoEvidenceText(stream.buffer) && (
                     <NoEvidencePanel query={lastUserQuery} />
                   )}
-              </>
+              </div>
             ) : null}
             {stream.error && (
               <div role="alert" className="rounded-md border border-accent/30 bg-claret-soft/50 p-3 text-sm text-accent-ink">
@@ -251,7 +282,22 @@ export default function ConversationPage() {
             className="min-h-11 rounded-md bg-accent px-5 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink disabled:opacity-50"
             disabled={!stream.done}
           >
-            Send
+            {streaming ? (
+              <span className="flex items-center gap-1.5">
+                Answering
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="think-dot inline-block h-1 w-1 rounded-full bg-paper"
+                      style={{ "--i": i } as CSSProperties}
+                    />
+                  ))}
+                </span>
+              </span>
+            ) : (
+              "Send"
+            )}
           </button>
         </Surface>
         <label className="mt-2.5 flex items-start gap-2 text-[13px] leading-6 text-ink-2">
@@ -266,9 +312,10 @@ export default function ConversationPage() {
           />
           <span>This is my owned-task lookup, replacing grep, Drive, or Discord scroll.</span>
         </label>
+
       </main>
 
-      <aside className="col-span-12 md:col-span-4">
+      <aside className="reveal-item col-span-12 md:col-span-4" style={{ "--i": 1 } as CSSProperties}>
         <Surface as="aside" className="sticky top-4 p-5">
           <div className="flex items-baseline justify-between">
             <h2 className="font-display text-xl font-semibold leading-tight text-ink">
@@ -297,10 +344,35 @@ export default function ConversationPage() {
             </ul>
           )}
           <div className="mt-5 border-t border-rule pt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
-            status: {stream.status || "idle"}
+            status:{" "}
+            {/* Keyed on the value so each new step re-mounts and fades in.
+                Retrieval steps change fast; swapping the text in place makes
+                the label look like it is glitching rather than progressing. */}
+            <span key={stream.status} className="enter-fade inline-block">
+              {stream.status || "idle"}
+            </span>
           </div>
         </Surface>
       </aside>
+
+      {/* The autoscroll yields the moment the reader scrolls up, which leaves
+          them with no way back to a still-growing answer except scrolling
+          manually against incoming text. This is that way back, and it exists
+          only in the state where it is needed.
+
+          Deliberately a sibling of <main>, not a child: <main> carries
+          `.reveal-item`, and any element with a `transform` becomes the
+          containing block for `position: fixed` descendants — inside it this
+          pill would anchor to the transcript instead of the viewport. */}
+      {streaming && !stuck && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="enter-fade fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full border border-rule-2 bg-card px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-2 shadow-[0_8px_24px_-12px_rgba(34,30,22,0.45)] transition-colors hover:border-accent hover:text-accent"
+        >
+          ↓ following answer
+        </button>
+      )}
     </div>
   );
 }
@@ -359,13 +431,36 @@ function citationKey(citation: Citation, index: number): string {
   return citation.ref || citation.display_name || `${citation.type || "citation"}-${citation.date || index}`;
 }
 
+// How long the modal's exit animation is held before the node is dropped.
+// Must track `--duration-fast` in globals.css; a JS timer is what lets an
+// unmounting React subtree animate at all without pulling in a transition
+// library for one dialog.
+const MODAL_EXIT_MS = 120;
+
 function CitationCard({ index, citation }: { index: number; citation: Citation }) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [body, setBody] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function closeModal() {
+    if (closing) return;
+    setClosing(true);
+    closeTimer.current = setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, MODAL_EXIT_MS);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
+  }, []);
 
   const hasRef = Boolean(citation.ref);
   const decisionProvenance =
@@ -424,15 +519,22 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
   // Esc to close
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeModal();
     window.addEventListener("keydown", onKey);
     closeButtonRef.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (
     <>
-      <li className="border-b border-rule py-3 first:pt-2 last:border-0">
+      {/* Citations land one at a time while the answer streams, so the stagger
+          is capped: past the first few, a per-index delay stops reading as a
+          cascade and starts reading as lag. */}
+      <li
+        className="enter-item border-b border-rule py-3 first:pt-2 last:border-0"
+        style={{ "--i": Math.min(index - 1, 4) } as CSSProperties}
+      >
         <button
           type="button"
           onClick={openModal}
@@ -491,16 +593,26 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
         </div>
       </li>
 
-      {open && (
+      {/* Portalled to <body>, not rendered in place. This card lives inside the
+          Evidence <aside>, which carries a page-entrance transform — and any
+          transformed element becomes the containing block for `position:
+          fixed` descendants, which pinned the "full screen" scrim inside the
+          sidebar column. The portal is the fix that does not cost the sidebar
+          its entrance. */}
+      {open && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/55 p-4 backdrop-blur-[1px]"
-          onClick={() => setOpen(false)}
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-scrim/55 p-4 backdrop-blur-[1px] ${
+            closing ? "overlay-out" : "overlay-in"
+          }`}
+          onClick={closeModal}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby={`citation-title-${index}`}
-            className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-lg border border-rule-2 bg-card shadow-[0_24px_70px_-20px_rgba(26,22,15,0.5)]"
+            className={`flex max-h-[85vh] w-full max-w-4xl flex-col rounded-lg border border-rule-2 bg-card shadow-[0_24px_70px_-20px_rgba(26,22,15,0.5)] ${
+              closing ? "panel-out" : "panel-in"
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-rule px-6 py-4">
@@ -529,7 +641,7 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
               </div>
               <button
                 ref={closeButtonRef}
-                onClick={() => setOpen(false)}
+                onClick={closeModal}
                 className="min-h-9 rounded-md border border-rule-2 px-3 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2 transition-colors hover:border-accent hover:text-accent"
                 aria-label="Close"
               >
@@ -546,7 +658,8 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
@@ -718,6 +831,54 @@ function MessageActions({ convId, messageId, content }: { convId: string; messag
   );
 }
 
+// Shown between "Send" and the first token. The old build put the literal
+// string "thinking…" inside a normal answer bubble, so the wait looked
+// identical to a one-word answer that had finished — the most common way a
+// working stream gets read as a hung one. Three composing dots make the
+// waiting state legible as motion, and the word is kept in the DOM because
+// e2e_spec.yaml E2E-04 waits on it.
+function ThinkingBubble() {
+  return (
+    <div data-role="assistant" className="flex justify-start">
+      <AssistantSheet className="animate-pulse px-4 py-3">
+        <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+          thinking
+          <span className="flex items-center gap-1" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="think-dot inline-block h-1 w-1 rounded-full bg-accent"
+                style={{ "--i": i } as CSSProperties}
+              />
+            ))}
+          </span>
+        </span>
+      </AssistantSheet>
+    </div>
+  );
+}
+
+// The assistant's sheet of stock: card, hairline rule, an oxblood edge down
+// the binding side. One component rather than a class string repeated per
+// state, because waiting / streaming / persisted are the same sheet at three
+// moments — if the chrome differs between them, the swap at each boundary
+// registers as the box being replaced instead of filled.
+function AssistantSheet({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-md border border-rule border-l-2 border-l-accent/50 bg-card shadow-sm ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 function Bubble({
   role,
   content,
@@ -732,29 +893,36 @@ function Bubble({
   const isUser = role === "user";
   const displayContent =
     !isUser && content.startsWith(OFFLINE_MOCK_PREFIX) ? OFFLINE_FALLBACK : content;
+
+  const body = (
+    <>
+      {isUser ? (
+        <div className="whitespace-pre-wrap font-body leading-7">{displayContent}</div>
+      ) : (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+          {displayContent}
+        </ReactMarkdown>
+      )}
+      {streaming && <span className="ink-caret align-baseline" aria-hidden="true" />}
+      {citations && citations.length > 0 && !isUser && (
+        <div className="mt-2.5 border-t border-rule pt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
+          {citations.length} citation{citations.length === 1 ? "" : "s"}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div data-role={role} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={
-          isUser
-            ? "max-w-[85%] rounded-md rounded-br-sm bg-accent px-4 py-2.5 text-[15px] text-paper shadow-sm md:max-w-[75%]"
-            : "max-w-[94%] rounded-md border border-rule border-l-2 border-l-accent/50 bg-card px-4 py-3 text-[15px] text-ink shadow-sm md:max-w-[82%]"
-        }
-      >
-        {isUser ? (
-          <div className="whitespace-pre-wrap font-body leading-7">{displayContent}</div>
-        ) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-            {displayContent}
-          </ReactMarkdown>
-        )}
-        {streaming && <span className="ink-caret align-baseline" aria-hidden="true" />}
-        {citations && citations.length > 0 && !isUser && (
-          <div className="mt-2.5 border-t border-rule pt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">
-            {citations.length} citation{citations.length === 1 ? "" : "s"}
-          </div>
-        )}
-      </div>
+      {isUser ? (
+        <div className="max-w-[85%] rounded-md rounded-br-sm bg-accent px-4 py-2.5 text-[15px] text-paper shadow-sm md:max-w-[75%]">
+          {body}
+        </div>
+      ) : (
+        <AssistantSheet className="max-w-[94%] px-4 py-3 text-[15px] text-ink md:max-w-[82%]">
+          {body}
+        </AssistantSheet>
+      )}
     </div>
   );
 }
