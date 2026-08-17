@@ -38,11 +38,30 @@
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --font-body:    "Newsreader", Georgia, "Times New Roman", serif;
   --font-mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* ── Motion ───────────────────────────────────────────────────────────
+     One deceleration curve for the whole product. Paper settles; it never
+     bounces — an overshoot easing would read as "app chrome" and fight the
+     printed-matter voice. Three durations only, so nothing has to invent a
+     number: `fast` for state that must feel instant (press, hover, caret),
+     `base` for anything entering or leaving, `slow` for the page-load
+     cascade where a beat of deliberateness is the point.
+     Exposed as tokens so `ease-editorial` / `duration-base` are real
+     Tailwind utilities and call sites never hand-type a bezier. */
+  --ease-editorial: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
 }
 
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* In-page jumps (anchor links, focus restoration) glide instead of
+       teleporting. The chat autoscroll deliberately opts OUT of this — see
+       the note in c/[id]/page.tsx — because a smooth scroll that is
+       re-issued on every streamed token never reaches its target. */
+    scroll-behavior: smooth;
   }
 
   body {
@@ -91,6 +110,24 @@
     border-radius: 2px;
   }
 
+  /* Press feedback, once, for every control in the product. Done here rather
+     than as a `.press` utility on ~40 call sites because the one thing worse
+     than no motion is motion that only some buttons have — the inconsistency
+     is what reads as broken. `:active` only, so keyboard focus is untouched.
+
+     Uses the independent `scale` property, not `transform: scale()`: a blanket
+     `transform` would clobber whatever transform the element was already
+     composed with (a `-translate-x-1/2` centred pill would jump left the
+     instant it was pressed). `scale` composes instead of replacing. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    transition: scale var(--duration-fast) var(--ease-editorial);
+  }
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    scale: 0.98;
+  }
+
   /* Warm, slim scrollbars to match the stock. */
   * {
     scrollbar-width: thin;
@@ -120,15 +157,28 @@
   .reveal-item {
     opacity: 0;
     transform: translateY(8px);
-    animation: rise 0.55s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+    animation: rise 0.55s var(--ease-editorial) forwards;
     animation-delay: calc(var(--i, 0) * 70ms);
   }
-  @media (prefers-reduced-motion: reduce) {
-    .reveal-item {
-      animation: none;
-      opacity: 1;
-      transform: none;
-    }
+
+  /* A row/card arriving in an already-painted list: message bubbles, citation
+     cards, table rows. Shorter and shallower than .reveal-item — this fires
+     while the reader is looking at the spot, so it only has to soften the
+     appearance, not announce it. --i staggers a batch that lands together. */
+  .enter-item {
+    opacity: 0;
+    transform: translateY(6px);
+    animation: rise var(--duration-slow) var(--ease-editorial) forwards;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  /* Opacity-only arrival, for anything whose `transform` is already load-
+     bearing — a `-translate-x-1/2` centred pill, a scaled badge. `rise`
+     animates `transform` to a bare `translateY(0)` and would silently drop
+     the positioning it was composed with. */
+  .enter-fade {
+    opacity: 0;
+    animation: fade-in var(--duration-base) var(--ease-editorial) forwards;
   }
 
   /* Blinking ink caret for the streaming answer. */
@@ -140,8 +190,65 @@
     color: transparent;
     animation: ink-blink 1.05s step-end infinite;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .ink-caret { animation: none; opacity: 0.7; }
+
+  /* Modal apparatus. The scrim washes in; the panel lifts a hair as it fades,
+     so the sheet reads as being laid ON the page rather than cut into it.
+     Exit states are driven by React holding the node one frame longer — see
+     CitationCard's `closing` state. */
+  .overlay-in {
+    animation: fade-in var(--duration-base) var(--ease-editorial) forwards;
+  }
+  .overlay-out {
+    animation: fade-in var(--duration-fast) var(--ease-editorial) reverse forwards;
+  }
+  .panel-in {
+    animation: panel-rise var(--duration-slow) var(--ease-editorial) forwards;
+  }
+  .panel-out {
+    animation: panel-rise var(--duration-fast) var(--ease-editorial) reverse forwards;
+  }
+
+  /* "thinking" indicator — three dots setting themselves, like type being
+     composed. Each dot carries its own phase so the group reads as a wave. */
+  .think-dot {
+    animation: think-pulse 1.25s var(--ease-editorial) infinite;
+    animation-delay: calc(var(--i, 0) * 160ms);
+  }
+
+  /* Loading placeholder for lists we know the shape of. A slow wash across
+     warm stock — not the hard grey pulse every SaaS ships. */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-paper-2) 0%,
+      var(--color-card-2) 50%,
+      var(--color-paper-2) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-wash 1.4s ease-in-out infinite;
+  }
+}
+
+/* One switch for the whole product. Per-class `prefers-reduced-motion` blocks
+   were already drifting (two of them existed, covering two of what are now
+   nine animations), and the failure mode is silent: someone adds an animation,
+   forgets the block, and a reduced-motion user gets it anyway. Collapsing
+   rather than disabling keeps `forwards` fills landing on their end state, so
+   nothing is left stuck at opacity 0. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* The caret is information, not decoration — a collapsed blink would leave
+     it mid-cycle, so pin it visible instead. */
+  .ink-caret {
+    opacity: 0.7;
   }
 }
 
@@ -155,4 +262,32 @@
 @keyframes ink-blink {
   0%, 45% { opacity: 1; }
   55%, 100% { opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Modal panel. 0.98 → 1 is deliberately almost nothing: enough that the eye
+   registers arrival, not enough to read as a zoom. */
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes think-pulse {
+  0%, 100% { opacity: 0.25; }
+  40%      { opacity: 1; }
+}
+
+@keyframes skeleton-wash {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
 }

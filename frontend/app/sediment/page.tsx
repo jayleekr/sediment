@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { signIn as githubSignIn } from "next-auth/react";
 import { api, ApiError, clearToken, getToken, mintDevToken, type Conversation } from "./lib/api";
 import { EmptyState, SectionHeader, Surface, TrustBadge } from "./components/ui";
@@ -19,12 +20,17 @@ const AUTH_TENANT_SLUG =
   "";
 
 export default function CuratorHome() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [signedInAs, setSignedInAs] = useState<string | null>(null);
   const [email, setEmail] = useState("jayleekr0125@gmail.com");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Opening a conversation costs one or two round-trips before the route
+  // changes. Without a marker the click looks ignored, and the reader clicks
+  // again — which used to create a second empty conversation.
+  const [opening, setOpening] = useState(false);
 
   async function refresh() {
     if (!getToken()) return;
@@ -70,7 +76,9 @@ export default function CuratorHome() {
   }
 
   async function newConversation(initialQuery?: string) {
+    if (opening) return; // a second POST would strand an empty conversation
     setError(null);
+    setOpening(true);
     try {
       const c = await api<{ id: string }>("/api/v1/conversations", {
         method: "POST",
@@ -82,8 +90,13 @@ export default function CuratorHome() {
           body: JSON.stringify({ content: initialQuery, role: "user" }),
         });
       }
-      window.location.href = `/sediment/c/${c.id}${initialQuery ? "?ask=1" : ""}`;
+      // router.push, not window.location.href. The assignment tore the whole
+      // app down and rebuilt it — blank paint, fonts refetched, masthead and
+      // freshness badge re-mounted — to reach a route Next can render in
+      // place. That full reload was the single largest stutter in the product.
+      router.push(`/sediment/c/${c.id}${initialQuery ? "?ask=1" : ""}`);
     } catch (e: unknown) {
+      setOpening(false);
       if (e instanceof ApiError && e.status === 401) {
         // api() already cleared the bad token. Re-render to surface the sign-in form.
         clearToken();
@@ -93,6 +106,8 @@ export default function CuratorHome() {
       }
       setError(e instanceof Error ? e.message : String(e));
     }
+    // No setOpening(false) on success: the route is already changing, and
+    // releasing the lock first would let a fast second click through.
   }
 
   if (!getToken() && !signedInAs) {
@@ -154,7 +169,7 @@ export default function CuratorHome() {
       {error && (
         <div
           role="alert"
-          className="col-span-12 rounded-md border border-accent/30 bg-claret-soft/50 px-4 py-2.5 text-sm text-accent-ink"
+          className="enter-item col-span-12 rounded-md border border-accent/30 bg-claret-soft/50 px-4 py-2.5 text-sm text-accent-ink"
         >
           {error}
         </div>
@@ -201,10 +216,15 @@ export default function CuratorHome() {
             />
           ) : (
             <ul className="-mx-2 space-y-0.5">
-              {convs.map((c) => (
-                <li key={c.id}>
+              {convs.map((c, i) => (
+                <li
+                  key={c.id}
+                  className="enter-item"
+                  style={{ "--i": Math.min(i, 8) } as CSSProperties}
+                >
                   <Link
                     href={`/sediment/c/${c.id}`}
+                    prefetch
                     className="block rounded-md px-2 py-2 transition-colors hover:bg-paper-2"
                   >
                     <span className="block truncate text-[15px] font-medium text-ink">
@@ -229,7 +249,7 @@ export default function CuratorHome() {
             action={<TrustBadge tone="info">evidence first</TrustBadge>}
           />
           <div className="mt-6">
-            <QuickAsk onSubmit={(q) => newConversation(q)} />
+            <QuickAsk onSubmit={(q) => newConversation(q)} pending={opening} />
           </div>
 
           <div className="mt-8">
@@ -260,7 +280,13 @@ export default function CuratorHome() {
   );
 }
 
-function QuickAsk({ onSubmit }: { onSubmit: (q: string) => void }) {
+function QuickAsk({
+  onSubmit,
+  pending,
+}: {
+  onSubmit: (q: string) => void;
+  pending?: boolean;
+}) {
   const [q, setQ] = useState("");
   return (
     <form
@@ -277,8 +303,26 @@ function QuickAsk({ onSubmit }: { onSubmit: (q: string) => void }) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      <button className="min-h-11 rounded-md bg-accent px-5 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink">
-        Ask
+      <button
+        disabled={pending}
+        className="min-h-11 rounded-md bg-accent px-5 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink disabled:opacity-60"
+      >
+        {pending ? (
+          <span className="flex items-center justify-center gap-1.5">
+            Opening
+            <span className="flex items-center gap-1" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="think-dot inline-block h-1 w-1 rounded-full bg-paper"
+                  style={{ "--i": i } as CSSProperties}
+                />
+              ))}
+            </span>
+          </span>
+        ) : (
+          "Ask"
+        )}
       </button>
     </form>
   );

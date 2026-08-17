@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { api } from "../lib/api";
 import { EmptyState, Surface, TrustBadge } from "../components/ui";
 
@@ -33,8 +33,15 @@ export default function MembersPage() {
           />
         </div>
       )}
-      {items.map((m) => (
-        <Surface key={m.id} className="p-4">
+      {items.map((m, i) => (
+        // The roster arrives in one response, so the cascade reads as the grid
+        // being dealt out rather than as staggered loading. Capped so a large
+        // team does not turn the last card into a wait.
+        <Surface
+          key={m.id}
+          className="enter-item p-4"
+          style={{ "--i": Math.min(i, 9) } as CSSProperties}
+        >
           <div className="flex items-baseline justify-between">
             <h3 className="text-lg font-semibold">{m.display_name}</h3>
             <TrustBadge>{m.role}</TrustBadge>
