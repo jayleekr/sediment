@@ -1,0 +1,756 @@
+<title>Sediment 동작 원리</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Newsreader:opsz,wght@6..72,400;6..72,600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@400;600&display=swap">
+
+<style>
+/* ── Editorial Archive tokens — 정본은 frontend/app/globals.css ───────── */
+:root {
+  --paper:      #f1ebdd;
+  --card:       #fcf8ef;
+  --card-2:     #f6efe1;
+  --ink:        #221e16;
+  --ink-2:      #5b5345;
+  --ink-3:      #8c8169;
+  --rule:       #ddd1bb;
+  --rule-2:     #c8b99c;
+  --accent:     #8b3a2c;
+  --accent-lift:#6f2a1e;
+  --ochre:      #a67a1e;
+  --ochre-soft: #ecdcb4;
+  --claret:     #ead8cf;
+  --sage:       #4f6a52;
+  --flow-m:     #a1957c;
+
+  --font-display: "Fraunces", "Noto Serif KR", Georgia, "Times New Roman", serif;
+  --font-body:    "Newsreader", "Noto Serif KR", Georgia, "Times New Roman", serif;
+  --font-mono:    "IBM Plex Mono", "Noto Serif KR", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 밤의 서고 — 반전이 아니라 따로 설계한 두 번째 세계 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:      #15120d;
+    --card:       #1c1811;
+    --card-2:     #262117;
+    --ink:        #ece2cd;
+    --ink-2:      #bcb098;
+    --ink-3:      #9a8e74;
+    --rule:       #3a3325;
+    --rule-2:     #4f4735;
+    --accent:     #d4846c;
+    --accent-lift:#e2a08b;
+    --ochre:      #d9ab52;
+    --ochre-soft: #3b3320;
+    --claret:     #3a2820;
+    --sage:       #8aa88d;
+    --flow-m:     #6b624e;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:      #15120d;
+  --card:       #1c1811;
+  --card-2:     #262117;
+  --ink:        #ece2cd;
+  --ink-2:      #bcb098;
+  --ink-3:      #9a8e74;
+  --rule:       #3a3325;
+  --rule-2:     #4f4735;
+  --accent:     #d4846c;
+  --accent-lift:#e2a08b;
+  --ochre:      #d9ab52;
+  --ochre-soft: #3b3320;
+  --claret:     #3a2820;
+  --sage:       #8aa88d;
+  --flow-m:     #6b624e;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  /* 한글은 어절 안에서 끊기면 안 읽힌다 — “튜닝 손/잡이가” 방지 */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.wrap {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 0 clamp(20px, 5vw, 64px) 96px;
+}
+.col { max-width: 720px; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+.masthead { padding: clamp(48px, 8vw, 96px) 0 0; }
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(52px, 9vw, 92px);
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+.tagline {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: clamp(17px, 2.4vw, 22px);
+  color: var(--accent);
+  margin: 10px 0 0;
+}
+.standfirst {
+  font-size: clamp(17px, 2.1vw, 20px);
+  color: var(--ink-2);
+  margin: 26px 0 0;
+  max-width: 34em;
+  text-wrap: pretty;
+}
+
+.masthead-rule {
+  border: 0;
+  border-top: 1.5px solid var(--accent);
+  margin: 40px 0 0;
+}
+
+/* spec rail — 기계의 제원표 */
+.spec {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+  margin: 0 0 clamp(40px, 6vw, 72px);
+}
+.spec div {
+  flex: 1 1 190px;
+  padding: 14px 20px 16px 0;
+  border-right: 1px solid var(--rule);
+  margin-right: 20px;
+}
+.spec div:last-child { border-right: 0; }
+.spec dt {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  /* 한글 레이블 — 라틴 대문자용 트래킹을 그대로 쓰면 흩어져 보인다 */
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  margin: 0 0 5px;
+}
+.spec dd {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Prose ────────────────────────────────────────────────────────────── */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 0 0 12px;
+}
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(26px, 4vw, 36px);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+p { margin: 0 0 18px; text-wrap: pretty; }
+p:last-child { margin-bottom: 0; }
+code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--card-2);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+em { color: var(--ink); font-style: italic; }
+
+/* ── Figure — 전체 폭으로 빠져나가는 브레이크아웃 ──────────────────────── */
+.figure {
+  margin: clamp(52px, 7vw, 88px) 0;
+}
+.figure-frame {
+  overflow-x: auto;
+  background: var(--paper);
+  border-top: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule-2);
+  padding: 8px 0;
+  scrollbar-color: var(--rule-2) transparent;
+}
+.figure-frame svg {
+  display: block;
+  width: 1400px;
+  height: auto;
+  margin: 0 auto;
+}
+figcaption {
+  font-size: 14px;
+  color: var(--ink-3);
+  margin: 16px 0 0;
+  max-width: 60em;
+}
+figcaption b { color: var(--ink-2); font-weight: 600; }
+
+/* ── Close-read cards ─────────────────────────────────────────────────── */
+.reads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  margin: 32px 0 0;
+}
+.read {
+  background: var(--card);
+  padding: 28px clamp(20px, 2.6vw, 32px) 30px;
+}
+.read h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.25;
+  margin: 0 0 4px;
+  text-wrap: balance;
+}
+.read .where {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+.read p {
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 12px;
+}
+.read p:last-child { margin-bottom: 0; }
+.read code { font-size: 0.82em; background: var(--card-2); }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+.foot {
+  margin: clamp(56px, 7vw, 84px) 0 0;
+  padding: 22px 0 0;
+  border-top: 1px solid var(--rule-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* ── Diagram styling — 모든 색은 토큰에서만 온다 ───────────────────────── */
+.dg .ground   { fill: var(--paper); }
+.dg .band     { fill: var(--card);      stroke: var(--rule-2); }
+.dg .node     { fill: var(--card-2);    stroke: var(--rule); }
+.dg .node-in  { fill: var(--card);      stroke: var(--rule); }
+.dg .node-lane{ fill: var(--claret);    stroke: var(--rule-2); }
+.dg .node-key { fill: var(--claret);    stroke: var(--accent); }
+.dg .chip     { fill: var(--ochre-soft);stroke: var(--rule-2); }
+.dg .chip-key { fill: var(--ochre-soft);stroke: var(--accent); stroke-width: 1.4; }
+.dg .chip-2   { fill: var(--paper);     stroke: var(--rule); }
+.dg .slab     { fill: var(--ink); }
+
+.dg .flow     { stroke: var(--accent);  stroke-width: 1.5; fill: none; }
+.dg .flow-m   { stroke: var(--flow-m);  stroke-width: 1.3; fill: none; }
+.dg .hair     { stroke: var(--rule-2); }
+.dg .hair-acc { stroke: var(--accent);  stroke-width: 1.4; }
+.dg .ar-head  { fill: var(--accent); }
+.dg .arm-head { fill: var(--flow-m); }
+
+.dg text { font-family: var(--font-body); }
+.dg .mono { font-family: var(--font-mono); }
+.dg .t-title { font-family: var(--font-display); font-weight: 600; font-size: 44px; fill: var(--ink); letter-spacing: -0.01em; }
+.dg .t-tag   { font-size: 18px; fill: var(--accent); font-style: italic; }
+.dg .t-sub   { font-size: 14.5px; fill: var(--ink-2); }
+.dg .meta    { font-size: 11px; fill: var(--ink-3); }
+.dg .bnum    { font-family: var(--font-display); font-weight: 600; font-size: 17px; fill: var(--accent); letter-spacing: 0.12em; }
+.dg .bdesc   { font-size: 13px; fill: var(--ink-2); }
+.dg .hdr     { font-size: 10px; fill: var(--ink-3); letter-spacing: 0.14em; }
+.dg .item    { font-size: 12.5px; fill: var(--ink); }
+.dg .sm      { font-size: 10.8px; fill: var(--ink-3); }
+.dg .code    { font-size: 11.8px; fill: var(--ink); }
+.dg .codesm  { font-size: 10.5px; fill: var(--ink-2); }
+.dg .alab    { font-size: 10px; fill: var(--accent); letter-spacing: 0.06em; }
+.dg .inv     { fill: var(--paper); }
+.dg .invsm   { fill: var(--rule-2); }
+.dg .slab-accent { font-family: var(--font-display); font-weight: 600; font-size: 17px; fill: var(--claret); letter-spacing: 0.12em; }
+
+/* ── Motion — 절제된 등장, 그 이상은 없다 ──────────────────────────────── */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.rise {
+  opacity: 0;
+  animation: rise 0.6s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; opacity: 1; }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead col rise" style="--i:0">
+    <h1 class="wordmark">Sediment</h1>
+    <p class="tagline">where doing becomes knowing</p>
+    <p class="standfirst">
+      팀이 흘리고 지나가는 것들 — 디스코드 대화, 커밋, 회의록 — 을 붙잡아 인용 가능한
+      증거로 앉히고, 출처가 달린 답변으로 되돌려주는 메모리 레이어.
+    </p>
+  </header>
+
+  <hr class="masthead-rule rise" style="--i:1">
+
+  <dl class="spec rise" style="--i:1">
+    <div><dt>백엔드</dt><dd>FastAPI × 5 + nginx :8080<br>Fly VM 단일 (NRT) · supervisord</dd></div>
+    <div><dt>저장</dt><dd>Postgres 18 + pgvector 0.8<br>HNSW cosine · Redis 7</dd></div>
+    <div><dt>지능</dt><dd>Claude Haiku + Sonnet<br>OpenAI text-embedding-3-small</dd></div>
+    <div><dt>현황</dt><dd>Phase 0–4 shipped<br>테넌트 3 (dogfood 2 + RLS 회귀 1)</dd></div>
+  </dl>
+
+  <section class="col rise" style="--i:2">
+    <p class="eyebrow">읽는 법</p>
+    <h2>다섯 개의 띠를 위에서 아래로</h2>
+    <p>
+      아래 그림 한 장이 기계 전체다. 위에서부터 <em>캡처 · 증류 · 저장 · 서빙</em>,
+      그리고 설계는 끝났지만 아직 웹훅이 물리지 않은 <em>알림</em>까지 다섯 개의 띠로
+      내려간다. 띠와 띠 사이의 굵은 화살표가 각 단계가 다음 단계에 넘기는 것이다.
+    </p>
+    <p>
+      숫자는 전부 설계 문서와 코드에서 그대로 옮겼다. “주기적으로” 대신 실제 cron 표현식이,
+      “상위 몇 개” 대신 실제 상수가 적혀 있다 — <code>*/30 * * * *</code>,
+      <code>RRF k=60</code>, <code>final K=6</code> 같은 것들. 나중에 grep하게 될 값들이기
+      때문이다.
+    </p>
+  </section>
+
+  <figure class="figure rise" style="--i:3">
+    <div class="figure-frame">
+      <!-- ══════════════════════════════════════════════════════════════════
+           Sediment 동작 원리 — 5-band poster.
+           색은 하나도 하드코딩하지 않는다. 모든 fill/stroke는 위 .dg 규칙을
+           거쳐 토큰에서 오고, 그래서 라이트/다크 양쪽에서 같이 산다.
+           ══════════════════════════════════════════════════════════════════ -->
+      <svg class="dg" viewBox="0 0 1400 1940" role="img"
+           aria-label="Sediment의 다섯 단계 파이프라인. 캡처: Discord와 GitHub에서 커넥터가 이벤트를 끌어와 events 테이블에 적재한다. 증류: 세 파이프라인이 청킹·임베딩, 전략 추출, 12시간 기억 통합을 수행한다. 저장: Postgres와 pgvector에 RLS로 격리해 보관한다. 서빙: LangGraph가 의도를 분류하고 BM25와 벡터 검색을 RRF로 융합해 6개 청크를 고른 뒤 인용이 달린 답변을 SSE로 흘린다. 알림: 결과를 Discord로 되돌려보내는 설계된 경로.">
+
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="8.4" refY="4.5" orient="auto">
+            <path class="ar-head" d="M0,0 L9,4.5 L0,9 z"/>
+          </marker>
+          <marker id="arm" markerWidth="8" markerHeight="8" refX="7.4" refY="4" orient="auto">
+            <path class="arm-head" d="M0,0 L8,4 L0,8 z"/>
+          </marker>
+        </defs>
+
+        <rect class="ground" width="1400" height="1940"/>
+
+        <!-- ══════════ HEADER ══════════ -->
+        <text class="t-title" x="56" y="72">Sediment</text>
+        <text class="t-tag" x="266" y="72">where doing becomes knowing</text>
+        <text class="t-sub" x="56" y="101">증거 기반 메모리 레이어 — 팀이 흘리는 활동을 포착해 인용 가능한 증거로 정제하고, 출처가 달린 답변으로 되돌려준다.</text>
+        <text class="mono meta" x="1344" y="44" text-anchor="end">FastAPI × 5 + nginx :8080 · Fly VM 단일 (NRT) · supervisord</text>
+        <text class="mono meta" x="1344" y="62" text-anchor="end">Postgres 18 + pgvector 0.8 (HNSW) · Redis 7</text>
+        <text class="mono meta" x="1344" y="80" text-anchor="end">Next.js 14 → Vercel · Claude Haiku + Sonnet · OpenAI embed</text>
+        <text class="mono meta" x="1344" y="98" text-anchor="end">Phase 0–4 shipped · 테넌트 3 (dogfood 2 + RLS 회귀 1)</text>
+        <line class="hair-acc" x1="56" y1="121" x2="1344" y2="121"/>
+
+        <!-- ══════════ ① CAPTURE ══════════ -->
+        <rect class="band" x="56" y="146" width="1288" height="250" rx="3"/>
+        <text class="bnum" x="76" y="177">① CAPTURE</text>
+        <text class="bdesc" x="222" y="177">팀이 이미 일하고 있는 곳에서 신호를 끌어온다 — 소스를 하나 늘리는 비용은 “구현 파일 1개”</text>
+
+        <rect class="node" x="76" y="196" width="252" height="176" rx="2"/>
+        <text class="mono hdr" x="92" y="221">SOURCES</text>
+        <text class="item" x="92" y="248">Discord — 8개 채널</text>
+        <text class="sm"   x="92" y="265">meeting-notes 등 · 잡담/공지는 제외</text>
+        <text class="item" x="92" y="291">GitHub — repo REST fetch</text>
+        <text class="sm"   x="92" y="308">경로 · 확장자 필터링</text>
+        <text class="item" x="92" y="334">음성 메모 / 사진 OCR</text>
+        <text class="sm"   x="92" y="351">⟨Phase A 스펙⟩ · Slack · Notion ⟨v2⟩</text>
+
+        <rect class="node" x="364" y="196" width="252" height="176" rx="2"/>
+        <text class="mono hdr" x="380" y="221">APSCHEDULER — 인프로세스</text>
+        <text class="mono code" x="380" y="248">discord_fetch */30 * * * *</text>
+        <text class="sm"  x="380" y="265">채널 목록의 정본은 integrations 테이블</text>
+        <text class="mono code" x="380" y="291">distill 5 * * * *</text>
+        <text class="sm"  x="380" y="308">since_hours 2 — 겹침이 곧 자동 복구</text>
+        <text class="mono code" x="380" y="334">consolidate 15 */12 * * *</text>
+        <text class="sm"  x="380" y="351">config/cron.yaml (폴백 목록 포함)</text>
+
+        <rect class="node" x="652" y="196" width="310" height="176" rx="2"/>
+        <text class="mono hdr" x="668" y="221">CONNECTOR FRAMEWORK — lab_lib/connectors/</text>
+        <text class="mono code" x="668" y="249">ConnectorABC.fetch_since(res, watermark)</text>
+        <text class="item" x="668" y="273">→ NormalizedEvent[] — 단 하나의 shape</text>
+        <text class="sm" x="668" y="298">watermark(head_sha) + external_id 중복 제거</text>
+        <text class="sm" x="668" y="322">Discord · GitHub 경로는 구조가 동일. 커넥터만 다름.</text>
+        <text class="sm" x="668" y="346">한 번 결정하면 영원히 재생 — 다운스트림이 깨져도</text>
+        <text class="sm" x="668" y="363">소스를 다시 때리지 않고 events에서 replay</text>
+
+        <rect class="node" x="998" y="196" width="326" height="176" rx="2"/>
+        <text class="mono hdr" x="1014" y="221">decide() — COLLECTION AGENT</text>
+        <text class="item" x="1014" y="249">source_kind 분류</text>
+        <text class="sm" x="1014" y="267">vault / product / harness / transcript / artifacts</text>
+        <text class="item" x="1014" y="293">＋ 경로 · 확장자 필터</text>
+        <text class="mono code" x="1014" y="320">→ { ingest?, notify?, channels[] }</text>
+        <text class="sm" x="1014" y="344">지금은 결정론적 함수. 내용 기반 자동 분류가</text>
+        <text class="sm" x="1014" y="361">붙는 순간 이름값의 “AI”가 된다 ⟨v2⟩</text>
+
+        <line class="flow-m" x1="330" y1="284" x2="362" y2="284" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="618" y1="284" x2="650" y2="284" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="964" y1="284" x2="996" y2="284" marker-end="url(#arm)"/>
+
+        <line class="flow" x1="700" y1="398" x2="700" y2="428" marker-end="url(#ar)"/>
+        <text class="mono alab" x="714" y="417">events 테이블에 원시 이벤트 INSERT — 감사 + 리플레이의 단일 원장</text>
+
+        <!-- ══════════ ② DISTILL ══════════ -->
+        <rect class="band" x="56" y="430" width="1288" height="330" rx="3"/>
+        <text class="bnum" x="76" y="461">② DISTILL</text>
+        <text class="bdesc" x="212" y="461">원시 이벤트를 “타입이 있고, 구조화되고, 귀속 가능한” 지식으로 — 세 파이프라인이 서로 다른 주기로 돈다</text>
+
+        <rect class="node-lane" x="76" y="482" width="232" height="80" rx="2"/>
+        <text class="item" x="92" y="514">P1 · 인제스트 증류</text>
+        <text class="sm"   x="92" y="536">이벤트 도착 즉시 (동기)</text>
+        <rect class="node" x="336" y="482" width="214" height="80" rx="2"/>
+        <text class="mono code" x="443" y="514" text-anchor="middle">chunk_markdown()</text>
+        <text class="sm"  x="443" y="536" text-anchor="middle">제목 경로를 보존하는 분할</text>
+        <rect class="node" x="594" y="482" width="214" height="80" rx="2"/>
+        <text class="mono code" x="701" y="514" text-anchor="middle">embed()</text>
+        <text class="sm"  x="701" y="536" text-anchor="middle">OpenAI 3-small · 1536차원</text>
+        <rect class="node" x="852" y="482" width="214" height="80" rx="2"/>
+        <text class="mono code" x="959" y="514" text-anchor="middle">UPSERT artifacts</text>
+        <text class="sm"  x="959" y="536" text-anchor="middle">(tenant_id, ref) 기준 멱등</text>
+        <rect class="node" x="1110" y="482" width="214" height="80" rx="2"/>
+        <text class="mono code" x="1217" y="514" text-anchor="middle">UPSERT chunks</text>
+        <text class="sm"  x="1217" y="536" text-anchor="middle">tsv + embedding 동시 적재</text>
+        <line class="flow-m" x1="310" y1="522" x2="334" y2="522" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="552" y1="522" x2="592" y2="522" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="810" y1="522" x2="850" y2="522" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="1068" y1="522" x2="1108" y2="522" marker-end="url(#arm)"/>
+
+        <rect class="node-lane" x="76" y="574" width="232" height="80" rx="2"/>
+        <text class="item" x="92" y="606">P2 · 전략 증류</text>
+        <text class="sm"   x="92" y="628">매시 :05 · 최근 2시간 창</text>
+        <rect class="node" x="336" y="574" width="300" height="80" rx="2"/>
+        <text class="mono code" x="486" y="606" text-anchor="middle">load_strategy("distill", kind)</text>
+        <text class="sm"  x="486" y="628" text-anchor="middle">prompts/distill/strategies/*.yaml</text>
+        <rect class="node" x="680" y="574" width="300" height="80" rx="2"/>
+        <text class="mono code" x="830" y="606" text-anchor="middle">Claude Haiku + tool schema</text>
+        <text class="sm"  x="830" y="628" text-anchor="middle">자유 서술이 아니라 구조화 tool call 강제</text>
+        <rect class="node" x="1024" y="574" width="300" height="80" rx="2"/>
+        <text class="item" x="1174" y="606" text-anchor="middle">summary · actions · sentiment</text>
+        <text class="sm"   x="1174" y="628" text-anchor="middle">회의록→요약, 대화→결정, 음성→SOP</text>
+        <line class="flow-m" x1="310" y1="614" x2="334" y2="614" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="638" y1="614" x2="678" y2="614" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="982" y1="614" x2="1022" y2="614" marker-end="url(#arm)"/>
+
+        <rect class="node-lane" x="76" y="666" width="232" height="80" rx="2"/>
+        <text class="item" x="92" y="698">P3 · 기억 통합</text>
+        <text class="sm"   x="92" y="720">12시간마다 — 09:15 / 21:15 KST</text>
+        <rect class="node" x="336" y="666" width="300" height="80" rx="2"/>
+        <text class="item" x="486" y="698" text-anchor="middle">최근 conversations + events</text>
+        <text class="sm"   x="486" y="720" text-anchor="middle">since_hours 13 — 12h + 겹침으로 자가 복구</text>
+        <rect class="node" x="680" y="666" width="300" height="80" rx="2"/>
+        <text class="mono code" x="830" y="698" text-anchor="middle">Haiku tool-use 추출</text>
+        <text class="sm"  x="830" y="720" text-anchor="middle">흘러가는 대화 → 남는 결정 · 액션</text>
+        <rect class="node" x="1024" y="666" width="300" height="80" rx="2"/>
+        <text class="mono code" x="1174" y="698" text-anchor="middle">INSERT decisions / actions</text>
+        <text class="sm"  x="1174" y="720" text-anchor="middle">＋ events(kind='decision_extracted') 감사</text>
+        <line class="flow-m" x1="310" y1="706" x2="334" y2="706" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="638" y1="706" x2="678" y2="706" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="982" y1="706" x2="1022" y2="706" marker-end="url(#arm)"/>
+
+        <line class="flow" x1="700" y1="762" x2="700" y2="792" marker-end="url(#ar)"/>
+        <text class="mono alab" x="714" y="781">비싼 모델은 여기 없다 — 대량 처리는 전부 Haiku</text>
+
+        <!-- ══════════ ③ STORE ══════════ -->
+        <rect class="band" x="56" y="794" width="1288" height="236" rx="3"/>
+        <text class="bnum" x="76" y="825">③ STORE</text>
+        <text class="bdesc" x="190" y="825">모든 행에 tenant_id, 모든 테이블에 RLS — 멀티테넌시는 나중에 끼워 넣는 게 아니라 1행부터 있는 것</text>
+
+        <rect class="node" x="76" y="846" width="1248" height="118" rx="2"/>
+        <text class="mono hdr" x="92" y="871">POSTGRES 18 + PGVECTOR 0.8 (HNSW COSINE) · SUPABASE POOLER :5432 · REDIS 7 — 세션 / SSE 팬아웃 / 경량 캐시</text>
+
+        <rect class="chip" x="112" y="884" width="160" height="26" rx="2"/><text class="mono code" x="192" y="901" text-anchor="middle">events</text>
+        <rect class="chip" x="284" y="884" width="160" height="26" rx="2"/><text class="mono code" x="364" y="901" text-anchor="middle">artifacts</text>
+        <rect class="chip-key" x="456" y="884" width="160" height="26" rx="2"/><text class="mono code" x="536" y="901" text-anchor="middle">chunks</text>
+        <rect class="chip" x="628" y="884" width="160" height="26" rx="2"/><text class="mono code" x="708" y="901" text-anchor="middle">conversations</text>
+        <rect class="chip" x="800" y="884" width="160" height="26" rx="2"/><text class="mono code" x="880" y="901" text-anchor="middle">messages</text>
+        <rect class="chip" x="972" y="884" width="160" height="26" rx="2"/><text class="mono code" x="1052" y="901" text-anchor="middle">decisions</text>
+        <rect class="chip" x="1144" y="884" width="160" height="26" rx="2"/><text class="mono code" x="1224" y="901" text-anchor="middle">actions</text>
+
+        <rect class="chip-2" x="112" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="192" y="935" text-anchor="middle">tenants</text>
+        <rect class="chip-2" x="284" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="364" y="935" text-anchor="middle">members</text>
+        <rect class="chip-2" x="456" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="536" y="935" text-anchor="middle">integrations</text>
+        <rect class="chip-2" x="628" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="708" y="935" text-anchor="middle">subscriptions</text>
+        <rect class="chip-2" x="800" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="880" y="935" text-anchor="middle">usage_events</text>
+        <rect class="chip-2" x="972" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="1052" y="935" text-anchor="middle">usage_daily</text>
+        <rect class="chip-2" x="1144" y="918" width="160" height="26" rx="2"/><text class="mono codesm" x="1224" y="935" text-anchor="middle">audit_log</text>
+
+        <rect class="node" x="76" y="976" width="608" height="44" rx="2"/>
+        <text class="sm" x="92" y="995">chunks에 걸린 인덱스 두 벌이 그대로 검색의 두 팔이 된다 —</text>
+        <text class="mono codesm" x="92" y="1012">GIN(tsv) → BM25 아암 · HNSW(vector_cosine_ops, m=16, ef_construction=64) → 벡터 아암</text>
+
+        <rect class="slab" x="700" y="976" width="624" height="44" rx="2"/>
+        <text class="sm inv" x="716" y="995">RLS FORCE — 모든 테이블 · tenant_id 모든 행 · curator_app(RLS 적용) ↔ curator_service(bypass)</text>
+        <text class="mono invsm" x="716" y="1012" font-size="10">요청마다 set_config('app.tenant_id', :v, true) — 코드가 테넌트를 이름으로 부르는 것 금지</text>
+
+        <line class="flow" x1="700" y1="1032" x2="700" y2="1050" marker-end="url(#ar)"/>
+
+        <!-- ══════════ ④ SERVE ══════════ -->
+        <rect class="band" x="56" y="1052" width="1288" height="610" rx="3"/>
+        <text class="bnum" x="76" y="1083">④ SERVE</text>
+        <text class="bdesc" x="182" y="1083">모든 답변은 [N] 인용을 달고 나간다 — 인용이 빠지면 그건 취향 문제가 아니라 회귀(regression)다</text>
+
+        <rect class="node" x="76" y="1104" width="282" height="74" rx="2"/>
+        <text class="item" x="217" y="1134" text-anchor="middle">사용자가 질문을 친다</text>
+        <text class="mono codesm" x="217" y="1156" text-anchor="middle">/sediment/c/&lt;id&gt; — Next.js 14 @ Vercel</text>
+        <rect class="node" x="398" y="1104" width="282" height="74" rx="2"/>
+        <text class="mono code" x="539" y="1134" text-anchor="middle">POST …/conversations/&lt;id&gt;/messages</text>
+        <text class="sm" x="539" y="1156" text-anchor="middle">사용자 턴부터 저장 · platform :10100</text>
+        <rect class="node" x="720" y="1104" width="282" height="74" rx="2"/>
+        <text class="mono code" x="861" y="1134" text-anchor="middle">POST /v1/sediment/stream</text>
+        <text class="sm" x="861" y="1156" text-anchor="middle">nginx :8080 → langgraph :10020 (SSE)</text>
+        <rect class="node" x="1042" y="1104" width="282" height="74" rx="2"/>
+        <text class="mono code" x="1183" y="1134" text-anchor="middle">require_identity → JWT</text>
+        <text class="mono codesm" x="1183" y="1156" text-anchor="middle">set_config('app.tenant_id', …, true)</text>
+        <line class="flow-m" x1="360" y1="1141" x2="396" y2="1141" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="682" y1="1141" x2="718" y2="1141" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="1004" y1="1141" x2="1040" y2="1141" marker-end="url(#arm)"/>
+
+        <text class="mono hdr" x="76" y="1198">LANGGRAPH 상태 머신 — CuratorState(tenant_id, member_id, conv_id, query, intent, citations, answer_chunks)</text>
+
+        <rect class="node" x="76" y="1206" width="210" height="90" rx="2"/>
+        <text class="mono code" x="181" y="1236" text-anchor="middle">router</text>
+        <text class="sm" x="181" y="1258" text-anchor="middle">Haiku 1회 호출로 의도 분류</text>
+        <text class="sm" x="181" y="1277" text-anchor="middle">오류 시 library로 안전 폴백</text>
+
+        <rect class="node" x="330" y="1206" width="230" height="90" rx="2"/>
+        <text class="mono codesm" x="346" y="1230">library  → 하이브리드 RAG</text>
+        <text class="mono codesm" x="346" y="1249">decision → library 경유</text>
+        <text class="mono codesm" x="346" y="1268">member   → members 조회</text>
+        <text class="mono codesm" x="346" y="1287">meta     → 아티팩트 집계</text>
+
+        <rect class="node-key" x="604" y="1206" width="250" height="90" rx="2"/>
+        <text class="mono code" x="729" y="1236" text-anchor="middle">compose</text>
+        <text class="sm" x="729" y="1258" text-anchor="middle">Sonnet 스트리밍 + 인용 부착</text>
+        <text class="sm" x="729" y="1277" text-anchor="middle">무거운 모델은 오직 여기서만</text>
+
+        <rect class="node" x="898" y="1206" width="190" height="90" rx="2"/>
+        <text class="mono code" x="993" y="1243" text-anchor="middle">guardrails</text>
+        <text class="sm" x="993" y="1266" text-anchor="middle">주제 이탈 필터</text>
+
+        <rect class="node" x="1132" y="1206" width="190" height="90" rx="2"/>
+        <text class="mono code" x="1227" y="1243" text-anchor="middle">save</text>
+        <text class="sm" x="1227" y="1266" text-anchor="middle">[DONE] 이전에 영속화</text>
+
+        <line class="flow-m" x1="288" y1="1251" x2="328" y2="1251" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="562" y1="1251" x2="602" y2="1251" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="856" y1="1251" x2="896" y2="1251" marker-end="url(#arm)"/>
+        <line class="flow-m" x1="1090" y1="1251" x2="1130" y2="1251" marker-end="url(#arm)"/>
+
+        <line class="flow" x1="445" y1="1300" x2="445" y2="1334" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text class="mono alab" x="452" y="1322">질의</text>
+        <path class="flow" d="M 969 1338 L 969 1316 L 729 1316 L 729 1300" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text class="mono alab" x="756" y="1311">top-6 청크 + 출처 메타</text>
+
+        <rect class="band" x="76" y="1338" width="1248" height="200" rx="2"/>
+        <text class="mono hdr" x="92" y="1363">RETRIEVAL CORE — library 노드 · BM25 + pgvector + RRF, 재랭커 모델 없음 (질의당 비용 때문)</text>
+
+        <rect class="node-in" x="92" y="1374" width="330" height="54" rx="2"/>
+        <text class="item" x="108" y="1396">① BM25 — 키워드 정확도</text>
+        <text class="mono codesm" x="108" y="1416">chunks.tsv @@ plainto_tsquery · 상위 30</text>
+
+        <rect class="node-in" x="92" y="1438" width="330" height="54" rx="2"/>
+        <text class="item" x="108" y="1460">② pgvector — 의미 유사도</text>
+        <text class="mono codesm" x="108" y="1480">embedding &lt;=&gt; qvec (코사인 / HNSW) · 상위 30</text>
+
+        <path class="flow-m" d="M 424 1401 L 462 1418" marker-end="url(#arm)"/>
+        <path class="flow-m" d="M 424 1465 L 462 1448" marker-end="url(#arm)"/>
+
+        <rect class="node-in" x="470" y="1374" width="330" height="118" rx="2"/>
+        <text class="item" x="486" y="1398">③ RRF 융합</text>
+        <text class="mono codesm" x="486" y="1420">score[chunk] += 1 / (60 + rank)</text>
+        <text class="sm" x="486" y="1442">두 아암의 “순위”만 쓰기 때문에 점수 스케일을</text>
+        <text class="sm" x="486" y="1459">서로 맞출 필요가 없다 — 그래서 튜닝 손잡이가</text>
+        <text class="sm" x="486" y="1476">사실상 k 하나뿐이다</text>
+
+        <line class="flow-m" x1="802" y1="1433" x2="842" y2="1433" marker-end="url(#arm)"/>
+
+        <rect class="node-key" x="844" y="1374" width="250" height="118" rx="2"/>
+        <text class="item" x="860" y="1398">최종 6개 청크</text>
+        <text class="sm" x="860" y="1420">컨텍스트 예산은 채우되</text>
+        <text class="sm" x="860" y="1437">희석되지는 않는 지점</text>
+        <text class="sm" x="860" y="1461">→ compose는 이 6개에만</text>
+        <text class="sm" x="860" y="1478">근거해 [N]을 단다</text>
+
+        <rect class="node-in" x="1114" y="1374" width="194" height="118" rx="2"/>
+        <text class="mono hdr" x="1128" y="1394">상수</text>
+        <text class="mono codesm" x="1128" y="1414">BM25 limit    30</text>
+        <text class="mono codesm" x="1128" y="1432">vector limit  30</text>
+        <text class="mono codesm" x="1128" y="1450">RRF k         60</text>
+        <text class="mono codesm" x="1128" y="1468">final K        6</text>
+        <text class="mono codesm" x="1128" y="1486">embed dim   1536</text>
+
+        <text class="sm" x="92" y="1512">폴백 — 임베딩 키 없음(0벡터 감지) → BM25 단독 + OR ts_query · BM25 0건 → 벡터 단독 · 둘 다 0건 → “인용 없음”이라고 정직하게 답한다</text>
+        <text class="sm" x="92" y="1529">질의 증강 — 20자 미만이거나 지시대명사(“그것”, “더 자세히”)인 후속 턴은 직전 턴을 붙여 검색어만 보강한다. LLM에는 원문 그대로 간다.</text>
+
+        <rect class="node" x="76" y="1566" width="612" height="72" rx="2"/>
+        <text class="mono hdr" x="92" y="1590">SSE 출력 순서</text>
+        <text class="mono codesm" x="92" y="1610">delta 토큰 스트림 → citation 이벤트 → assistant 메시지 저장 → query event → [DONE]</text>
+        <text class="sm" x="92" y="1628">[DONE] 뒤엔 클라이언트가 연결을 끊고 서버 제너레이터가 취소된다. 그래서 저장이 먼저다.</text>
+
+        <rect class="node" x="712" y="1566" width="612" height="72" rx="2"/>
+        <text class="mono hdr" x="728" y="1590">화면에 남는 것</text>
+        <text class="item" x="728" y="1611">답변 본문 + [1][2][3] 인용 칩 → /api/v1/cite/ 로 원문 열람</text>
+        <text class="sm" x="728" y="1629">품질은 골든셋 recall@3로 감시 — hypeproof-lab 27/40, kids-edu 5/10 기준선</text>
+
+        <!-- ══════════ ⑤ NOTIFY + LAWS ══════════ -->
+        <rect class="band" x="56" y="1684" width="644" height="196" rx="3"/>
+        <text class="bnum" x="76" y="1715">⑤ NOTIFY</text>
+        <text class="bdesc" x="196" y="1715">⟨v1 설계 확정 · 웹훅 배선 대기⟩</text>
+        <text class="sm" x="76" y="1740">답을 앱 안에 가둬두지 않고, 팀이 이미 있는 곳으로 되돌려 보낸다.</text>
+        <text class="mono codesm" x="76" y="1764">트리거 — 배포 성공 / recall 회귀 / 일일 다이제스트 / 신규 결정 / cost.over_budget</text>
+        <text class="mono codesm" x="76" y="1784">→ notify(event_type, tenant_id, payload)</text>
+        <text class="mono codesm" x="76" y="1804">→ (tenant, event_type) 라우트 조회 — integrations.config.notify.routes[]</text>
+        <text class="mono codesm" x="76" y="1824">→ 서킷 브레이커 + 쿨다운 확인 → Jinja2 템플릿 렌더</text>
+        <text class="mono codesm" x="76" y="1844">→ Discord 웹훅 전송 (Slack · 이메일은 이후) → INSERT notification_log</text>
+        <text class="sm" x="76" y="1866">캡처(①)와 같은 채널로 돌아간다 — 들어온 문으로 나간다.</text>
+
+        <rect class="slab" x="724" y="1684" width="620" height="196" rx="3"/>
+        <text class="slab-accent" x="744" y="1715">설계 3법칙</text>
+        <text class="sm invsm" x="856" y="1715">— 나머지는 전부 구현 디테일</text>
+
+        <text class="item inv" x="744" y="1746">1 · 1행부터 멀티테넌트</text>
+        <text class="sm invsm" x="744" y="1764">모든 행에 tenant_id, 모든 테이블에 RLS FORCE.</text>
+        <text class="sm invsm" x="744" y="1780">테넌트 추가는 코드 수정이 아니라</text>
+        <text class="sm invsm" x="744" y="1796">config 행 추가여야 한다.</text>
+
+        <text class="item inv" x="744" y="1826">2 · 증거 기반 답변</text>
+        <text class="sm invsm" x="744" y="1844">모든 응답에 [N] 인라인 인용. 인용 부재 = 회귀,</text>
+        <text class="sm invsm" x="744" y="1860">E2E와 골든 recall이 그것을 잡는다.</text>
+
+        <text class="item inv" x="1090" y="1746">3 · 비용 규율</text>
+        <text class="sm invsm" x="1090" y="1764">인제스트 · 라우팅 · 증류는</text>
+        <text class="sm invsm" x="1090" y="1780">Haiku. 사용자가 실제로</text>
+        <text class="sm invsm" x="1090" y="1796">기다리는 compose에서만</text>
+        <text class="sm invsm" x="1090" y="1812">Sonnet. 테넌트당 LLM</text>
+        <text class="sm invsm" x="1090" y="1828">비용 목표 ≤ $5/월.</text>
+
+        <line class="hair" x1="56" y1="1900" x2="1344" y2="1900"/>
+        <text class="mono meta" x="56" y="1920">출처 — docs/design/01 아키텍처 · 04 수집 엔진 · 05 증류 파이프라인 · 06 검색과 채팅 · infra/init.sql · config/cron.yaml</text>
+        <text class="mono meta" x="1344" y="1920" text-anchor="end">2026-08-18 기준 · Phase 0–4 shipped</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Sediment 전체 파이프라인.</b> 화면이 좁으면 그림은 가로로 스크롤된다.
+      각 띠 사이의 굵은 화살표에는 한 단계가 다음 단계에 실제로 넘기는 것이 적혀 있다 —
+      원시 이벤트, 정제된 청크, 테넌트 컨텍스트.
+    </figcaption>
+  </figure>
+
+  <section class="col rise" style="--i:4">
+    <p class="eyebrow">가까이 봐야 할 네 곳</p>
+    <h2>그림이 한 줄로만 말하고 지나간 것들</h2>
+    <p>
+      포스터는 자리가 없어서 짧게 적었지만, 실제로 사람들이 되묻는 지점은 정해져 있다.
+      네 곳을 풀어 쓴다.
+    </p>
+  </section>
+
+  <div class="reads rise" style="--i:5">
+
+    <article class="read">
+      <h3>검색은 왜 튜닝 손잡이가 하나뿐인가</h3>
+      <p class="where">④ Serve · Retrieval core</p>
+      <p>
+        BM25가 상위 30개, 벡터가 상위 30개를 각각 뽑고, RRF가 이를 합쳐 최종 6개를 남긴다.
+        RRF는 두 아암의 <em>순위</em>만 쓴다 — <code>1 / (60 + rank)</code>. 점수 스케일이 전혀
+        다른 두 검색을 섞으면서도 정규화가 필요 없는 이유고, 그래서 만질 파라미터가 사실상
+        <code>k</code> 하나로 줄어든다.
+      </p>
+      <p>
+        v1에는 재랭커 모델이 없다. 질의당 비용이 붙기 때문이다. 대신 품질은 골든셋
+        recall@3로 지켜본다 — hypeproof-lab 27/40, kids-edu 5/10이 현재 기준선이다.
+      </p>
+    </article>
+
+    <article class="read">
+      <h3>검색이 실패해도 답은 나온다</h3>
+      <p class="where">④ Serve · 폴백 사다리</p>
+      <p>
+        임베딩 키가 없으면 <code>embed()</code>가 0벡터를 돌려준다. 검색 코드는 그걸 감지해
+        BM25 단독 + OR로 이어붙인 <code>ts_query</code>로 빠진다. BM25가 0건이면 벡터 단독,
+        둘 다 0건이면 “인용을 찾지 못했다”고 말한다.
+      </p>
+      <p>
+        마지막 칸이 핵심이다. 근거가 없을 때 지어내지 않고 없다고 답하는 것이 설계된 동작이다.
+        이 분기 덕분에 OpenAI 키를 교체하던 사고 중에도 시스템은 계속 살아 있었다.
+      </p>
+    </article>
+
+    <article class="read">
+      <h3><code>[DONE]</code>보다 저장이 먼저다</h3>
+      <p class="where">④ Serve · SSE 순서</p>
+      <p>
+        SSE에서 <code>[DONE]</code>을 보내는 순간 클라이언트가 연결을 끊고, 서버의 async
+        제너레이터가 취소된다. 그 뒤에 놓인 코드는 실행되지 않는다.
+      </p>
+      <p>
+        그래서 순서가 고정돼 있다 — delta 토큰 → citation 이벤트 → assistant 메시지 저장 →
+        query event → <code>[DONE]</code>. 저장을 마지막에 두면 답변은 화면에 잘 보이는데
+        새로고침하면 사라진다. 한 번 겪고 나면 잊히지 않는 종류의 버그다.
+      </p>
+    </article>
+
+    <article class="read">
+      <h3>테넌트 격리는 두 개의 DB 역할로 갈린다</h3>
+      <p class="where">③ Store · RLS</p>
+      <p>
+        <code>curator_app</code>은 RLS를 적용받으며 요청 핸들러가 쓴다.
+        <code>curator_service</code>는 RLS를 우회하며 인제스트와 크론만 쓴다. 요청마다
+        <code>set_config('app.tenant_id', :v, true)</code>로 컨텍스트를 심는다.
+      </p>
+      <p>
+        여기에 경계 원칙이 하나 더 얹힌다 — <code>lab_lib/</code>나
+        <code>applications/</code> 아래 어떤 파이썬 파일도 테넌트를 이름으로 참조할 수 없다.
+        판별법은 간단하다. 내일 새 테넌트가 가입하면, 내 변경은 코드 수정을 요구하는가
+        아니면 config 행 하나면 되는가.
+      </p>
+    </article>
+
+  </div>
+
+  <footer class="foot">
+    <span>출처 — docs/design/01 · 04 · 05 · 06 · infra/init.sql · config/cron.yaml</span>
+    <span>2026-08-18 기준 · Phase 0–4 shipped</span>
+  </footer>
+
+</div>
