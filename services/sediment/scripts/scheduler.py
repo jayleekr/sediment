@@ -36,6 +36,7 @@ import yaml
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from lab_lib.joblock import job_lock
 from lab_lib.logging import configure_logging, get_logger
 
 configure_logging()
@@ -64,8 +65,55 @@ def _load_config() -> dict[str, Any]:
 # Job wrappers — thin, catch exceptions so one failure doesn't kill the loop
 # ---------------------------------------------------------------------------
 
+async def _discord_targets(yaml_channels: list[dict[str, str]]) -> list[dict]:
+    """Which (tenant, channel) pairs to fetch this tick (sediment#163).
+
+    Tenant data wins: every tenant with an `integrations` row of kind='discord'
+    contributes the channels it opted into via `config.resources`, exactly as
+    the GitHub connector already works.
+
+    config/cron.yaml is the FALLBACK, not the source of truth. It stays because
+    removing it would silently stop capture on the current deployment, which
+    has no discord integration row yet — a config migration that turns off
+    ingestion is worse than a duplicated list. The fallback logs loudly so the
+    state is visible rather than assumed.
+    """
+    from scripts.discord_fetch import channels_from_config, load_discord_integrations
+
+    try:
+        integrations = await load_discord_integrations()
+    except Exception as e:
+        log.warning("scheduler.discord.integrations_unreadable",
+                    err=str(e)[:200], fallback="cron.yaml")
+        integrations = []
+
+    targets: list[dict] = []
+    for integ in integrations:
+        for ch in channels_from_config(integ["config"]):
+            targets.append({
+                "tenant_id": integ["tenant_id"],
+                "integration_id": integ["id"],
+                "integration_config": integ["config"],
+                "channel": ch,
+            })
+
+    if targets:
+        return targets
+
+    log.warning(
+        "scheduler.discord.no_db_config — falling back to config/cron.yaml. "
+        "Add an integrations row (kind='discord', config.resources) to make "
+        "channel opt-in tenant data (sediment#163).",
+        channels=len(yaml_channels))
+    return [
+        {"tenant_id": None, "integration_id": None, "integration_config": {},
+         "channel": ch}
+        for ch in yaml_channels if ch.get("id")
+    ]
+
+
 async def _run_discord_fetch_all(channels: list[dict[str, str]]) -> None:
-    """Fetch all channels incrementally. Logs per-channel result.
+    """Fetch every opted-in channel of every tenant, incrementally.
 
     Sequential (not parallel): keeps DB connection count predictable and
     Discord API rate limit headroom intact. Each channel takes < 2s typically.
@@ -73,27 +121,47 @@ async def _run_discord_fetch_all(channels: list[dict[str, str]]) -> None:
     from scripts.discord_fetch import cmd_fetch
     import argparse as _ap
 
-    for ch in channels:
-        cid = ch.get("id")
-        cname = ch.get("name") or cid
-        if not cid:
-            continue
+    async with job_lock("discord_fetch") as acquired:
+        if not acquired:
+            return
+        await _fetch_targets(cmd_fetch, _ap, await _discord_targets(channels))
+
+
+async def _fetch_targets(cmd_fetch, _ap, targets: list[dict]) -> None:
+    """Guarded body of the sweep. The lock covers the WHOLE sweep, not each
+    channel: two overlapping sweeps would otherwise interleave per channel and
+    still duplicate the Discord API calls the lock exists to avoid."""
+    for target in targets:
+        ch = target["channel"]
+        cid, cname = ch["id"], ch.get("name") or ch["id"]
         # Synthesize the argparse namespace cmd_fetch expects.
         args = _ap.Namespace(
             channel_id=cid, channel_name=cname,
             limit=100, after=None, incremental=True,
             dry_run=False, list_resources=False,
+            tenant_id=target["tenant_id"],
+            integration_id=target["integration_id"],
+            integration_config=target["integration_config"],
         )
         try:
             rc = await cmd_fetch(args)
-            log.info("scheduler.fetch.done", channel=cname, rc=rc)
+            log.info("scheduler.fetch.done", channel=cname,
+                     tenant=target["tenant_id"], rc=rc)
         except Exception as e:
-            log.warning("scheduler.fetch.error", channel=cname, err=str(e)[:200])
+            log.warning("scheduler.fetch.error", channel=cname,
+                        tenant=target["tenant_id"], err=str(e)[:200])
 
 
 async def _run_distill(since_hours: int) -> None:
     """Run the distill agent over the sliding window."""
     from scripts.distill import run
+    async with job_lock("distill") as acquired:
+        if not acquired:
+            return
+        await _distill_once(run, since_hours)
+
+
+async def _distill_once(run, since_hours: int) -> None:
     try:
         summary = await run(since_hours=since_hours, dry_run=False)
         log.info("scheduler.distill.done",
@@ -109,6 +177,14 @@ async def _run_distill(since_hours: int) -> None:
 async def _run_consolidate(tenant: str, since_hours: int, limit: int) -> None:
     """Phase 4 consolidator — extract decisions/actions from recent convs."""
     from scripts.consolidate_memory import run as consolidate_run
+    async with job_lock("consolidate", tenant) as acquired:
+        if not acquired:
+            return
+        await _consolidate_once(consolidate_run, tenant, since_hours, limit)
+
+
+async def _consolidate_once(consolidate_run, tenant: str, since_hours: int,
+                            limit: int) -> None:
     try:
         summary = await consolidate_run(
             tenant=tenant, since_hours=since_hours, limit=limit, dry_run=False,
@@ -126,11 +202,14 @@ async def _run_github_repo_sync() -> None:
     """Pull every tenant's github integration (kind='github'). One pass
     advances watermarks for all configured tenants."""
     from scripts.github_repo_fetch import amain as gh_amain
-    try:
-        rc = await gh_amain(["--all"])
-        log.info("scheduler.github_repo_sync.done", rc=rc)
-    except Exception as e:
-        log.exception("scheduler.github_repo_sync.error", err=str(e)[:200])
+    async with job_lock("github_repo_sync") as acquired:
+        if not acquired:
+            return
+        try:
+            rc = await gh_amain(["--all"])
+            log.info("scheduler.github_repo_sync.done", rc=rc)
+        except Exception as e:
+            log.exception("scheduler.github_repo_sync.error", err=str(e)[:200])
 
 
 # ============================================================
@@ -150,11 +229,14 @@ async def _run_signal_derivation(window_sec: int) -> None:
 
 async def _run_judge_daily(hours: int, max_n: int) -> None:
     from scripts.judge_daily import run as jd_run
-    try:
-        summary = await jd_run(hours=hours, max_n=max_n)
-        log.info("scheduler.judge_daily.done", **summary)
-    except Exception as e:
-        log.exception("scheduler.judge_daily.error", err=str(e)[:200])
+    async with job_lock("judge_daily") as acquired:
+        if not acquired:
+            return
+        try:
+            summary = await jd_run(hours=hours, max_n=max_n)
+            log.info("scheduler.judge_daily.done", **summary)
+        except Exception as e:
+            log.exception("scheduler.judge_daily.error", err=str(e)[:200])
 
 
 async def _run_hard_negative_mining(window_hours: int) -> None:
@@ -240,11 +322,14 @@ async def _run_health_check(alert_channel_name: str) -> None:
 async def _run_retention_sweep() -> None:
     """Daily archive + purge per design doc 15. Idempotent."""
     from scripts.retention_sweep import amain as ret_amain
-    try:
-        rc = await ret_amain([])
-        log.info("scheduler.retention_sweep.done", rc=rc)
-    except Exception as e:
-        log.exception("scheduler.retention_sweep.error", err=str(e)[:200])
+    async with job_lock("retention_sweep") as acquired:
+        if not acquired:
+            return
+        try:
+            rc = await ret_amain([])
+            log.info("scheduler.retention_sweep.done", rc=rc)
+        except Exception as e:
+            log.exception("scheduler.retention_sweep.error", err=str(e)[:200])
 
 
 async def _run_cost_monitor(daily_budget_usd: float, alert_channel_name: str) -> None:

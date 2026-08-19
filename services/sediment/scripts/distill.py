@@ -231,8 +231,9 @@ def _source_artifact_markdown(source: dict) -> tuple[str, str, str]:
     return src, body, content
 
 
-async def _existing_artifact_body(tid: str, ref: str) -> tuple[str, str] | None:
-    """(artifact_id, body) for `ref`, or None. Used to skip unchanged re-ingest.
+async def _existing_artifact_body(tid: str, ref: str) -> tuple[str, str, int] | None:
+    """(artifact_id, body, rev) for `ref`, or None. Used to skip unchanged
+    re-ingest, and to arm the optimistic lock on the write that follows.
 
     A (channel, day) group is re-derived on every run while that day is still
     live, and each ingest deletes and re-embeds every chunk. Skipping identical
@@ -242,11 +243,11 @@ async def _existing_artifact_body(tid: str, ref: str) -> tuple[str, str] | None:
     try:
         async with service_session() as s:
             r = await s.execute(text("""
-                SELECT id::text, body FROM artifacts
+                SELECT id::text, body, rev FROM artifacts
                 WHERE tenant_id = CAST(:tid AS uuid) AND ref = :ref
             """), {"tid": tid, "ref": ref})
             row = r.first()
-            return (row[0], row[1] or "") if row else None
+            return (row[0], row[1] or "", int(row[2])) if row else None
     except Exception as e:
         log.warning("distill.source_artifact.lookup_err", ref=ref, err=str(e)[:200])
         return None
@@ -277,11 +278,21 @@ async def _ingest_source_artifacts(client: httpx.AsyncClient, tid: str,
                 "source_artifacts_unchanged", 0) + 1
             continue
 
-        aid = await _ingest_artifact(
-            client, tid, ref, body,
-            visibility=inherit_visibility(_source_visibilities(source)),
-            source_ref=source["src"], artifact_type="message", origin="raw",
-        )
+        try:
+            aid = await _ingest_artifact(
+                client, tid, ref, body,
+                visibility=inherit_visibility(_source_visibilities(source)),
+                source_ref=source["src"], artifact_type="message", origin="raw",
+                # existing[2] is the rev read in the same lookup that decided
+                # this body had changed; None when the day is new.
+                expected_rev=existing[2] if existing else None,
+            )
+        except RevConflict as e:
+            summary["rev_conflicts"] = summary.get("rev_conflicts", 0) + 1
+            summary["flags"].append(
+                f"rev conflict — transcript {ref!r} skipped, another writer "
+                f"updated it mid-run ({e})")
+            continue
         if aid:
             mapping[source["src"]] = aid
             summary["source_artifacts"] = summary.get("source_artifacts", 0) + 1
@@ -317,6 +328,11 @@ async def _process_entities(client: httpx.AsyncClient, tid: str, source: dict,
 
     for ent in entities:
         ref, body = entity_markdown(ent)
+        # No expected_rev here, deliberately (sediment#162). An entity page is a
+        # convergent upsert: every writer produces the same page from the same
+        # entity, so there is no per-source content for a racing writer to
+        # destroy. Arming the lock would only manufacture conflicts between two
+        # sources that happen to mention the same project.
         aid = await _ingest_artifact(
             client, tid, ref, body,
             visibility=inherit_visibility(_source_visibilities(source)),
@@ -417,19 +433,36 @@ def _source_visibilities(source: dict) -> list[str | None]:
     return []
 
 
+class RevConflict(Exception):
+    """Someone else wrote this artifact between our read and our write.
+
+    sediment#162. The ingester has been able to detect this since #138, but
+    nothing passed `expected_rev`, so every writer was last-writer-wins and a
+    lost update was invisible. Raised rather than folded into the None return
+    so callers cannot treat "somebody else got here first" as "the ingester is
+    down" — those need opposite responses.
+    """
+
+
 async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
                             body: str, visibility: str,
                             source_ref: str | None = None,
                             artifact_type: str = "decision",
-                            origin: str = "derived") -> str | None:
+                            origin: str = "derived",
+                            expected_rev: int | None = None) -> str | None:
     """POST one artifact to the ingester.
 
     Defaults describe a distilled decision — synthesized by us. sediment#161
     added the other caller: a captured transcript, which is `message`/`raw`
     because we did not write it, we only stored it.
+
+    `expected_rev` opts this write into the optimistic lock (sediment#162);
+    a mismatch raises RevConflict. Pass None only when the ref is new or when
+    last-writer-wins is genuinely correct.
     """
     try:
         r = await client.post(INGESTER_URL, timeout=120, json={
+            "expected_rev": expected_rev,
             "tenant_id": tid, "ref": ref, "type": artifact_type, "body": body,
             "origin": origin,
             "visibility": visibility,
@@ -441,14 +474,18 @@ async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
         })
         if r.status_code == 200:
             return r.json().get("artifact_id")
+        if r.status_code == 409:
+            raise RevConflict(f"{ref}: {r.text[:200]}")
         log.warning("distill.ingest.fail", ref=ref, status=r.status_code)
+    except RevConflict:
+        raise
     except Exception as e:
         log.warning("distill.ingest.err", ref=ref, err=str(e))
     return None
 
 
 async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
-                                body: str) -> tuple[str, list[str]]:
+                                body: str) -> tuple[str, list[str], int | None]:
     """Pick the ref to write this decision to, and any artifacts it conflicts with.
 
     sediment#141. Two decisions from DIFFERENT sources that slug to the same
@@ -466,8 +503,13 @@ async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
       3. otherwise → mint `<base>--N` and report every existing sibling as
          conflicting.
 
-    Returns ``(ref, conflicting_artifact_ids)``. Never raises: if the lookup
-    fails, fall back to the base ref, which is exactly today's behaviour.
+    Returns ``(ref, conflicting_artifact_ids, expected_rev)``. ``expected_rev``
+    is the chosen artifact's current rev, or None when the ref is new — this
+    lookup already reads the row, so passing it on costs nothing and is what
+    makes the optimistic lock #138 built actually fire (sediment#162).
+
+    Never raises: if the lookup fails, fall back to the base ref with no
+    expected_rev, which is exactly today's behaviour.
 
     Note what this deliberately does NOT do: judge whether the two claims
     actually contradict, merely agree, or supersede one another. That needs an
@@ -478,7 +520,8 @@ async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
     try:
         async with service_session() as s:
             r = await s.execute(text("""
-                SELECT id::text, ref, body, frontmatter ->> 'source' AS source
+                SELECT id::text, ref, body, rev,
+                       frontmatter ->> 'source' AS source
                 FROM artifacts
                 WHERE tenant_id = CAST(:tid AS uuid)
                   AND (ref = :base OR ref LIKE :base_like)
@@ -487,17 +530,17 @@ async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
             siblings = [dict(row._mapping) for row in r]
     except Exception as e:
         log.warning("distill.ref_resolve.err", ref=base_ref, err=str(e))
-        return base_ref, []
+        return base_ref, [], None
 
     if not siblings:
-        return base_ref, []
+        return base_ref, [], None
 
     for sib in siblings:
         if (sib.get("body") or "") == body:
-            return sib["ref"], []
+            return sib["ref"], [], sib.get("rev")
     for sib in siblings:
         if sib.get("source") and sib["source"] == src:
-            return sib["ref"], []
+            return sib["ref"], [], sib.get("rev")
 
     # Lowest unused suffix, so a third conflicting claim does not collide with
     # the second.
@@ -505,7 +548,9 @@ async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
     n = 2
     while f"{base_ref}--{n}" in taken:
         n += 1
-    return f"{base_ref}--{n}", [sib["id"] for sib in siblings]
+    # A freshly minted sibling ref has no existing row, so there is nothing to
+    # race on — expected_rev is None by construction, not by omission.
+    return f"{base_ref}--{n}", [sib["id"] for sib in siblings], None
 
 
 async def _record_conflicts(tid: str, new_artifact_id: str,
@@ -545,6 +590,8 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                "evidence_links": 0,
                # sediment#168 — entity pages, mentions links, learned aliases.
                "entity_pages": 0, "entity_mentions": 0, "entity_aliases": 0,
+               # sediment#162 — writes skipped because someone else won the race.
+               "rev_conflicts": 0,
                "dry_run": dry_run, "flags": []}
 
     if dry_run:
@@ -612,7 +659,7 @@ async def run(since_hours: int, dry_run: bool) -> dict:
     if not have_llm:
         summary["flags"].append(
             "ANTHROPIC_API_KEY not configured — extraction skipped (honest no-op, "
-            "not a fake pass). Borrowed Sonatus key must NOT be used in prod."
+            "not a fake pass). A key borrowed from another org must NOT be used in prod."
         )
         return summary
 
@@ -676,13 +723,25 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 # sediment#141: a same-topic decision from a DIFFERENT source
                 # gets its own page plus a contradicts link, instead of
                 # overwriting the earlier claim.
-                ref, conflicting = await _resolve_decision_ref(
+                ref, conflicting, expected_rev = await _resolve_decision_ref(
                     tid, ref, s["src"], md)
-                aid = await _ingest_artifact(
-                    client, tid, ref, md,
-                    visibility=inherit_visibility(_source_visibilities(s)),
-                    source_ref=s["src"],
-                )
+                try:
+                    aid = await _ingest_artifact(
+                        client, tid, ref, md,
+                        visibility=inherit_visibility(_source_visibilities(s)),
+                        source_ref=s["src"], expected_rev=expected_rev,
+                    )
+                except RevConflict as e:
+                    # Batch job: skip this decision and say so. Retrying blind
+                    # would overwrite whoever won the race — the exact loss
+                    # #138 stopped. The next scheduled run re-reads and
+                    # re-resolves, and #141 already handles the case where the
+                    # other writer produced a genuinely different claim.
+                    summary["rev_conflicts"] = summary.get("rev_conflicts", 0) + 1
+                    summary["flags"].append(
+                        f"rev conflict — decision {ref!r} skipped, another "
+                        f"writer updated it mid-run ({e})")
+                    continue
                 if aid:
                     summary["artifacts"] += 1
                     if conflicting:

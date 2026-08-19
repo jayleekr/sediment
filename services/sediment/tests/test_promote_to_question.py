@@ -65,7 +65,16 @@ def test_unjudged_answers_are_not_rejected():
 
 
 def test_rejections_are_409_not_silent_success():
-    assert SRC.count("status_code=409") == 3
+    """Each admission gate refuses with a 409 naming which condition failed —
+    never a quiet success.
+
+    Asserted by cause rather than by counting 409s: sediment#162 added a fourth
+    409 for the rev conflict, and a count would have flagged that correct
+    change as a regression.
+    """
+    for cause in ("no thumbs_up", "not 'ok'", "is below"):
+        assert cause in SRC, f"no 409 gate mentions {cause!r}"
+    assert SRC.count("status_code=409") >= 3
 
 
 # ---------------------------------------------------------------------------
