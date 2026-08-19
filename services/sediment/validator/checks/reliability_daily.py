@@ -40,6 +40,15 @@ DEFAULT_SLOS = {
     "artifact_update_max_age_hours": 30,
     "chunk_update_max_age_hours": 30,
     "claim_grounding_min_score": 0.75,
+    # ── knowledge hygiene (sediment#143) ────────────────────────────────────
+    # This module already watches whether the PIPELINE runs. These watch
+    # whether what it accumulated is still any good. Knowledge rots on its own
+    # once several people and several sources keep adding to it, and until now
+    # nothing measured that — so it could rot unnoticed indefinitely.
+    "open_contradictions_max": 5,
+    "orphan_derived_max": 10,
+    "context_pack_max_age_hours": 48,
+    "ungrounded_answer_ratio_max": 0.25,
 }
 SEVERITY_ORDER = {"info": 0, "minor": 1, "major": 2, "critical": 3}
 
@@ -436,6 +445,200 @@ def summarize_distill(snapshot: dict[str, Any]) -> tuple[dict[str, Any], list[di
     }, warnings
 
 
+async def collect_knowledge_hygiene(tenant_slug: str,
+                                    since_hours: int = 168) -> dict[str, Any]:
+    """Measure the health of what was ACCUMULATED, not of the pipeline.
+
+    sediment#143. Every other section here asks "did the machinery run?".
+    These ask "is the knowledge still worth reading?" — a question nothing was
+    asking, which meant the answer could quietly become "no".
+
+    Each metric is collected independently and a failure degrades only itself.
+    A cluster missing migration 008/009 should still get the metrics it CAN
+    produce rather than an all-or-nothing "unavailable".
+    """
+    metrics: dict[str, Any] = {"available": False, "unavailable_metrics": {}}
+    try:
+        async with service_session() as session:
+            tid = await _scalar(
+                session, "SELECT id::text FROM tenants WHERE slug = :slug",
+                {"slug": tenant_slug})
+            if not tid:
+                return {"available": False, "error": f"tenant {tenant_slug!r} not found"}
+            metrics["available"] = True
+            params = {"tid": tid}
+
+            async def _metric(name: str, sql: str, extra: dict | None = None) -> Any:
+                try:
+                    return await _scalar(session, sql, {**params, **(extra or {})})
+                except Exception as exc:  # noqa: BLE001 — per-metric degradation
+                    metrics["unavailable_metrics"][name] = str(exc)[:200]
+                    return None
+
+            # Unresolved conflicts. #141 made these representable; leaving them
+            # unrepresented was the old bug, leaving them unwatched would be
+            # the new one.
+            metrics["open_contradictions"] = await _metric(
+                "open_contradictions",
+                """
+                SELECT count(*) FROM artifact_links
+                WHERE tenant_id = CAST(:tid AS uuid)
+                  AND kind = 'contradicts' AND resolved_at IS NULL
+                """)
+
+            # Synthesized pages nothing points at. Either retrieval will never
+            # reach them by graph, or they were derived from something that has
+            # since been unlinked.
+            metrics["orphan_derived"] = await _metric(
+                "orphan_derived",
+                """
+                SELECT count(*) FROM artifacts a
+                WHERE a.tenant_id = CAST(:tid AS uuid) AND a.origin = 'derived'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM artifact_links l
+                    WHERE l.dst_artifact_id = a.id OR l.src_artifact_id = a.id)
+                """)
+
+            # A derived page whose evidence moved on. This is the real
+            # staleness question, and it can only be asked where derived_from
+            # links exist — see the note attached in the summary.
+            metrics["stale_derived"] = await _metric(
+                "stale_derived",
+                """
+                SELECT count(DISTINCT a.id)
+                FROM artifacts a
+                JOIN artifact_links l ON l.src_artifact_id = a.id AND l.kind = 'derived_from'
+                JOIN artifacts src ON src.id = l.dst_artifact_id
+                WHERE a.tenant_id = CAST(:tid AS uuid)
+                  AND a.origin = 'derived'
+                  AND src.updated_at > COALESCE(a.synthesized_at, a.updated_at)
+                """)
+            metrics["derived_from_links"] = await _metric(
+                "derived_from_links",
+                """
+                SELECT count(*) FROM artifact_links
+                WHERE tenant_id = CAST(:tid AS uuid) AND kind = 'derived_from'
+                """)
+
+            # Questions the corpus keeps failing to answer with evidence. A
+            # coverage gap looks like a retrieval problem and is usually a
+            # missing-source problem.
+            metrics["answers_total"] = await _metric(
+                "answers_total",
+                """
+                SELECT count(*) FROM messages
+                WHERE tenant_id = CAST(:tid AS uuid) AND role = 'assistant'
+                  AND archived = false AND grounding_status IS NOT NULL
+                  AND ts > now() - make_interval(hours => :h)
+                """, {"h": since_hours})
+            metrics["answers_ungrounded"] = await _metric(
+                "answers_ungrounded",
+                """
+                SELECT count(*) FROM messages
+                WHERE tenant_id = CAST(:tid AS uuid) AND role = 'assistant'
+                  AND archived = false AND grounding_status IS NOT NULL
+                  AND grounding_status <> 'ok'
+                  AND ts > now() - make_interval(hours => :h)
+                """, {"h": since_hours})
+
+            # A context pack that lags is read INSTEAD of looking, so a stale
+            # one actively misleads (sediment#142).
+            metrics["stale_context_packs"] = await _metric(
+                "stale_context_packs",
+                """
+                SELECT count(*) FROM context_packs
+                WHERE tenant_id = CAST(:tid AS uuid)
+                  AND updated_at < now() - make_interval(hours => :h)
+                """, {"h": 48})
+    except Exception as exc:  # noqa: BLE001
+        return {"available": False, "error": str(exc)[:300]}
+    return metrics
+
+
+def summarize_knowledge_hygiene(metrics: dict[str, Any],
+                                slos: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    if not metrics.get("available"):
+        return {"status": "unavailable", "error": metrics.get("error")}, [
+            warning("db_unavailable_hygiene", "major",
+                    "DB unavailable; knowledge hygiene could not be measured",
+                    error=metrics.get("error"))
+        ]
+
+    warnings: list[dict[str, Any]] = []
+    notes: list[str] = []
+
+    open_contradictions = metrics.get("open_contradictions")
+    if open_contradictions is not None and open_contradictions > slos["open_contradictions_max"]:
+        warnings.append(warning(
+            "open_contradictions_accumulating", "major",
+            "Unresolved contradictions are piling up — nobody is adjudicating them",
+            open_contradictions=open_contradictions,
+            threshold=slos["open_contradictions_max"]))
+
+    orphans = metrics.get("orphan_derived")
+    if orphans is not None and orphans > slos["orphan_derived_max"]:
+        warnings.append(warning(
+            "orphan_derived_pages", "minor",
+            "Synthesized pages that nothing links to — retrieval can only reach "
+            "them by text match",
+            orphan_derived=orphans, threshold=slos["orphan_derived_max"]))
+
+    stale = metrics.get("stale_derived")
+    if stale:
+        warnings.append(warning(
+            "stale_derived_pages", "minor",
+            "Synthesized pages whose evidence has changed since they were written",
+            stale_derived=stale))
+    if not metrics.get("derived_from_links"):
+        # Say this out loud. A zero that means "nothing to measure" reads
+        # exactly like a zero that means "all healthy", and that is how a
+        # metric quietly stops being one.
+        notes.append(
+            "stale_derived is not yet meaningful: no derived_from links exist, "
+            "so no synthesized page has traceable evidence to go stale against.")
+
+    total = metrics.get("answers_total") or 0
+    ungrounded = metrics.get("answers_ungrounded") or 0
+    ratio = (ungrounded / total) if total else None
+    if ratio is not None and ratio > slos["ungrounded_answer_ratio_max"]:
+        warnings.append(warning(
+            "coverage_gap", "major",
+            "A large share of answers could not be grounded — this usually means "
+            "missing sources, not a retrieval bug",
+            ungrounded=ungrounded, total=total, ratio=round(ratio, 3),
+            threshold=slos["ungrounded_answer_ratio_max"]))
+
+    stale_packs = metrics.get("stale_context_packs")
+    if stale_packs:
+        warnings.append(warning(
+            "stale_context_packs", "minor",
+            "Context packs are lagging the vault — sessions read them INSTEAD "
+            "of looking, so a stale pack actively misleads",
+            stale_context_packs=stale_packs))
+
+    for name, err in (metrics.get("unavailable_metrics") or {}).items():
+        warnings.append(warning(
+            f"hygiene_metric_unavailable_{name}", "minor",
+            f"Knowledge-hygiene metric {name!r} could not be collected "
+            "(cluster may be missing a migration)",
+            error=err))
+
+    section = {
+        "status": "ok" if not warnings else "degraded",
+        "open_contradictions": open_contradictions,
+        "orphan_derived": orphans,
+        "stale_derived": stale,
+        "derived_from_links": metrics.get("derived_from_links"),
+        "answers_total": total,
+        "answers_ungrounded": ungrounded,
+        "ungrounded_ratio": round(ratio, 3) if ratio is not None else None,
+        "stale_context_packs": stale_packs,
+    }
+    if notes:
+        section["notes"] = notes
+    return section, warnings
+
+
 async def build_report(
     tenant_slug: str | None = None,
     since_hours: int = 24,
@@ -452,13 +655,19 @@ async def build_report(
     recall, recall_warnings = summarize_recall()
     grounding, grounding_warnings = summarize_grounding(slos)
     distill, distill_warnings = summarize_distill(snapshot)
+    # Knowledge hygiene uses a wider window than the other sections: rot is
+    # measured over weeks, not since yesterday (sediment#143).
+    hygiene_metrics = await collect_knowledge_hygiene(tenant_slug, since_hours=168)
+    hygiene, hygiene_warnings = summarize_knowledge_hygiene(hygiene_metrics, slos)
 
-    warnings = freshness_warnings + recall_warnings + grounding_warnings + distill_warnings
+    warnings = (freshness_warnings + recall_warnings + grounding_warnings
+                + distill_warnings + hygiene_warnings)
     sections = {
         "freshness": freshness,
         "recall": recall,
         "grounding": grounding,
         "distill": distill,
+        "knowledge_hygiene": hygiene,
     }
     report = {
         "schema_version": 1,

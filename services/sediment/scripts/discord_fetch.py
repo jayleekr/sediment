@@ -18,11 +18,20 @@ Usage:
     # Dry-run: fetch + print summary, don't write to DB
     python -m scripts.discord_fetch --channel-id <id> --dry-run
 
-Watermark storage:
-    The watermark (last seen message_id per channel) is persisted in
-    `events.payload.message_id`. We look up the max snowflake for the
-    channel and pass it as `after_external_id`. No new table needed for
-    v1 — `tenant_connector_state` lands when multi-tenant ships.
+Watermark storage (sediment#163):
+    The watermark (last seen message_id per channel) lives in
+    `integrations.config.state.watermarks.<channel_id>` — the same place and
+    the same `jsonb_set` mechanism the GitHub connector already uses
+    (`github_repo_fetch._save_state`). `integrations` is the canonical store
+    for connector config and state; there is no separate
+    `tenant_connector_state` table and none is needed.
+
+    Before #163 the watermark was DERIVED on read, as
+    `MAX(events.payload->>'message_id')` for the channel. That still works and
+    is kept as the fallback, which is what makes the transition seamless: an
+    existing deployment has no stored watermark but does have events, so the
+    first run after this change resumes exactly where it left off and stores
+    the watermark from then on.
 
 Exit codes:
     0  ok
@@ -67,8 +76,80 @@ async def _default_tenant_id() -> str | None:
         return row[0] if row else None
 
 
+async def load_discord_integrations(tenant_slug: str | None = None) -> list[dict]:
+    """Discord connector rows, one per tenant. Mirrors github_repo_fetch.
+
+    Returns [{id, tenant_id, slug, config}]. An empty list means no tenant has
+    configured Discord capture in the DB — the caller falls back to
+    config/cron.yaml so an existing single-tenant deployment keeps capturing
+    (sediment#163).
+    """
+    sql = """
+        SELECT i.id::text, i.tenant_id::text, t.slug, i.config
+        FROM integrations i
+        JOIN tenants t ON t.id = i.tenant_id
+        WHERE i.kind = 'discord'
+    """
+    params: dict[str, Any] = {}
+    if tenant_slug:
+        sql += " AND t.slug = :slug"
+        params["slug"] = tenant_slug
+    async with service_session() as s:
+        r = await s.execute(text(sql), params)
+        return [
+            {"id": row[0], "tenant_id": row[1], "slug": row[2], "config": row[3] or {}}
+            for row in r.fetchall()
+        ]
+
+
+def channels_from_config(config: dict) -> list[dict]:
+    """Opted-in channels for one tenant: `config.resources` (base.py's term).
+
+    Accepts `{"resources": [{"id", "name"}]}`. Rows without an id are dropped —
+    a channel we cannot address is not a channel.
+    """
+    out = []
+    for res in (config or {}).get("resources") or []:
+        if isinstance(res, dict) and res.get("id"):
+            out.append({"id": str(res["id"]), "name": res.get("name") or str(res["id"])})
+    return out
+
+
+async def save_watermark(integration_id: str, channel_id: str, watermark: str) -> None:
+    """Persist one channel's watermark into integrations.config.
+
+    Single-statement `jsonb_set` rather than read-modify-write: two channels
+    updating concurrently serialize on the row lock and each re-reads the
+    committed value, so both survive. That is the property that makes one
+    JSONB row per (tenant, source) safe here.
+    """
+    if not (integration_id and channel_id and watermark):
+        return
+    async with service_session() as s:
+        await s.execute(text("""
+            UPDATE integrations
+            SET config = jsonb_set(
+                    COALESCE(config, '{}'::jsonb),
+                    ARRAY['state', 'watermarks', :cid],
+                    to_jsonb(CAST(:wm AS text)),
+                    true),
+                last_sync_at = now()
+            WHERE id = CAST(:id AS uuid)
+        """), {"id": integration_id, "cid": channel_id, "wm": watermark})
+        await s.commit()
+
+
+def stored_watermark(config: dict, channel_id: str) -> str | None:
+    """Watermark for one channel out of an integrations.config, or None."""
+    try:
+        return ((config or {}).get("state") or {}).get("watermarks", {}).get(channel_id)
+    except AttributeError:
+        return None
+
+
 async def _get_watermark(tenant_id: str, channel_id: str) -> str | None:
-    """Find the highest message_id we've already stored for this channel.
+    """Highest message_id already stored for this channel — the DERIVED
+    watermark, now a fallback for when nothing is stored yet (sediment#163).
 
     Discord snowflakes sort lexicographically the same as numerically (both
     20 digits in current era), so MAX() works. If we ever cross to 21 digits,
@@ -161,22 +242,33 @@ async def cmd_fetch(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
 
-    # Resolve watermark
-    tenant_id = None
+    # Resolve tenant + watermark (sediment#163)
+    tenant_id = getattr(args, "tenant_id", None)
+    integration_id = getattr(args, "integration_id", None)
+    integration_config = getattr(args, "integration_config", None) or {}
     after_external_id: str | None = args.after
     if not args.dry_run:
-        try:
-            tenant_id = await _default_tenant_id()
-        except Exception as e:
-            print(f"ERROR: DB unreachable: {e}", file=sys.stderr)
-            return 1
         if not tenant_id:
-            print("ERROR: default tenant missing — run `make seed`", file=sys.stderr)
-            return 1
+            # No tenant supplied by the caller — single-tenant path, as before.
+            try:
+                tenant_id = await _default_tenant_id()
+            except Exception as e:
+                print(f"ERROR: DB unreachable: {e}", file=sys.stderr)
+                return 1
+            if not tenant_id:
+                print("ERROR: default tenant missing — run `make seed`", file=sys.stderr)
+                return 1
         if args.incremental and not after_external_id:
-            after_external_id = await _get_watermark(tenant_id, args.channel_id)
-            log.info("discord.watermark.loaded",
-                     channel=args.channel_id, after=after_external_id)
+            # Stored watermark first; fall back to the derived MAX(events...)
+            # so a deployment that predates #163 resumes where it left off
+            # instead of re-fetching the channel from the beginning.
+            after_external_id = stored_watermark(integration_config, args.channel_id)
+            source = "stored"
+            if not after_external_id:
+                after_external_id = await _get_watermark(tenant_id, args.channel_id)
+                source = "derived"
+            log.info("discord.watermark.loaded", channel=args.channel_id,
+                     after=after_external_id, source=source)
 
     # Fetch from Discord
     conn = DiscordConnector(token=token)
@@ -217,12 +309,25 @@ async def cmd_fetch(args: argparse.Namespace) -> int:
                 skipped += 1
         except Exception as ex:
             log.warning("discord.insert.failed", mid=e.external_id, err=str(ex)[:160])
+    # Advance the stored watermark only for messages we actually persisted.
+    # Advancing on fetch instead would skip past anything that failed to
+    # insert, and the gap would never be retried.
+    new_watermark = events[-1].external_id if events and inserted else None
+    if integration_id and new_watermark:
+        try:
+            await save_watermark(integration_id, args.channel_id, new_watermark)
+        except Exception as ex:
+            # Non-fatal: the derived fallback still finds these messages next
+            # run. Losing the store costs a wider re-scan, not data.
+            log.warning("discord.watermark.save_failed",
+                        channel=args.channel_id, err=str(ex)[:160])
     print(json.dumps({
         "channel": resource.name,
         "fetched": len(events),
         "inserted": inserted,
         "skipped_duplicates": skipped,
         "watermark_used": after_external_id,
+        "watermark_stored": new_watermark if integration_id else None,
         "last_message_id": events[-1].external_id if events else None,
     }, indent=2, ensure_ascii=False))
     return 0 if inserted == len(events) - skipped else 2

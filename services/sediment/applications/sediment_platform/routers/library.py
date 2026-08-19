@@ -1,182 +1,33 @@
-"""Library — vault browser + search."""
+"""Library — vault browser + search.
+
+sediment#139: this module used to carry verbatim copies of _STOP_WORDS,
+_KO_PARTICLE_SUFFIXES, _build_ts_or_query, _prefer_bm25_first and _slug_regex,
+even though WO-7 (2026-05-23) had already extracted them to lab_lib.search_utils
+precisely so they would stop drifting. They are now imported. The two keyword
+boost maps that also lived here are gone entirely — they were one tenant's
+vocabulary and now live in `tenant_aliases` (lab_lib.aliases).
+"""
 from __future__ import annotations
-import re
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
+from lab_lib.aliases import demote_case_sql, load_alias_index
 from lab_lib.auth import Identity, require_identity
 from lab_lib.db import app_session
 from lab_lib.embeddings import embed_one
+from lab_lib.links import expand_with_links
 from lab_lib.logging import get_logger
+from lab_lib.search_utils import (
+    build_ts_or_query as _build_ts_or_query,
+    prefer_bm25_first as _prefer_bm25_first,
+    slug_regex as _slug_regex,
+)
+from lab_lib.visibility import viewer_member_id, visibility_filter_sql
 
 log = get_logger("sediment.platform.library")
 
-# English stop-words filtered out of BM25 OR-tsquery. PostgreSQL's
-# to_tsquery('simple', ...) does NOT remove stop-words, so without this filter
-# common tokens like "is", "the", "what", "about" generate spurious matches
-# against any document containing them — drowning out real signal in long
-# corpora and crashing recall@3. See P1-GOLDEN-RAG-01.
-# Korean tokens (가-힣 range) are NEVER filtered — they're rare and meaningful.
-_STOP_WORDS = frozenset({
-    "is", "the", "a", "an", "of", "in", "at", "to", "for", "on", "with", "by",
-    "about", "what", "how", "why", "when", "where", "which", "this", "that",
-    "are", "was", "were", "be", "been", "being", "have", "has", "had",
-    "do", "does", "did", "will", "would", "could", "should", "may", "might",
-    "its", "it", "and", "or", "if", "not", "but", "so", "too", "also",
-    "can", "more", "my", "me", "we", "you", "he", "she", "they", "their",
-})
-
-# Korean particle suffixes stripped when normalizing BM25 tokens.
-# "라이언이" → "라이언", "4월에" → "4월". Ordered longest-first to avoid partial strips.
-# Only strips when the remaining base form is >= 2 chars. See P1-RAG-KO-particle.
-_KO_PARTICLE_SUFFIXES: tuple[str, ...] = (
-    "입니다", "했던",
-    "하는", "에서", "에게", "으로", "이다",
-    "한", "쓴",
-    "이", "가", "을", "를", "의", "에", "로", "는", "은", "와", "과",
-)
-
-
-def _strip_korean_particles(tok: str) -> str | None:
-    """Return tok with one trailing Korean particle removed, or None if no match."""
-    for p in _KO_PARTICLE_SUFFIXES:
-        if tok.endswith(p):
-            base = tok[: -len(p)]
-            if len(base) >= 2:
-                return base
-    return None
-
-
-# Maps query keywords to artifact type for BM25 type-boosting (3x weight).
-# When a query contains a type hint, boost matching artifact types so that
-# e.g. "AI 보안 칼럼" returns column artifacts ahead of SPEC.md/README.md.
-_TYPE_HINT_MAP: dict[str, str] = {
-    "칼럼": "column",
-    "column": "column",
-    "리서치": "research",
-    "research": "research",
-    "daily": "research",
-    "소설": "novel",
-    "novel": "novel",
-    # Research-typical signals — "evaluation harness", "agents", "benchmark"
-    # phrasing comes from daily research notes far more often than columns.
-    "evaluation": "research",
-    "harness": "research",
-    "benchmark": "research",
-    "agents": "research",
-}
-
-
-def _detect_query_type(q: str) -> Optional[str]:
-    """Return artifact-type hint implied by the query, or None.
-
-    Uses token-based matching (not substring) to avoid false positives like
-    "칼럼이나" (= column-or) triggering the column boost for non-column queries.
-    """
-    tokens = set(re.findall(r"[A-Za-z0-9가-힣]+", q.lower()))
-    for keyword, atype in _TYPE_HINT_MAP.items():
-        if keyword in tokens:
-            return atype
-    return None
-
-
-# Maps project keywords (KO/EN) to a substring of artifacts.ref. When a query
-# names a project explicitly, boost artifacts under that path. Solves the
-# "동아일보 관련 칼럼이나 제안" → products/donga-roi class of failures where the
-# project nickname isn't in the document body verbatim. Mirrored from
-# lab_curator_graph.
-_PROJECT_HINT_MAP: dict[str, str] = {
-    "donga": "donga", "동아": "donga", "동아일보": "donga",
-    "academy": "ai-architect-academy", "아카데미": "ai-architect-academy",
-    "curator": "ai-curator", "큐레이터": "ai-curator",
-    "simulacra": "simulacra", "시뮬라크라": "simulacra",
-    "roadmap": "hypeproof-roadmap", "로드맵": "hypeproof-roadmap",
-    "validation": "sediment/VALIDATION", "validator": "sediment/VALIDATION",
-}
-
-
-def _detect_project_path(q: str) -> str:
-    ql = q.lower()
-    for kw, path in _PROJECT_HINT_MAP.items():
-        if kw in ql:
-            return path
-    return ""
-
-
-def _slug_regex(q: str) -> str:
-    """POSIX regex of alphanumeric query tokens (>=3 chars) for filename match.
-
-    A token that appears in `a.slug` or the last segment of `a.ref` is a
-    near-certain signal of intent. We boost those hits 2x to overcome BM25
-    score plateaus on documents that don't repeat their own name in the body.
-    Use a sentinel that never matches when no tokens exist (keeps the SQL
-    parameter type stable for asyncpg).
-    """
-    tokens = re.findall(r"[A-Za-z0-9]{3,}", q)
-    if not tokens:
-        return "___NEVER___"
-    return "(" + "|".join(re.escape(t.lower()) for t in tokens) + ")"
-
 router = APIRouter()
-
-
-def _build_ts_or_query(q: str) -> str:
-    """Tokenize free-text query into an OR-joined to_tsquery expression.
-
-    plainto_tsquery uses AND between terms — too strict for offline mode where
-    embedding API is unavailable and we can't fall back to vector similarity.
-    Mirrors the pattern used by lab_curator_graph.node_library_search so that
-    the platform /search endpoint behaves identically to the LangGraph node.
-
-    English stop-words are filtered out (see _STOP_WORDS); Korean tokens are
-    always kept because to_tsquery('simple', ...) won't dedupe them and they
-    carry strong signal in this corpus.
-    """
-    raw = re.findall(r"[A-Za-z0-9가-힣_]+", q)
-    result: list[str] = []
-    seen: set[str] = set()
-
-    def _add(tok: str) -> None:
-        if tok not in seen:
-            seen.add(tok)
-            result.append(tok)
-
-    for t in raw:
-        t_lower = t.lower()
-        if len(t_lower) < 2:
-            continue
-        has_korean = any("가" <= c <= "힣" for c in t_lower)
-        if has_korean:
-            _add(t_lower)
-            # Strip Korean particles — "라이언이" → "라이언", "4월에" → "4월" —
-            # so tokens match the base forms stored in the tsvector index.
-            stripped = _strip_korean_particles(t_lower)
-            if stripped is not None:
-                _add(stripped)
-            # Mixed Latin+Korean (e.g. "learning이"): also emit Latin-only form
-            # so it matches ts_vectors that stored the term without Korean postfix.
-            latin_only = re.sub(r"[가-힣]+", "", t_lower)
-            if latin_only and len(latin_only) >= 2 and latin_only not in _STOP_WORDS:
-                _add(latin_only)
-        elif t_lower not in _STOP_WORDS:
-            _add(t_lower)
-
-    if not result:
-        return ""
-    return " | ".join(result)
-
-
-def _prefer_bm25_first(q: str) -> bool:
-    tokens = re.findall(r"[A-Za-z0-9가-힣_]+", q)
-    if any(any("가" <= c <= "힣" for c in tok) for tok in tokens):
-        return True
-    signal_tokens = [
-        tok.lower()
-        for tok in tokens
-        if len(tok) >= 2 and tok.lower() not in _STOP_WORDS
-    ]
-    return len(signal_tokens) >= 4
 
 
 def _embed_for_search(q: str, *, bm25_first: bool) -> list[float]:
@@ -204,13 +55,22 @@ async def browse(
     include_test: bool = Query(default=False, alias="include_test"),
     identity: Identity = Depends(require_identity),
 ):
+    # sediment#140: `origin` distinguishes ingested sources from pages Sediment
+    # synthesized; the visibility predicate is the intra-tenant boundary RLS
+    # does not express.
     sql = """
         SELECT a.id::text, a.ref, a.type, a.date, a.slug, a.lang, a.frontmatter,
+               a.origin, a.confidence, a.synthesized_at,
                m.display_name AS author_name, m.external_id AS author_external_id
         FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
         WHERE 1=1
-    """
-    params: dict = {"limit": limit, "offset": offset}
+          AND {visibility}
+    """.replace("{visibility}", visibility_filter_sql("a"))
+    params: dict = {
+        "limit": limit,
+        "offset": offset,
+        "viewer_member_id": viewer_member_id(identity),
+    }
     if not include_test:
         sql += " AND NOT (a.ref ~ '^validator/(idem|sample)-')"
     if type:
@@ -272,15 +132,21 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                 return {"q": q, "items": []}
             # Pass "" when no type hint — avoids asyncpg AmbiguousParameterError
             # on NULL parameters (asyncpg can't infer type from CASE expression).
-            type_hint = _detect_query_type(q) or ""
-            project_hint = _detect_project_path(q)
+            # sediment#139: which TERMS match is now the tenant's data
+            # (tenant_aliases); the multipliers below stay in code because they
+            # are retrieval tuning, not tenant vocabulary. A tenant with no
+            # aliases gets no boosts — plain BM25 — instead of another
+            # tenant's proper nouns.
+            aliases = await load_alias_index(s, str(identity.tenant_id))
+            type_hint = aliases.detect_type(q) or ""
+            project_hint = aliases.detect_ref_prefix(q)
             slug_re = _slug_regex(q)
+            demote_sql, demote_params = demote_case_sql(aliases, "a")
             # Boost stack (multiplicative on ts_rank):
             #   type-boost 3x      — artifact.type matches implied type
-            #   project-boost 2x   — ref contains project keyword (donga, academy, …)
+            #   project-boost 2x   — ref contains a tenant ref_prefix alias
             #   filename-boost 2x  — query token appears in ref or slug
-            #   meta-doc penalty   — SPEC/README/TEST_/DECISIONS halved (they
-            #                        verbatim-quote validation queries)
+            #   meta-doc demotion  — tenant's demote_ref_prefix rows, 0.8x
             # Per-artifact dedup keeps the highest-scoring chunk per artifact so
             # one long doc can't dominate top-3.
             # CAST(:hint AS text) forces parameter type inference for asyncpg.
@@ -298,43 +164,73 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
                                        AND (LOWER(a.ref) ~ CAST(:slug_re AS text)
                                             OR LOWER(COALESCE(a.slug,'')) ~ CAST(:slug_re AS text))
                                   THEN 2.0 ELSE 1.0 END
-                           -- Soft 0.8x meta-doc penalty (was 0.5x → broke
+                           -- Soft 0.8x meta-doc demotion (was 0.5x → broke
                            -- GQ-031/GQ-033 which legitimately wanted SPEC.md).
-                           -- The new boosts above carry most of the work now.
-                           * CASE WHEN a.ref LIKE 'products/sediment/SPEC%'
-                                    OR a.ref LIKE 'products/sediment/README%'
-                                    OR a.ref LIKE 'products/sediment/TEST_%'
-                                    OR a.ref LIKE 'products/sediment/DECISIONS%'
-                                  THEN 0.8 ELSE 1.0 END AS score,
-                       a.ref, a.type, a.date, a.slug
+                           -- The boosts above carry most of the work now.
+                           -- Prefixes come from the tenant's demote_ref_prefix
+                           -- aliases; collapses to the constant 1.0 when a
+                           -- tenant has configured none.
+                           * {demote}
+                           -- Confidence demotion (sediment#144). A page
+                           -- derived from an ANSWER is weaker evidence than the
+                           -- sources that answer cited, and must rank that way —
+                           -- otherwise answers get grounded on answers and the
+                           -- knowledge layer becomes a rumour mill. Inert for
+                           -- every existing row: only promoted pages carry a
+                           -- non-NULL confidence.
+                           * CASE WHEN a.origin = 'derived' AND a.confidence IS NOT NULL
+                                  THEN a.confidence ELSE 1.0 END AS score,
+                       a.ref, a.type, a.date, a.slug, a.origin, c.heading_path
                 FROM chunks c JOIN artifacts a ON a.id = c.artifact_id
                 WHERE c.tsv @@ to_tsquery('simple', :tsq)
                   AND c.tenant_id = CAST(:tid AS uuid)
                   AND a.tenant_id = CAST(:tid AS uuid)
+                  -- Intra-tenant boundary (sediment#140). Applied inside `raw`
+                  -- rather than after dedup so a restricted chunk cannot win
+                  -- DISTINCT ON and suppress a visible chunk of the same
+                  -- artifact — which would turn a permission check into
+                  -- missing results.
+                  AND {visibility}
             ),
             deduped AS (
                 SELECT DISTINCT ON (artifact_id)
-                       chunk_id, artifact_id, seq, content, score, ref, type, date, slug
+                       chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
+                       origin, heading_path
                 FROM raw
                 ORDER BY artifact_id, score DESC
             )
-            SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug
+            SELECT chunk_id, artifact_id, seq, content, score, ref, type, date, slug,
+                   origin, heading_path
             FROM deduped
             {type_filter}
             ORDER BY score DESC LIMIT :limit;
             """.replace(
+                "{demote}", demote_sql
+            ).replace(
+                "{visibility}", visibility_filter_sql("a")
+            ).replace(
                 "{type_filter}",
                 "WHERE type = :type_strict" if type else ""
             )
             params_bm25 = {
+                **demote_params,
                 "tsq": ts_or, "limit": limit, "type_hint": type_hint,
                 "project_hint": project_hint, "slug_re": slug_re,
                 "tid": str(identity.tenant_id),
+                "viewer_member_id": viewer_member_id(identity),
             }
             if type:
                 params_bm25["type_strict"] = type
             r = await s.execute(text(sql_bm25), params_bm25)
-            return {"q": q, "items": [dict(row._mapping) for row in r]}
+            items = [dict(row._mapping) for row in r]
+            # 1-hop graph expansion (sediment#141). Fills unused slots only —
+            # it can never displace a ranked hit, which is what makes it safe
+            # to enable without a recall benchmark.
+            items = await expand_with_links(
+                s, str(identity.tenant_id), items, limit=limit,
+                visibility_sql=visibility_filter_sql("a"),
+                viewer_member_id=viewer_member_id(identity))
+            return {"q": q, "items": items}
 
         # Online path: hybrid BM25 + vector with RRF rerank. Keep the
         # ORDER BY/LIMIT work inside *_top CTEs and assign row_number only
@@ -378,12 +274,27 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
           ) u GROUP BY id, artifact_id, seq, content
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content, f.score,
-               a.ref, a.type, a.date, a.slug
+               a.ref, a.type, a.date, a.slug, a.origin, ch.heading_path
+        -- heading_path is joined back from chunks by PK rather than threaded
+        -- through the bm25/vec/fused CTEs: it would have to be added to the RRF
+        -- GROUP BY, and f.id IS the chunk id so this is an index lookup.
         FROM fused f JOIN artifacts a ON a.id = f.artifact_id
+        JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
+          -- Intra-tenant boundary (sediment#140). Applied here rather than in
+          -- bm25_top/vec_top because those CTEs deliberately do NOT join
+          -- artifacts — that is what lets Postgres push LIMIT 50 down to the
+          -- GIN/HNSW top-K (the sediment#58 latency fix). Consequence: once
+          -- restricted rows actually exist, they consume top-50 slots before
+          -- being filtered, so a viewer can see fewer than `limit` results.
+          -- Harmless today (nothing sets visibility <> 'tenant'); revisit
+          -- alongside the first writer that produces restricted pages.
+          AND {visibility}
         {type_filter}
         ORDER BY f.score DESC LIMIT :limit;
         """.replace(
+            "{visibility}", visibility_filter_sql("a")
+        ).replace(
             "{type_filter}",
             "AND a.type = :type_strict" if type else ""
         )
@@ -392,11 +303,110 @@ async def search(q: str, limit: int = 8, type: Optional[str] = None,
             "qvec": qvec_str,
             "limit": limit,
             "tid": str(identity.tenant_id),
+            "viewer_member_id": viewer_member_id(identity),
         }
         if type:
             params_hyb["type_strict"] = type
         r = await s.execute(text(sql), params_hyb)
-        return {"q": q, "items": [dict(row._mapping) for row in r]}
+        items = [dict(row._mapping) for row in r]
+        # Same 1-hop expansion as the offline path (sediment#141).
+        items = await expand_with_links(
+            s, str(identity.tenant_id), items, limit=limit,
+            visibility_sql=visibility_filter_sql("a"),
+            viewer_member_id=viewer_member_id(identity))
+        return {"q": q, "items": items}
+
+
+@router.get("/links/{ref:path}")
+async def links(ref: str, identity: Identity = Depends(require_identity)):
+    """Links touching one artifact, in both directions.
+
+    sediment#141. `contradicts` is stored one-way (the row records who raised
+    the conflict) but must READ symmetrically — a disputed page is disputed
+    whichever end you arrived from. `direction` tells the caller which end this
+    artifact sits on.
+
+    Declared before `/{ref:path}`, which would otherwise swallow "links/...".
+    """
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            SELECT l.id::text, l.kind, l.note, l.resolved_at, l.created_at,
+                   l.evidence_chunk_ids,
+                   CASE WHEN l.src_artifact_id = self.id THEN 'outgoing' ELSE 'incoming' END
+                     AS direction,
+                   other.ref AS other_ref, other.type AS other_type,
+                   other.origin AS other_origin
+            FROM artifacts self
+            JOIN artifact_links l
+              ON l.src_artifact_id = self.id OR l.dst_artifact_id = self.id
+            JOIN artifacts other
+              ON other.id = CASE WHEN l.src_artifact_id = self.id
+                                 THEN l.dst_artifact_id ELSE l.src_artifact_id END
+            WHERE self.ref = :ref
+              AND {self_visibility}
+              AND {other_visibility}
+            ORDER BY (l.kind = 'contradicts' AND l.resolved_at IS NULL) DESC,
+                     l.created_at DESC
+        """.replace("{self_visibility}", visibility_filter_sql("self"))
+           .replace("{other_visibility}", visibility_filter_sql("other"))),
+            {"ref": ref, "viewer_member_id": viewer_member_id(identity)})
+        items = [dict(row._mapping) for row in r]
+    open_conflicts = sum(
+        1 for i in items if i["kind"] == "contradicts" and i["resolved_at"] is None)
+    return {"ref": ref, "open_conflicts": open_conflicts, "items": items}
+
+
+@router.get("/revisions/{ref:path}")
+async def revisions(ref: str, limit: int = Query(default=50, le=200),
+                    identity: Identity = Depends(require_identity)):
+    """Body history for one artifact, newest superseded revision first.
+
+    sediment#138: before this, a re-distill that collided on a topic slug
+    erased the previous decision — text, source and rationale — with nothing
+    anywhere recording that it had existed. This is the read side of the fix.
+
+    MUST be registered before `/{ref:path}`, which would otherwise swallow
+    "revisions/..." as a ref. Routes match in declaration order.
+
+    Bodies are omitted from the listing; ask for one revision at a time via
+    `?rev=` when you actually want the text.
+    """
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            SELECT rv.rev, rv.replaced_at, rv.source_ref,
+                   length(rv.body) AS body_length,
+                   m.display_name AS author_name,
+                   a.rev AS current_rev
+            FROM artifact_revisions rv
+            JOIN artifacts a ON a.id = rv.artifact_id
+            LEFT JOIN members m ON m.id = rv.author_id
+            WHERE a.ref = :ref AND {visibility}
+            ORDER BY rv.rev DESC
+            LIMIT :limit
+        """.replace("{visibility}", visibility_filter_sql("a"))),
+            {"ref": ref, "limit": limit,
+             "viewer_member_id": viewer_member_id(identity)})
+        items = [dict(row._mapping) for row in r]
+    return {"ref": ref, "items": items}
+
+
+@router.post("/links/{link_id}/resolve")
+async def resolve_link(link_id: str, identity: Identity = Depends(require_identity)):
+    """Mark a contradiction adjudicated. The link stays — a resolved conflict is
+    still part of how the knowledge got here."""
+    async with app_session(identity.tenant_id) as s:
+        r = await s.execute(text("""
+            UPDATE artifact_links
+            SET resolved_at = now()
+            WHERE id = CAST(:lid AS uuid) AND kind = 'contradicts'
+              AND resolved_at IS NULL
+            RETURNING id::text
+        """), {"lid": link_id})
+        if r.first() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="no open contradiction with that id in this tenant")
+    return {"ok": True, "id": link_id}
 
 
 @router.get("/{ref:path}")
@@ -404,11 +414,12 @@ async def read_one(ref: str, identity: Identity = Depends(require_identity)):
     async with app_session(identity.tenant_id) as s:
         r = await s.execute(text("""
             SELECT a.id::text, a.ref, a.type, a.date, a.slug, a.lang,
-                   a.frontmatter, a.body,
+                   a.frontmatter, a.body, a.origin, a.confidence, a.synthesized_at,
                    m.display_name AS author_name
             FROM artifacts a LEFT JOIN members m ON m.id = a.author_id
-            WHERE a.ref = :ref LIMIT 1
-        """), {"ref": ref})
+            WHERE a.ref = :ref AND {visibility} LIMIT 1
+        """.replace("{visibility}", visibility_filter_sql("a"))),
+            {"ref": ref, "viewer_member_id": viewer_member_id(identity)})
         row = r.first()
         if not row:
             raise HTTPException(status_code=404, detail="not found")

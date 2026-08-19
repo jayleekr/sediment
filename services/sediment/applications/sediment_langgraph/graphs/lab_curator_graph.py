@@ -14,14 +14,16 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from lab_lib.embeddings import embed_one
 from lab_lib.logging import get_logger
+from lab_lib.visibility import visibility_filter_sql
 # WO-7 2026-05-23: search helpers extracted to lab_lib.search_utils.
 # The 130 lines previously here were verbatim-duplicated with library.py
 # (and the workspace_mcp.py zero-vector guard was MISSING — a confirmed
 # LEARNINGS-class drift). Local underscore aliases preserved so any
 # remaining call sites continue to resolve without further edits.
+# sediment#139: detect_query_type / detect_project_path left search_utils —
+# they were one tenant's proper nouns, now rows in `tenant_aliases`.
+from lab_lib.aliases import demote_case_sql, load_alias_index
 from lab_lib.search_utils import (
-    detect_query_type as _detect_query_type,
-    detect_project_path as _detect_project_path,
     slug_regex as _slug_regex,
     build_ts_or_query as _build_ts_or_query,
     prefer_bm25_first,
@@ -109,13 +111,15 @@ async def node_router(state: CuratorState) -> dict:
                               "몇 개", "몇개", "수", "신규", "지난 ", "최근 30",
                               "이번 달", "이번달"]):
         intent = "meta"
+    # "decision" moved out of this list to _DECISION_KEYWORDS (sediment#157) —
+    # see the note there. Everything else is a content-type noun.
     elif any(k in q for k in ["칼럼", "글", "리서치", "research", "column",
                                "소설", "novel", "메모", "회의", "노트", "note",
-                               "decision", "daily", "쓴", "작성", "published"]):
+                               "daily", "쓴", "작성", "published"]):
         intent = "library"
     elif any(k in q for k in ["who is", "expertise", "member", "라이언", "ryan", "jy", "kiwon"]):
         intent = "member"
-    elif any(k in q for k in ["결정", "action", "액션"]):
+    elif any(k in q for k in _DECISION_KEYWORDS):
         intent = "decision"
     else:
         intent = "library"
@@ -143,17 +147,45 @@ def _is_elaborate_query(ql: str) -> bool:
 # Freshness intent detector — keyword-based. Tight enough to avoid false
 # positives (we don't want every query to bypass RAG); broad enough to catch
 # the obvious cases. See sediment#16 #4 for the motivating bug.
-_FRESHNESS_KEYWORDS = [
+#
+# sediment#157: the list mixed two grammatically different things, and treating
+# them alike sent "What action items came out of last week decisions?" to the
+# freshness handler — which returns artifacts ordered by date. The user asked
+# for action items.
+#
+# SUPERLATIVES are the question itself ("the newest X"). They always win, which
+# is what keeps "최신 결정" routed to freshness, as test_ask_intent_golden pins.
+_FRESHNESS_SUPERLATIVES = [
     "최신", "가장 최근", "가장 최신", "최근에", "최근의",
-    "latest", "newest", "most recent", "last week", "this week",
-    "어제", "오늘", "yesterday", "today",
+    "latest", "newest", "most recent",
     "언제꺼", "언제 거", "언제거",
 ]
+
+# PERIODS only bound the range ("...from last week"). On their own they still
+# mean freshness — "yesterday's notes" has nothing else to go on — but they are
+# a filter, not the ask, so an explicit decision/action query outranks them.
+_FRESHNESS_PERIODS = [
+    "last week", "this week",
+    "어제", "오늘", "yesterday", "today",
+]
+
+# Shared so the router's decision branch and the freshness detector cannot
+# drift apart. English "decision" lives here rather than in the library keyword
+# list (sediment#157): Korean "결정" routed to the decision handler while its
+# English equivalent routed to a content browse, purely by which list it landed
+# in. A query naming decisions should reach the handler that reads them.
+_DECISION_KEYWORDS = ["결정", "action", "액션", "decision"]
 
 
 def _is_freshness_query(ql: str) -> bool:
     """Heuristic — true when the query is asking 'what's the newest X'."""
-    return any(kw in ql for kw in _FRESHNESS_KEYWORDS)
+    if any(kw in ql for kw in _FRESHNESS_SUPERLATIVES):
+        return True
+    if any(kw in ql for kw in _FRESHNESS_PERIODS):
+        # A bare period qualifier is a filter. If the query also names
+        # decisions or actions, that is what it is asking for.
+        return not any(kw in ql for kw in _DECISION_KEYWORDS)
+    return False
 
 
 # _build_ts_or_query was a second copy of the function imported above as
@@ -182,6 +214,10 @@ async def node_library_search(state: CuratorState) -> dict:
     # the intended rls-subject role), this clause still prevents cross-tenant
     # leak. See sediment#16 for the prod incident that drove this.
     tid = str(state["tenant_id"])
+    # Viewer for the intra-tenant visibility predicate (sediment#140). '' → SQL
+    # NULL, i.e. tenant-visible rows only — fail-closed when the graph runs
+    # without a resolved member (cron/eval harnesses).
+    viewer = str(state.get("member_id") or "")
 
     async with app_session(state["tenant_id"]) as s:
         if qvec_is_zero:
@@ -192,13 +228,18 @@ async def node_library_search(state: CuratorState) -> dict:
                 return {"citations": []}
             # Pass "" when no type hint — avoids asyncpg AmbiguousParameterError
             # on NULL parameters (asyncpg can't infer type from CASE expression).
-            type_hint = _detect_query_type(q) or ""
-            project_hint = _detect_project_path(q)
+            # Which terms boost is the tenant's data now (sediment#139); the
+            # multipliers below stay in code. A tenant with no aliases gets
+            # plain BM25 rather than another tenant's vocabulary.
+            aliases = await load_alias_index(s, tid)
+            type_hint = aliases.detect_type(q) or ""
+            project_hint = aliases.detect_ref_prefix(q)
             slug_re = _slug_regex(q)
+            demote_sql, demote_params = demote_case_sql(aliases, "a")
             # Type-boost (3x): artifact.type matches the implied type.
             # Project-boost (2x): ref contains the implied project path (e.g. "donga").
             # Filename-boost (2x): a token in the query appears in slug or ref —
-            #   catches "VALIDATION_PLAN", "hypeproof-roadmap-2026Q2", etc.
+            #   catches e.g. "VALIDATION_PLAN", "<project>-2026Q2".
             # Meta-doc penalty (0.5x): SPEC/README/TEST_/DECISIONS verbatim-quote
             #   validation queries, so they over-rank on every search.
             # CAST(:hint AS text) forces param type inference for asyncpg.
@@ -215,20 +256,31 @@ async def node_library_search(state: CuratorState) -> dict:
                                    AND (LOWER(a.ref) ~ CAST(:slug_re AS text)
                                         OR LOWER(COALESCE(a.slug,'')) ~ CAST(:slug_re AS text))
                               THEN 2.0 ELSE 1.0 END
-                       -- Meta-doc penalty: SPEC/README/TEST_/DECISIONS verbatim-
-                       -- quote validation queries, so they used to over-rank on
-                       -- every search. With the project_hint + filename + type
-                       -- boosts above, legitimate hits already outrank them.
-                       -- Penalty kept at 0.8x (soft tiebreaker) — anything lower
-                       -- broke queries that LEGITIMATELY want SPEC.md
-                       -- (e.g. "AI Curator 도메인 모델"). 0.5x was found to drop
-                       -- GQ-031 and GQ-033 from PASS to MISS.
-                       * CASE WHEN a.ref LIKE 'products/sediment/SPEC%'
-                                OR a.ref LIKE 'products/sediment/README%'
-                                OR a.ref LIKE 'products/sediment/TEST_%'
-                                OR a.ref LIKE 'products/sediment/DECISIONS%'
-                              THEN 0.8 ELSE 1.0 END AS score,
-                   a.ref, a.type, a.date::text AS date, a.slug,
+                       -- Meta-doc demotion: docs that verbatim-quote validation
+                       -- queries used to over-rank on every search. With the
+                       -- project_hint + filename + type boosts above,
+                       -- legitimate hits already outrank them.
+                       -- Kept at 0.8x (soft tiebreaker) — anything lower broke
+                       -- queries that LEGITIMATELY want SPEC.md (e.g. "AI
+                       -- Curator 도메인 모델"); 0.5x dropped GQ-031 and GQ-033
+                       -- from PASS to MISS.
+                       -- Which refs get demoted is the tenant's data now
+                       -- (sediment#139) and collapses to the constant 1.0 for a
+                       -- tenant that configured none.
+                       * {demote}
+                       -- Confidence demotion (sediment#144). A page
+                       -- derived from an ANSWER is weaker evidence than the
+                       -- sources that answer cited, and must rank that way —
+                       -- otherwise answers get grounded on answers and the
+                       -- knowledge layer becomes a rumour mill. Inert for
+                       -- every existing row: only promoted pages carry a
+                       -- non-NULL confidence.
+                       * CASE WHEN a.origin = 'derived' AND a.confidence IS NOT NULL
+                              THEN a.confidence ELSE 1.0 END AS score,
+                   a.ref, a.type, a.date::text AS date, a.slug, a.origin,
+                   -- Section breadcrumb for the cited chunk (sediment#137).
+                   -- NULL for rows ingested before migration 004.
+                   c.heading_path,
                    a.frontmatter -> 'provenance' AS provenance,
                    CASE
                      WHEN a.type = 'decision'
@@ -241,14 +293,22 @@ async def node_library_search(state: CuratorState) -> dict:
               -- Defense-in-depth tenant filter (see sediment#16)
               AND a.tenant_id = CAST(:tid AS uuid)
               AND c.tenant_id = CAST(:tid AS uuid)
+              -- Intra-tenant boundary (sediment#140): a cited chunk must be
+              -- one the asking member may read. Citations are the answer's
+              -- evidence, so this is the last place a restricted source could
+              -- leak into a composed reply.
+              AND {visibility}
             ORDER BY score DESC LIMIT 8;
-            """
+            """.replace("{demote}", demote_sql).replace(
+                "{visibility}", visibility_filter_sql("a"))
             r = await s.execute(text(sql_bm25), {
+                **demote_params,
                 "tsq": ts_or,
                 "type_hint": type_hint,
                 "project_hint": project_hint,
                 "slug_re": slug_re,
                 "tid": tid,
+                "viewer_member_id": viewer,
             })
             citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
             log.info(
@@ -333,6 +393,10 @@ async def node_library_search(state: CuratorState) -> dict:
         )
         SELECT f.id::text AS chunk_id, f.artifact_id::text, f.seq, f.content,
                f.score::float AS score, a.ref, a.type, a.date::text AS date, a.slug,
+               a.origin,
+               -- Joined back by PK instead of threaded through the RRF CTEs
+               -- (would need to enter the GROUP BY). f.id IS the chunk id.
+               ch.heading_path,
                a.frontmatter -> 'provenance' AS provenance,
                CASE
                  WHEN a.type = 'decision'
@@ -341,10 +405,17 @@ async def node_library_search(state: CuratorState) -> dict:
                  ELSE NULL
                END AS decision_provenance
         FROM deduped f JOIN artifacts a ON a.id = f.artifact_id
+        JOIN chunks ch ON ch.id = f.id
         WHERE a.tenant_id = CAST(:tid AS uuid)
+          -- See the offline path: same intra-tenant boundary (sediment#140).
+          -- Applied post-join for the same top-K push-down reason as the
+          -- platform /search hybrid path.
+          AND {visibility}
         ORDER BY f.score DESC LIMIT 8;
-        """
-        r = await s.execute(text(sql), {"tsq": ts_or, "qvec": qvec_str, "tid": tid})
+        """.replace("{visibility}", visibility_filter_sql("a"))
+        r = await s.execute(text(sql), {
+            "tsq": ts_or, "qvec": qvec_str, "tid": tid, "viewer_member_id": viewer,
+        })
         citations = [_normalize_citation_row(dict(row._mapping)) for row in r]
     log.info("node.library.search", n=len(citations), mode="hybrid", ts_or_empty=(not ts_or))
     return {"citations": citations}

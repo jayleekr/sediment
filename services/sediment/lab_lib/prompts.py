@@ -47,6 +47,10 @@ _PROMPTS_ROOT = Path(__file__).resolve().parent.parent / "prompts"
 _THRESHOLD_HARD_FLOOR = {
     "distill": 0.5,
     "governance": 0.55,
+    # Higher floor than distill: a wrong entity page is worse than a missing
+    # one. It becomes a retrieval hub that pulls unrelated material together,
+    # and every later mention compounds the error (sediment#168).
+    "entities": 0.6,
 }
 _MIN_BODY_HARD_FLOOR = 30
 
@@ -147,7 +151,11 @@ def load_strategy(
       name:      strategy filename without .yaml (e.g. "chat_thread")
       tenant_id: UUID string; if set, tenant addendum is applied
     """
-    if agent not in ("distill", "governance"):
+    # "entities" (sediment#168) has no strategies dir — it always loads
+    # name="base". Entity extraction does not vary by source the way distill
+    # does: a project name is a project name whether it was said in a meeting
+    # or written in a spec.
+    if agent not in ("distill", "governance", "entities"):
         raise PromptLoadError(f"unknown agent: {agent!r}")
 
     base_path = _PROMPTS_ROOT / agent / "base.yaml"

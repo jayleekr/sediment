@@ -666,15 +666,11 @@ jobs:
 
 ---
 
-## Appendix A. 비교 — AIT vs Sediment 테스트 차이
+## Appendix A. (제거됨)
 
-| 차원 | AIT (Sonatus) | Sediment | 이유 |
-|---|---|---|---|
-| 평가 데이터 | OEM 진단 케이스 (`evaluation_*` 하네스) | Lab 골든 250개 + production trace | 도메인 다름 |
-| 멀티테넌시 | 환경별 클론 → cross-test 불필요 | 단일 인프라 + RLS 격리 → cross-test 필수 | 아키텍처 다름 |
-| 적대적 테스트 | 차량 도메인 한정 (off-topic guard) | 일반 LLM 적대 + RAG 오염 (간접 prompt injection) | RAG 의존성 ↑ |
-| 비용 가드 | OEM 라이선스 정액 | per-tenant quota + Stripe webhook | 비즈니스 모델 다름 |
-| 메모리 평가 | conversation 단위 MemorySaver | 3-tier 영구 memory + dream cron | scope 다름 |
+외부 조직의 사내 도구와 비교하는 표가 있었으나 테넌트 경계상 제거했다 (2026-08-10).
+그 조직의 아키텍처·비즈니스 모델을 공개 저장소에 적을 이유가 없다.
+Sediment 자체의 테스트 설계 근거는 본문에 있다.
 
 ---
 

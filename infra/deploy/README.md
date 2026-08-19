@@ -11,8 +11,8 @@ idle hours; Postgres tier dominates).
 1. **Fly.io account** — sign up at https://fly.io. Card on file required even
    for free tier.
 2. **flyctl** locally — `brew install flyctl` then `fly auth login`.
-3. **HypeProof-dedicated Anthropic API key** — DO NOT reuse the Sonatus
-   `SNT_CLAUDE_API_KEY`. Issue a new key at
+3. **HypeProof-dedicated Anthropic API key** — DO NOT reuse a key borrowed
+   from any other organization. Issue a new key at
    https://console.anthropic.com/settings/keys with a $5 hard cap.
 4. **DNS** — access to `hypeproof-ai.xyz` DNS records (Cloudflare/Namecheap).
 

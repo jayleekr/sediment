@@ -1,0 +1,105 @@
+name: entities_base
+version: 0.1.0
+description: |
+  Entity extraction for the knowledge graph (sediment#168). Pulls the named
+  things a document is ABOUT — projects, repos, products, organizations — so
+  they can become canonical pages that cross-source material links to.
+
+  Deliberately excludes PEOPLE. Deciding that "라이언", "ryan-k" and "Ryan Kim"
+  are one person needs identity resolution across sources (member_identities),
+  which does not exist yet. Guessing would merge two colleagues or split one,
+  and both errors are worse than not having the page.
+
+applies_to:
+  source: any
+  kind: any
+
+system_prompt: |
+  You extract NAMED ENTITIES from a document so a knowledge base can build one
+  canonical page per entity. You are not summarizing and not interpreting.
+
+  Extract only:
+  - project   — a named initiative or workstream
+  - repo      — a source repository
+  - product   — a shipped or named product/service
+  - org       — a company, team, or external organization
+
+  DO NOT extract:
+  - PEOPLE. Never. Even when clearly named. Resolving whether two spellings are
+    the same person requires identity data this system does not have, and a
+    wrong merge is worse than a missing page.
+  - generic technology nouns ("database", "API", "the backend", "Postgres",
+    "Python"). A thing is an entity here only if it is specific to THIS
+    workspace. If a stranger reading a public tech blog would recognize the
+    term, it is not one.
+  - one-off phrases, section headings, file paths, or metrics.
+
+  Rules:
+  - `name` is the entity's most canonical form as it appears. Do not translate
+    and do not expand abbreviations you are not certain about.
+  - `aliases` lists other surface forms for the SAME entity that appear in THIS
+    document (spelling variants, Korean/English pairs, short forms). Omit when
+    there are none. Never invent an alias you did not see.
+  - `description` is one factual sentence, drawn only from this document. If the
+    document does not say what the entity is, say so rather than guessing.
+  - `confidence` is how sure you are that this is a real, workspace-specific
+    named entity — not how important it is.
+  - An empty list is a correct answer. Most documents mention few or no
+    entities, and inventing them to fill the schema poisons the graph.
+
+tool_schema:
+  name: record_entities
+  description: |
+    Record named entities this document is about. Use ONLY for workspace-
+    specific projects, repos, products and organizations. Never for people.
+    Emit an empty array when the document names none.
+  input_schema:
+    type: object
+    properties:
+      entities:
+        type: array
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Canonical surface form, max 80 chars.
+            kind:
+              type: string
+              enum: ["project", "repo", "product", "org"]
+            aliases:
+              type: array
+              description: Other surface forms seen in THIS document. May be empty.
+              items:
+                type: string
+            description:
+              type: string
+              description: >
+                One factual sentence from this document. If the document does
+                not define the entity, write
+                "(not described in this source)".
+            confidence:
+              type: number
+              description: 0..1 — certainty this is a real workspace entity.
+          required: ["name", "kind", "confidence"]
+    required: ["entities"]
+
+# Higher than distill's 0.6: a wrong entity page becomes a retrieval hub that
+# pulls unrelated material together, and every later mention compounds it.
+confidence_threshold: 0.75
+# Entity pages are cheap to miss and expensive to get wrong, so require a
+# substantive body before spending a call at all.
+min_body_chars: 200
+
+guards:
+  - Never emit a person as an entity, under any circumstance.
+  - Never emit a generic technology or vendor name that is not specific to this workspace.
+  - Never invent an alias that does not appear in the source text.
+  - An empty entities array is always an acceptable answer.
+
+tenant_override:
+  allowed:
+    - prompt_addendum
+    - confidence_threshold
+    - min_body_chars
+    - extra_guards

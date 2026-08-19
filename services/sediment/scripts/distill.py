@@ -35,9 +35,17 @@ import yaml
 from sqlalchemy import text
 
 from lab_lib.db import service_session
+from lab_lib.entities import (
+    entity_markdown,
+    extract_entities,
+    learn_aliases,
+    link_mention,
+)
+from lab_lib.links import create_link
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.prompts import load_strategy
 from lab_lib.settings import settings
+from lab_lib.visibility import inherit_visibility
 from scripts.consolidate_memory import (
     _extract,
     _insert_action,
@@ -183,6 +191,191 @@ async def _event_sources(tid: str, since: _dt.datetime) -> list[dict]:
     return out
 
 
+def _source_artifact_markdown(source: dict) -> tuple[str, str, str]:
+    """Build a citable artifact for a captured transcript (sediment#161).
+
+    Capture is wide by design — all channels, no allow-list (v0.3 §4) — but
+    retrieval reads only chunks⨝artifacts, and the only thing distill ever
+    wrote back was decisions. So everything the LLM did not classify as a
+    decision was captured and then unreachable: not searchable, not citable,
+    and not linkable as evidence for the decisions drawn from it.
+
+    `ref` is the group's own `src` ("discord/<channel>/<YYYY-MM-DD>"), which is
+    already stable and unique per (channel, day), so re-running distill updates
+    the day's transcript in place rather than duplicating it.
+
+    origin='raw': this is captured source text, not something we synthesized.
+    That matters for #140's layering and for #143's hygiene metrics, both of
+    which treat 'derived' as "Sediment wrote this".
+    """
+    src = source["src"]
+    prov = dict(source.get("provenance") or {})
+    fm = {
+        "type": "message",
+        "title": source.get("title") or src,
+        "source": prov.get("source") or "discord",
+        "channel": source.get("channel"),
+        "date": prov.get("source_date"),
+        "slug": _slug(f"{source.get('channel') or 'chat'}-{prov.get('source_date') or ''}"),
+        "provenance": prov,
+    }
+    fm_block = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).strip()
+    transcript = "\n\n".join(
+        m.get("content", "") for m in source.get("messages") or []
+    ).strip()
+    # `content` is what the ingester will store in artifacts.body — it strips
+    # the frontmatter before writing. Returned separately so the unchanged
+    # check compares like with like instead of re-parsing the assembled string.
+    content = f"# {fm['title']}\n\n{transcript}\n"
+    body = f"---\n{fm_block}\n---\n\n{content}"
+    return src, body, content
+
+
+async def _existing_artifact_body(tid: str, ref: str) -> tuple[str, str, int] | None:
+    """(artifact_id, body, rev) for `ref`, or None. Used to skip unchanged
+    re-ingest, and to arm the optimistic lock on the write that follows.
+
+    A (channel, day) group is re-derived on every run while that day is still
+    live, and each ingest deletes and re-embeds every chunk. Skipping identical
+    bodies keeps the embedding cost proportional to new conversation rather
+    than to how often the scheduler fires.
+    """
+    try:
+        async with service_session() as s:
+            r = await s.execute(text("""
+                SELECT id::text, body, rev FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid) AND ref = :ref
+            """), {"tid": tid, "ref": ref})
+            row = r.first()
+            return (row[0], row[1] or "", int(row[2])) if row else None
+    except Exception as e:
+        log.warning("distill.source_artifact.lookup_err", ref=ref, err=str(e)[:200])
+        return None
+
+
+async def _ingest_source_artifacts(client: httpx.AsyncClient, tid: str,
+                                   sources: list[dict], summary: dict) -> dict[str, str]:
+    """Land each captured transcript as an artifact. Returns {src: artifact_id}.
+
+    Only event captures (Discord). Conversations are deliberately excluded:
+    `messages` already stores them, they are per-member rather than shared, and
+    publishing chat logs into the shared vault is a visibility decision (#140)
+    that belongs with whoever makes the policy, not with this batch job.
+    """
+    mapping: dict[str, str] = {}
+    for source in sources:
+        prov = source.get("provenance") or {}
+        if prov.get("kind") != "discord_events":
+            continue
+        ref, body, content = _source_artifact_markdown(source)
+
+        existing = await _existing_artifact_body(tid, ref)
+        if existing and existing[1].strip() == content.strip():
+            # Body identical to what is stored — nothing new was said in this
+            # (channel, day) since the last run.
+            mapping[source["src"]] = existing[0]
+            summary["source_artifacts_unchanged"] = summary.get(
+                "source_artifacts_unchanged", 0) + 1
+            continue
+
+        try:
+            aid = await _ingest_artifact(
+                client, tid, ref, body,
+                visibility=inherit_visibility(_source_visibilities(source)),
+                source_ref=source["src"], artifact_type="message", origin="raw",
+                # existing[2] is the rev read in the same lookup that decided
+                # this body had changed; None when the day is new.
+                expected_rev=existing[2] if existing else None,
+            )
+        except RevConflict as e:
+            summary["rev_conflicts"] = summary.get("rev_conflicts", 0) + 1
+            summary["flags"].append(
+                f"rev conflict — transcript {ref!r} skipped, another writer "
+                f"updated it mid-run ({e})")
+            continue
+        if aid:
+            mapping[source["src"]] = aid
+            summary["source_artifacts"] = summary.get("source_artifacts", 0) + 1
+        else:
+            summary["flags"].append(
+                f"transcript ingest FAILED (capture not citable): {ref!r} "
+                "— is vault_ingester running?")
+    return mapping
+
+
+async def _process_entities(client: httpx.AsyncClient, tid: str, source: dict,
+                            source_artifact_id: str | None, summary: dict) -> None:
+    """Extract entities from one source and wire them into the graph (#168).
+
+    Requires a landed source artifact: a `mentions` link needs something to
+    point FROM, and that is exactly what #161 created. Sources without one
+    (conversations, which are deliberately not published to the shared vault)
+    are skipped rather than half-processed.
+
+    Never raises. This is an enrichment tail — the decisions and transcripts
+    produced earlier in the run must survive its failure.
+    """
+    if not source_artifact_id:
+        return
+    transcript = "\n\n".join(
+        m.get("content", "") for m in source.get("messages") or []
+    ).strip()
+    try:
+        entities = await extract_entities(transcript, tenant_id=tid)
+    except Exception as e:
+        summary["flags"].append(f"entity extraction failed for {source['src']}: {e}")
+        return
+
+    for ent in entities:
+        ref, body = entity_markdown(ent)
+        # No expected_rev here, deliberately (sediment#162). An entity page is a
+        # convergent upsert: every writer produces the same page from the same
+        # entity, so there is no per-source content for a racing writer to
+        # destroy. Arming the lock would only manufacture conflicts between two
+        # sources that happen to mention the same project.
+        aid = await _ingest_artifact(
+            client, tid, ref, body,
+            visibility=inherit_visibility(_source_visibilities(source)),
+            source_ref=source["src"], artifact_type="entity", origin="derived",
+        )
+        if not aid:
+            summary["flags"].append(f"entity page ingest FAILED: {ref!r}")
+            continue
+        summary["entity_pages"] = summary.get("entity_pages", 0) + 1
+        try:
+            async with service_session() as s:
+                if await link_mention(s, tid, source_artifact_id, aid):
+                    summary["entity_mentions"] = summary.get("entity_mentions", 0) + 1
+                summary["entity_aliases"] = (
+                    summary.get("entity_aliases", 0) + await learn_aliases(s, tid, ent))
+                await s.commit()
+        except Exception as e:
+            log.warning("distill.entity_wiring.err", ref=ref, err=str(e)[:200])
+
+
+async def _link_decision_to_source(tid: str, decision_artifact_id: str,
+                                   source_artifact_id: str, src: str) -> bool:
+    """Record that a decision page was drawn from a captured transcript.
+
+    This is the first `derived_from` edge in the system that points at real
+    captured source text. #143's stale_derived metric has been reporting "not
+    yet meaningful" precisely because no such edge existed.
+    """
+    if not decision_artifact_id or not source_artifact_id:
+        return False
+    try:
+        async with service_session() as s:
+            created = await create_link(
+                s, tid, decision_artifact_id, source_artifact_id, "derived_from",
+                note=f"distilled from {src}",
+            )
+            await s.commit()
+            return bool(created)
+    except Exception as e:
+        log.warning("distill.derived_from.err", src=src, err=str(e)[:200])
+        return False
+
+
 def _decision_markdown(d: dict, src: str, title: str, provenance: dict | None = None) -> tuple[str, str]:
     """Build a citable vault artifact for one decision. ref is topic-slugged
     so re-distilling the same decision UPDATES (vault-differ: known/update),
@@ -222,18 +415,162 @@ def _decision_markdown(d: dict, src: str, title: str, provenance: dict | None = 
     return ref, body
 
 
+def _source_visibilities(source: dict) -> list[str | None]:
+    """Visibility of each thing this decision was distilled from (sediment#140).
+
+    A decision page is composed from a conversation transcript or a day of
+    Discord events — NOT from artifacts — and neither `conversations` nor
+    `events` carries a visibility column today. So this returns an empty list,
+    and `inherit_visibility` yields DEFAULT_VISIBILITY: exactly the behaviour
+    distill has always had.
+
+    It exists as a real call site rather than a hardcoded 'tenant' so that the
+    day conversations or events become scoped, the inheritance rule applies by
+    filling in this one function — instead of someone having to remember that
+    synthesis is a disclosure path. That memory is what the rule exists to
+    replace.
+    """
+    return []
+
+
+class RevConflict(Exception):
+    """Someone else wrote this artifact between our read and our write.
+
+    sediment#162. The ingester has been able to detect this since #138, but
+    nothing passed `expected_rev`, so every writer was last-writer-wins and a
+    lost update was invisible. Raised rather than folded into the None return
+    so callers cannot treat "somebody else got here first" as "the ingester is
+    down" — those need opposite responses.
+    """
+
+
 async def _ingest_artifact(client: httpx.AsyncClient, tid: str, ref: str,
-                            body: str) -> str | None:
+                            body: str, visibility: str,
+                            source_ref: str | None = None,
+                            artifact_type: str = "decision",
+                            origin: str = "derived",
+                            expected_rev: int | None = None) -> str | None:
+    """POST one artifact to the ingester.
+
+    Defaults describe a distilled decision — synthesized by us. sediment#161
+    added the other caller: a captured transcript, which is `message`/`raw`
+    because we did not write it, we only stored it.
+
+    `expected_rev` opts this write into the optimistic lock (sediment#162);
+    a mismatch raises RevConflict. Pass None only when the ref is new or when
+    last-writer-wins is genuinely correct.
+    """
     try:
         r = await client.post(INGESTER_URL, timeout=120, json={
-            "tenant_id": tid, "ref": ref, "type": "decision", "body": body,
+            "expected_rev": expected_rev,
+            "tenant_id": tid, "ref": ref, "type": artifact_type, "body": body,
+            "origin": origin,
+            "visibility": visibility,
+            # Attribute the superseded revision (sediment#138). Two different
+            # decisions can slug alike; when the second replaces the first, the
+            # history row must say which conversation or event batch the
+            # replaced text came from, or the collision is undiagnosable.
+            "source_ref": f"distill:{source_ref}" if source_ref else None,
         })
         if r.status_code == 200:
             return r.json().get("artifact_id")
+        if r.status_code == 409:
+            raise RevConflict(f"{ref}: {r.text[:200]}")
         log.warning("distill.ingest.fail", ref=ref, status=r.status_code)
+    except RevConflict:
+        raise
     except Exception as e:
         log.warning("distill.ingest.err", ref=ref, err=str(e))
     return None
+
+
+async def _resolve_decision_ref(tid: str, base_ref: str, src: str,
+                                body: str) -> tuple[str, list[str], int | None]:
+    """Pick the ref to write this decision to, and any artifacts it conflicts with.
+
+    sediment#141. Two decisions from DIFFERENT sources that slug to the same
+    topic are not one decision revised — they are two claims, and the pipeline
+    used to keep only the later one. #138 preserved the replaced text; this
+    gives the newcomer a page of its own so both remain citable, plus a
+    `contradicts` link so the disagreement is visible instead of implied.
+
+    Resolution order, cheapest and most certain first:
+
+      1. an existing sibling with an IDENTICAL body → reuse it. Same claim
+         reached twice; a second page would be noise, not knowledge.
+      2. an existing sibling from the SAME source → reuse it. This is the
+         re-decide case the original slug scheme was designed for.
+      3. otherwise → mint `<base>--N` and report every existing sibling as
+         conflicting.
+
+    Returns ``(ref, conflicting_artifact_ids, expected_rev)``. ``expected_rev``
+    is the chosen artifact's current rev, or None when the ref is new — this
+    lookup already reads the row, so passing it on costs nothing and is what
+    makes the optimistic lock #138 built actually fire (sediment#162).
+
+    Never raises: if the lookup fails, fall back to the base ref with no
+    expected_rev, which is exactly today's behaviour.
+
+    Note what this deliberately does NOT do: judge whether the two claims
+    actually contradict, merely agree, or supersede one another. That needs an
+    LLM read of both bodies. Recording the pair as an OPEN conflict is the
+    conservative move — surfacing a disagreement that turns out to be agreement
+    costs a reviewer a minute; silently merging a real one costs the knowledge.
+    """
+    try:
+        async with service_session() as s:
+            r = await s.execute(text("""
+                SELECT id::text, ref, body, rev,
+                       frontmatter ->> 'source' AS source
+                FROM artifacts
+                WHERE tenant_id = CAST(:tid AS uuid)
+                  AND (ref = :base OR ref LIKE :base_like)
+                ORDER BY ref
+            """), {"tid": tid, "base": base_ref, "base_like": f"{base_ref}--%"})
+            siblings = [dict(row._mapping) for row in r]
+    except Exception as e:
+        log.warning("distill.ref_resolve.err", ref=base_ref, err=str(e))
+        return base_ref, [], None
+
+    if not siblings:
+        return base_ref, [], None
+
+    for sib in siblings:
+        if (sib.get("body") or "") == body:
+            return sib["ref"], [], sib.get("rev")
+    for sib in siblings:
+        if sib.get("source") and sib["source"] == src:
+            return sib["ref"], [], sib.get("rev")
+
+    # Lowest unused suffix, so a third conflicting claim does not collide with
+    # the second.
+    taken = {sib["ref"] for sib in siblings}
+    n = 2
+    while f"{base_ref}--{n}" in taken:
+        n += 1
+    # A freshly minted sibling ref has no existing row, so there is nothing to
+    # race on — expected_rev is None by construction, not by omission.
+    return f"{base_ref}--{n}", [sib["id"] for sib in siblings], None
+
+
+async def _record_conflicts(tid: str, new_artifact_id: str,
+                            conflicting_ids: list[str], src: str) -> int:
+    """Link a newly-minted sibling to the claims it disagrees with."""
+    if not conflicting_ids:
+        return 0
+    written = 0
+    async with service_session() as s:
+        for other_id in conflicting_ids:
+            try:
+                if await create_link(
+                    s, tid, new_artifact_id, other_id, "contradicts",
+                    note=f"same decision topic, different source ({src})",
+                ):
+                    written += 1
+            except Exception as e:
+                log.warning("distill.link.err", dst=other_id, err=str(e))
+        await s.commit()
+    return written
 
 
 async def _link_source_artifact(decision_id: str, artifact_id: str) -> None:
@@ -246,6 +583,15 @@ async def _link_source_artifact(decision_id: str, artifact_id: str) -> None:
 
 async def run(since_hours: int, dry_run: bool) -> dict:
     summary = {"sources": 0, "decisions": 0, "artifacts": 0, "actions": 0,
+               # sediment#161 — captured transcripts landed as artifacts, how
+               # many were already up to date, and how many decision pages now
+               # point back at the capture they came from.
+               "source_artifacts": 0, "source_artifacts_unchanged": 0,
+               "evidence_links": 0,
+               # sediment#168 — entity pages, mentions links, learned aliases.
+               "entity_pages": 0, "entity_mentions": 0, "entity_aliases": 0,
+               # sediment#162 — writes skipped because someone else won the race.
+               "rev_conflicts": 0,
                "dry_run": dry_run, "flags": []}
 
     if dry_run:
@@ -298,11 +644,22 @@ async def run(since_hours: int, dry_run: bool) -> dict:
         summary["flags"].append("no conversations or Discord captures in window")
         return summary
 
+    # sediment#161: land the captured transcripts FIRST, and deliberately
+    # before the LLM gate below. Making a Discord conversation searchable is
+    # storage, not synthesis — it needs no model. Doing it after the gate would
+    # mean a tenant without an Anthropic key captures everything and can
+    # retrieve none of it, which is the exact failure this issue is about.
+    source_artifact_ids: dict[str, str] = {}
+    if not dry_run:
+        async with httpx.AsyncClient() as client:
+            source_artifact_ids = await _ingest_source_artifacts(
+                client, tid, sources, summary)
+
     have_llm = bool(settings.anthropic_api_key) and settings.anthropic_api_key != "sk-ant-..."
     if not have_llm:
         summary["flags"].append(
             "ANTHROPIC_API_KEY not configured — extraction skipped (honest no-op, "
-            "not a fake pass). Borrowed Sonatus key must NOT be used in prod."
+            "not a fake pass). A key borrowed from another org must NOT be used in prod."
         )
         return summary
 
@@ -363,11 +720,50 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 )
                 if did:
                     topic_to_did[d.get("topic", "")] = did
-                aid = await _ingest_artifact(client, tid, ref, md)
+                # sediment#141: a same-topic decision from a DIFFERENT source
+                # gets its own page plus a contradicts link, instead of
+                # overwriting the earlier claim.
+                ref, conflicting, expected_rev = await _resolve_decision_ref(
+                    tid, ref, s["src"], md)
+                try:
+                    aid = await _ingest_artifact(
+                        client, tid, ref, md,
+                        visibility=inherit_visibility(_source_visibilities(s)),
+                        source_ref=s["src"], expected_rev=expected_rev,
+                    )
+                except RevConflict as e:
+                    # Batch job: skip this decision and say so. Retrying blind
+                    # would overwrite whoever won the race — the exact loss
+                    # #138 stopped. The next scheduled run re-reads and
+                    # re-resolves, and #141 already handles the case where the
+                    # other writer produced a genuinely different claim.
+                    summary["rev_conflicts"] = summary.get("rev_conflicts", 0) + 1
+                    summary["flags"].append(
+                        f"rev conflict — decision {ref!r} skipped, another "
+                        f"writer updated it mid-run ({e})")
+                    continue
                 if aid:
                     summary["artifacts"] += 1
+                    if conflicting:
+                        n_links = await _record_conflicts(
+                            tid, aid, conflicting, s["src"])
+                        summary["conflicts"] = summary.get("conflicts", 0) + n_links
+                        # Loud on purpose: an unresolved contradiction is a
+                        # finding, not routine output. The hygiene job
+                        # (sediment#143) tracks the open ones.
+                        summary["flags"].append(
+                            f"conflicting decision kept as {ref!r} "
+                            f"({n_links} contradicts link(s)) — needs review")
                     if did:
                         await _link_source_artifact(did, aid)
+                    # sediment#161: point the decision page at the transcript it
+                    # was drawn from. Before this there was nothing to point at —
+                    # the capture existed only as `events` rows, which retrieval
+                    # never reads.
+                    src_aid = source_artifact_ids.get(s["src"])
+                    if src_aid and await _link_decision_to_source(
+                            tid, aid, src_aid, s["src"]):
+                        summary["evidence_links"] = summary.get("evidence_links", 0) + 1
                 else:
                     # BLOCK-1: never let a dropped artifact be silent — the
                     # whole point is RAG-citable decisions.
@@ -380,6 +776,11 @@ async def run(since_hours: int, dry_run: bool) -> dict:
                 await _insert_action(tid, did, owner_id, a.get("description", ""),
                                      a.get("due_date"))
                 summary["actions"] += 1
+            # sediment#168 — last, and deliberately so. Entity extraction is
+            # enrichment: if it fails, the decisions, actions and transcript
+            # this source already produced are all still persisted.
+            await _process_entities(
+                client, tid, s, source_artifact_ids.get(s["src"]), summary)
     return summary
 
 

@@ -26,6 +26,7 @@ from lab_lib.grounding import (
     no_evidence_answer,
     validate_citation_refs,
 )
+from lab_lib.cors import build_cors_kwargs
 from lab_lib.logging import configure_logging, get_logger
 from lab_lib.tenant_middleware import TenantContextMiddleware
 
@@ -37,16 +38,10 @@ log = get_logger("langgraph")
 app = FastAPI(title="Curator LangGraph", version="0.1.0")
 
 app.add_middleware(TenantContextMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    # Mirrors sediment_platform — SSE stream is hit cross-origin from the
-    # Vercel frontend, so the same regex must allow it (preview + prod).
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_origin_regex=r"https://([a-z0-9-]+\.)?(vercel\.app|hypeproof-ai\.xyz|hypeproof\.studio)",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Mirrors sediment_platform — the SSE stream is hit cross-origin from the same
+# frontend, so it must share the exact same credentialed CORS policy. See
+# lab_lib.cors / sediment#80.
+app.add_middleware(CORSMiddleware, **build_cors_kwargs())
 
 # Compile graph once at startup
 GRAPH = build_graph()

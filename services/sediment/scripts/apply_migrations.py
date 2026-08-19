@@ -21,11 +21,22 @@ from lab_lib.settings import settings
 
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "infra" / "migrations"
-NAME_RE = re.compile(r"^(\d{3})_.+\.sql$")
+# `.rollback.sql` companions are NOT migrations. infra/migrations/README.md
+# mandates a paired rollback file for any migration that DROPs or replaces a
+# constraint, and `005_x.rollback.sql` matches the plain `NNN_*.sql` shape — so
+# without this exclusion the runner would happily apply the rollback right
+# after the migration it undoes. No such pair existed before 005 (sediment#140),
+# which is why the convention and the runner had never met.
+NAME_RE = re.compile(r"^(\d{3})_(?!.*\.rollback\.sql$).+\.sql$")
+
+ROLLBACK_SUFFIX = ".rollback.sql"
 
 
 def discover() -> list[Path]:
-    files = sorted(p for p in MIGRATIONS_DIR.glob("*.sql") if NAME_RE.match(p.name))
+    files = sorted(
+        p for p in MIGRATIONS_DIR.glob("*.sql")
+        if not p.name.endswith(ROLLBACK_SUFFIX) and NAME_RE.match(p.name)
+    )
     return files
 
 

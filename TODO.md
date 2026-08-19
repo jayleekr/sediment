@@ -62,7 +62,7 @@
 - **근거:** `NEXT.md` §P5; `services/sediment/data/members.json`.
 - **완료조건:**
   - [ ] Simon email을 `data/members.json`에 추가 + reseed.
-  - [ ] HypeProof 자체 Anthropic 키 provision + `fly secrets set` (현재 임시 Sonatus 키).
+  - [ ] HypeProof 자체 Anthropic 키 provision + `fly secrets set` (현재 임시 차용 키).
   - [ ] gemini-2.5-pro는 flash 유지, 보류.
 - **Tier:** mixed (reseed=Tier2, secrets=operator).
 

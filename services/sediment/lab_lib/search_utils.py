@@ -10,10 +10,6 @@ would drift and HAS drifted: `_STOP_WORDS` lived independently in
   - ``_STOP_WORDS``               English stop-words removed from BM25 OR-queries
   - ``_KO_PARTICLE_SUFFIXES``     ordered longest-first; strip particles from BM25
   - ``strip_korean_particles``    return base form or None
-  - ``_TYPE_HINT_MAP``            keyword → artifact type for BM25 type-boost
-  - ``detect_query_type``         token-level match (NOT substring — see "칼럼이나" bug)
-  - ``_PROJECT_HINT_MAP``         keyword → artifact.ref substring for project boost
-  - ``detect_project_path``       return matching substring or ''
   - ``slug_regex``                tokens regex for filename match boost
   - ``build_ts_or_query``         the OR-joined to_tsquery expression
   - ``prefer_bm25_first``         skip slow online embeddings for lexical-heavy queries
@@ -22,6 +18,17 @@ would drift and HAS drifted: `_STOP_WORDS` lived independently in
 When you find yourself copy-pasting any of the above into a new retrieval
 path, STOP and import from here instead. The triplication LEARNINGS warned
 about already cost one recurrence; the next will too.
+
+2026-08-02 (sediment#139): the type-hint and project-hint maps LEFT this module
+for ``lab_lib.aliases`` / the ``tenant_aliases`` table. They were not shared
+logic — they were one workspace's proper nouns (newspaper names, internal
+project nicknames) hardcoded into a multi-tenant retrieval path. What remains
+here is genuinely tenant-independent: stop-words, Korean particle stripping,
+tokenization.
+
+Keep it that way. ``tests/test_tenant_aliases.py`` fails this module if a
+tenant-specific proper noun reappears anywhere in it — including in a comment,
+which is why this paragraph names none.
 """
 from __future__ import annotations
 import re
@@ -63,64 +70,6 @@ def strip_korean_particles(tok: str) -> Optional[str]:
             if len(base) >= 2:
                 return base
     return None
-
-
-# ── Type-hint boost map ────────────────────────────────────────────────────
-# Queries mentioning these keywords get a 3x BM25 weight for matching
-# artifact types. e.g. "AI 보안 칼럼" boosts column artifacts ahead of
-# generic catch-all docs.
-_TYPE_HINT_MAP: dict[str, str] = {
-    "칼럼": "column",
-    "column": "column",
-    "리서치": "research",
-    "research": "research",
-    "daily": "research",
-    "소설": "novel",
-    "novel": "novel",
-    # Research-typical signals — "evaluation harness", "agents", "benchmark"
-    # phrasing comes from daily research notes far more often than columns.
-    # Gives a tie-breaker boost to research/ for queries like GQ-017.
-    "evaluation": "research",
-    "harness": "research",
-    "benchmark": "research",
-    "agents": "research",
-}
-
-
-def detect_query_type(q: str) -> Optional[str]:
-    """Return artifact-type hint implied by the query, or None.
-
-    Token-based matching (NOT substring) to avoid false positives like
-    "칼럼이나" (= column-or) triggering the column boost for non-column queries.
-    """
-    tokens = set(re.findall(r"[A-Za-z0-9가-힣]+", q.lower()))
-    for keyword, atype in _TYPE_HINT_MAP.items():
-        if keyword in tokens:
-            return atype
-    return None
-
-
-# ── Project-hint boost map ─────────────────────────────────────────────────
-# When a query names a project explicitly, boost artifacts under that path.
-# Solves "동아일보 관련 칼럼이나 제안" → products/donga-roi class of failures
-# where the project nickname isn't in the document body verbatim.
-_PROJECT_HINT_MAP: dict[str, str] = {
-    "donga": "donga", "동아": "donga", "동아일보": "donga",
-    "academy": "ai-architect-academy", "아카데미": "ai-architect-academy",
-    "curator": "ai-curator", "큐레이터": "ai-curator",
-    "simulacra": "simulacra", "시뮬라크라": "simulacra",
-    "roadmap": "hypeproof-roadmap", "로드맵": "hypeproof-roadmap",
-    "validation": "sediment/VALIDATION", "validator": "sediment/VALIDATION",
-}
-
-
-def detect_project_path(q: str) -> str:
-    """Return a substring of `artifacts.ref` implied by the query, or ''."""
-    ql = q.lower()
-    for kw, path in _PROJECT_HINT_MAP.items():
-        if kw in ql:
-            return path
-    return ""
 
 
 def slug_regex(q: str) -> str:
