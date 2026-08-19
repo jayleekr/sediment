@@ -17,6 +17,10 @@
   --color-ink:         #221e16; /* near-black, warmed */
   --color-ink-2:       #5b5345; /* secondary text */
   --color-ink-3:       #8c8169; /* muted / metadata */
+  --color-ink-inverse: #e9e0cb; /* type set ON ink — code blocks, dark chrome */
+
+  /* Overlays */
+  --color-scrim:       #1a160f; /* modal backdrop base (used with /55 alpha) */
 
   /* Rules (hairlines) */
   --color-rule:        #ddd1bb;
