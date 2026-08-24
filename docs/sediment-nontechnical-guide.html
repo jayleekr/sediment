@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sediment 비전문가 가이드</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --paper: #f2eadc;
+      --paper-2: #fbf7ee;
+      --ink: #211d17;
+      --muted: #6f6457;
+      --rule: #d8c9b2;
+      --rule-2: #bda98d;
+      --accent: #8f2e24;
+      --accent-2: #c65a3b;
+      --sage: #58745c;
+      --ochre: #a87931;
+      --blue: #3f5f7d;
+      --panel: #fffaf0;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "WenQuanYi Zen Hei", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+      line-height: 1.58;
+    }
+
+    .page {
+      position: relative;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 17mm 18mm 16mm;
+      page-break-after: always;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0)),
+        var(--paper);
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .page::after {
+      content: "";
+      position: absolute;
+      left: 18mm;
+      right: 18mm;
+      bottom: 12mm;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .kicker {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.18;
+      font-weight: 800;
+    }
+
+    h1 {
+      font-size: 44px;
+    }
+
+    h2 {
+      margin-top: 7px;
+      font-size: 30px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+
+    strong {
+      color: var(--ink);
+    }
+
+    .lead {
+      margin-top: 12px;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    .sublead {
+      margin-top: 10px;
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .rule {
+      margin: 18px 0;
+      border: 0;
+      border-top: 1px solid var(--rule-2);
+    }
+
+    .topline {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--ink);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .folio {
+      position: absolute;
+      right: 18mm;
+      bottom: 7mm;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .card {
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      background: rgba(255, 250, 240, 0.78);
+      padding: 13px;
+      box-shadow: 0 10px 24px rgba(58, 45, 25, 0.08);
+    }
+
+    .plain-card {
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 11px 12px;
+      background: rgba(255, 250, 240, 0.52);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border: 1px solid var(--rule-2);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .tag.accent {
+      border-color: rgba(143, 46, 36, 0.35);
+      color: var(--accent);
+      background: rgba(143, 46, 36, 0.07);
+    }
+
+    .number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 25px;
+      height: 25px;
+      margin-right: 7px;
+      border-radius: 50%;
+      color: #fffaf0;
+      background: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .list {
+      margin: 10px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list li {
+      margin: 8px 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      position: relative;
+    }
+
+    .list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 9px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-2);
+    }
+
+    .caption {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 10.5px;
+    }
+
+    .screenshot {
+      width: 100%;
+      border: 1px solid var(--rule-2);
+      border-radius: 8px;
+      box-shadow: 0 14px 34px rgba(44, 34, 18, 0.18);
+      display: block;
+    }
+
+    .callouts {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px;
+      margin-top: 10px;
+    }
+
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: rgba(255, 250, 240, 0.62);
+      padding: 8px 9px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 12px;
+    }
+
+    .mock-window {
+      border: 1px solid var(--rule-2);
+      border-radius: 9px;
+      background: var(--panel);
+      box-shadow: 0 14px 34px rgba(44, 34, 18, 0.13);
+      overflow: hidden;
+    }
+
+    .mock-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--rule);
+      background: #efe2cc;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--rule-2);
+    }
+
+    .mock-body {
+      padding: 12px;
+    }
+
+    .bubble {
+      max-width: 78%;
+      margin: 8px 0;
+      padding: 9px 11px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      color: var(--paper-2);
+      background: var(--accent);
+    }
+
+    .bubble.assistant {
+      border: 1px solid var(--rule);
+      color: var(--ink);
+      background: #fffdf7;
+    }
+
+    .evidence {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .source {
+      border: 1px solid var(--rule);
+      border-radius: 7px;
+      padding: 8px 9px;
+      background: rgba(242, 234, 220, 0.56);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .source strong {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 12px;
+    }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 11.5px;
+    }
+
+    .mini-table th {
+      color: var(--muted);
+      text-align: left;
+      font-size: 10px;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--rule-2);
+      padding: 5px;
+    }
+
+    .mini-table td {
+      border-bottom: 1px solid var(--rule);
+      padding: 6px 5px;
+      color: var(--muted);
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 11px;
+      margin-top: 14px;
+    }
+
+    .step-card {
+      min-height: 92px;
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(255, 250, 240, 0.68);
+    }
+
+    .step-card h3 {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 15px;
+    }
+
+    .glossary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      margin-top: 12px;
+    }
+
+    .term {
+      border-bottom: 1px solid var(--rule);
+      padding: 8px 0;
+    }
+
+    .term strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .term span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .svg-label {
+      font-family: "WenQuanYi Zen Hei", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="topline">
+      <span>Sediment Guide</span>
+      <span>비전문가용 설명서</span>
+    </div>
+    <div style="margin-top: 30mm;">
+      <div class="kicker">HypeProof Lab · Memory Layer</div>
+      <h1 style="margin-top: 8px;">Sediment</h1>
+      <p class="lead">팀의 일과 기록을 <strong>근거 있는 답변</strong>으로 바꾸는 프로그램을 쉽게 이해하기 위한 가이드입니다.</p>
+      <p class="sublead">이 문서는 개발자가 아닌 사람이 “왜 필요한지, 어디를 누르면 되는지, 답변을 얼마나 믿어도 되는지”를 빠르게 파악할 수 있도록 실제 화면 캡처와 설명용 SVG 그림을 함께 사용합니다.</p>
+      <hr class="rule" />
+      <div class="grid-3">
+        <div class="plain-card">
+          <span class="tag accent">한 문장</span>
+          <p style="margin-top: 9px;">Sediment는 팀이 남긴 문서와 대화를 모아, 나중에 질문하면 출처와 함께 답해주는 지식 도구입니다.</p>
+        </div>
+        <div class="plain-card">
+          <span class="tag">대상 독자</span>
+          <p style="margin-top: 9px;">운영자, 팀원, 의사결정자, 외부 협업자처럼 코드를 몰라도 제품 흐름을 알아야 하는 사람입니다.</p>
+        </div>
+        <div class="plain-card">
+          <span class="tag">기준일</span>
+          <p style="margin-top: 9px;">2026년 8월 24일 저장소 상태를 기준으로 작성했습니다.</p>
+        </div>
+      </div>
+    </div>
+    <div class="folio">1</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>01 · 큰 그림</span>
+      <span>무엇을 하는 프로그램인가</span>
+    </div>
+    <div class="kicker">Core Idea</div>
+    <h2>Sediment는 “팀 전용 기억 검색기”입니다</h2>
+    <p class="lead">일반 검색은 인터넷 전체를 뒤지고, 일반 챗봇은 기억하지 못하는 내용을 그럴듯하게 말할 수 있습니다. Sediment는 우리 팀이 실제로 남긴 기록만 찾아서, <strong>답변과 근거를 함께 보여주는 방식</strong>을 목표로 합니다.</p>
+    <div class="grid-2" style="margin-top: 18px;">
+      <div class="card">
+        <h3>무엇에 좋나요?</h3>
+        <ul class="list">
+          <li>예전에 누가 어떤 결정을 했는지 찾기</li>
+          <li>문서, 칼럼, 회의록, 연구 노트를 한 번에 검색하기</li>
+          <li>답변을 복사하기 전에 출처를 확인하기</li>
+          <li>신규 팀원이 맥락을 빠르게 따라잡기</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>무엇이 아닌가요?</h3>
+        <ul class="list">
+          <li>인터넷 최신 뉴스를 자동으로 다 아는 도구는 아닙니다</li>
+          <li>근거 없이 추측하는 만능 챗봇이 아닙니다</li>
+          <li>팀 기록에 없는 사실까지 보장하지 않습니다</li>
+          <li>출처 확인 없이 그대로 붙여 넣는 자동 작성기가 아닙니다</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card" style="margin-top: 14px;">
+      <h3>쉬운 비유</h3>
+      <p style="margin-top: 7px;">Sediment는 <strong>사서가 붙어 있는 팀 전용 도서관</strong>에 가깝습니다. 질문을 하면 사서가 책장 전체를 뒤져 관련 페이지를 찾아주고, “이 답은 여기에서 왔다”고 표시해 줍니다.</p>
+    </div>
+    <div class="folio">2</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>02 · 데이터 흐름</span>
+      <span>기록이 답변이 되는 과정</span>
+    </div>
+    <div class="kicker">Flow Diagram</div>
+    <h2>자료는 “보관 → 검색 → 답변 → 출처 확인” 순서로 움직입니다</h2>
+    <p class="sublead">아래 그림은 복잡한 내부 기술을 사용자가 이해하기 쉬운 6단계로 줄인 것입니다.</p>
+
+    <svg viewBox="0 0 980 575" role="img" aria-label="Sediment data flow diagram" style="margin-top: 12px;">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#8f2e24"></path>
+        </marker>
+        <filter id="soft" x="-10%" y="-10%" width="120%" height="130%">
+          <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#3d2f1f" flood-opacity="0.14"></feDropShadow>
+        </filter>
+      </defs>
+      <rect x="0" y="0" width="980" height="575" rx="22" fill="#fffaf0" stroke="#d8c9b2"></rect>
+      <g class="svg-label" font-size="18" font-weight="700" fill="#211d17" filter="url(#soft)">
+        <rect x="45" y="70" width="175" height="115" rx="14" fill="#f2eadc" stroke="#bda98d"></rect>
+        <text x="132" y="112" text-anchor="middle">1. 자료 수집</text>
+        <text x="132" y="143" text-anchor="middle" font-size="13" font-weight="400" fill="#6f6457">문서 · 회의 · Discord</text>
+
+        <rect x="285" y="70" width="175" height="115" rx="14" fill="#f7efe2" stroke="#bda98d"></rect>
+        <text x="372" y="112" text-anchor="middle">2. 잘게 나눔</text>
+        <text x="372" y="143" text-anchor="middle" font-size="13" font-weight="400" fill="#6f6457">검색하기 쉬운 조각</text>
+
+        <rect x="525" y="70" width="175" height="115" rx="14" fill="#eef3ea" stroke="#9dad94"></rect>
+        <text x="612" y="112" text-anchor="middle">3. Vault 저장</text>
+        <text x="612" y="143" text-anchor="middle" font-size="13" font-weight="400" fill="#6f6457">팀별로 분리 보관</text>
+
+        <rect x="765" y="70" width="175" height="115" rx="14" fill="#edf2f6" stroke="#9bb0c1"></rect>
+        <text x="852" y="112" text-anchor="middle">4. 질문 입력</text>
+        <text x="852" y="143" text-anchor="middle" font-size="13" font-weight="400" fill="#6f6457">자연어로 물어봄</text>
+      </g>
+      <g stroke="#8f2e24" stroke-width="3" fill="none" marker-end="url(#arrow)">
+        <path d="M220 127 L276 127"></path>
+        <path d="M460 127 L516 127"></path>
+        <path d="M700 127 L756 127"></path>
+        <path d="M852 185 C852 245 720 246 676 296"></path>
+      </g>
+      <g class="svg-label" filter="url(#soft)">
+        <rect x="455" y="295" width="210" height="130" rx="16" fill="#fffdf7" stroke="#bda98d"></rect>
+        <text x="560" y="341" text-anchor="middle" font-size="20" font-weight="800" fill="#211d17">5. 관련 근거 찾기</text>
+        <text x="560" y="374" text-anchor="middle" font-size="13" fill="#6f6457">질문과 가까운 문서 조각 검색</text>
+
+        <rect x="125" y="295" width="210" height="130" rx="16" fill="#fffdf7" stroke="#bda98d"></rect>
+        <text x="230" y="341" text-anchor="middle" font-size="20" font-weight="800" fill="#211d17">6. 답변 생성</text>
+        <text x="230" y="374" text-anchor="middle" font-size="13" fill="#6f6457">근거를 바탕으로 요약</text>
+
+        <rect x="352" y="465" width="275" height="66" rx="16" fill="#8f2e24"></rect>
+        <text x="489" y="494" text-anchor="middle" font-size="20" font-weight="800" fill="#fffaf0">출처와 함께 보여줌</text>
+        <text x="489" y="518" text-anchor="middle" font-size="12" fill="#f7dccf">사용자는 답변 옆 근거를 열어 확인</text>
+      </g>
+      <g stroke="#8f2e24" stroke-width="3" fill="none" marker-end="url(#arrow)">
+        <path d="M455 360 L345 360"></path>
+        <path d="M230 425 C230 480 304 498 343 498"></path>
+        <path d="M560 425 C560 452 543 470 522 490"></path>
+      </g>
+    </svg>
+    <p class="caption">기술 용어로는 검색 증강 생성, 벡터 검색, SSE 스트리밍 등이 쓰이지만, 사용자는 “질문한다 → 근거를 본다 → 답을 활용한다”만 이해하면 됩니다.</p>
+    <div class="folio">3</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>03 · 실제 화면</span>
+      <span>로그인과 기본 내비게이션</span>
+    </div>
+    <div class="kicker">Screenshot</div>
+    <h2>처음 만나는 화면은 GitHub 로그인입니다</h2>
+    <p class="sublead">운영 환경에서는 GitHub 계정으로 로그인하고, 개발 환경에서는 테스트용 토큰 버튼이 추가로 보일 수 있습니다.</p>
+    <img class="screenshot" src="assets/sediment-guide/sediment-signin.png" alt="Sediment sign in screen capture" style="margin-top: 12px;" />
+    <div class="callouts">
+      <div class="callout">
+        <strong>Chat</strong>
+        질문을 입력하고 답변과 근거를 확인하는 메인 화면입니다.
+      </div>
+      <div class="callout">
+        <strong>Library</strong>
+        Sediment가 참고하는 자료 보관소를 직접 검색하는 화면입니다.
+      </div>
+      <div class="callout">
+        <strong>Members</strong>
+        현재 팀에 등록된 사람과 역할을 확인합니다.
+      </div>
+      <div class="callout">
+        <strong>Admin</strong>
+        관리자만 접근하는 팀, 요금제, 사용량, 설정 관련 화면입니다.
+      </div>
+    </div>
+    <div class="folio">4</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>04 · Chat</span>
+      <span>질문하고 근거를 확인하는 곳</span>
+    </div>
+    <div class="kicker">Main Workflow</div>
+    <h2>Chat은 “근거 있는 답변”을 받는 화면입니다</h2>
+    <div class="grid-2" style="margin-top: 14px; grid-template-columns: 1.2fr 0.8fr;">
+      <div class="mock-window">
+        <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="mock-body">
+          <div class="bubble user">지난 30일 신규 칼럼 수와 관련 근거를 알려줘.</div>
+          <div class="bubble assistant">
+            확인된 자료 기준으로 지난 30일 신규 칼럼은 4건입니다. 아래 인용을 열어 원문 제목과 날짜를 확인하세요.
+          </div>
+          <div style="margin-top: 11px; border-top: 1px solid #d8c9b2; padding-top: 10px;">
+            <span class="tag accent">입력창</span>
+            <p style="margin-top: 7px;">질문은 문장으로 써도 됩니다. 날짜, 사람, 문서 종류를 같이 쓰면 더 정확해집니다.</p>
+          </div>
+        </div>
+      </div>
+      <div class="mock-window">
+        <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="mock-body">
+          <h3>Evidence</h3>
+          <p style="font-size: 12px;">답변을 뒷받침하는 자료가 여기에 붙습니다.</p>
+          <div class="evidence">
+            <div class="source"><strong>[1] column/2026-08-memo</strong>type: column · score 0.82</div>
+            <div class="source"><strong>[2] meeting/weekly-note</strong>type: meeting · score 0.76</div>
+            <div class="source"><strong>[3] decision/pilot-plan</strong>type: decision · provenance ok</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top: 14px;">
+      <div class="plain-card">
+        <span class="number">1</span><strong>질문</strong>
+        <p style="margin-top: 6px;">궁금한 내용을 자연어로 입력합니다.</p>
+      </div>
+      <div class="plain-card">
+        <span class="number">2</span><strong>검색</strong>
+        <p style="margin-top: 6px;">Sediment가 vault에서 관련 조각을 찾습니다.</p>
+      </div>
+      <div class="plain-card">
+        <span class="number">3</span><strong>확인</strong>
+        <p style="margin-top: 6px;">답변 옆 근거 카드를 열어 원문을 확인합니다.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top: 14px;">
+      <h3>좋은 질문 예시</h3>
+      <ul class="list">
+        <li>“라이언이 4월에 쓴 mirror-loop 칼럼을 찾아줘”</li>
+        <li>“Daily research 중 Claude Code 관련 high-confidence 결론은?”</li>
+        <li>“최근 결정된 5/5 파일럿 관련 액션을 요약해줘”</li>
+      </ul>
+    </div>
+    <div class="folio">5</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>05 · Library</span>
+      <span>자료 보관소를 직접 찾는 곳</span>
+    </div>
+    <div class="kicker">Vault Browser</div>
+    <h2>Library는 답변의 재료를 직접 보는 화면입니다</h2>
+    <p class="sublead">Chat에서 답이 마음에 들지 않거나, 출처를 먼저 찾고 싶을 때 Library를 사용합니다.</p>
+
+    <div class="mock-window" style="margin-top: 14px;">
+      <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="mock-body">
+        <div class="pill-row">
+          <span class="tag accent">all</span>
+          <span class="tag">column</span>
+          <span class="tag">research</span>
+          <span class="tag">note</span>
+          <span class="tag">meeting</span>
+          <span class="tag">search: agent</span>
+        </div>
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>ref</th>
+              <th>type</th>
+              <th>date</th>
+              <th>author</th>
+              <th>lang</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>column/agent-loop</td>
+              <td>column</td>
+              <td>2026-04-12</td>
+              <td>Ryan</td>
+              <td>ko</td>
+            </tr>
+            <tr>
+              <td>research/claude-code</td>
+              <td>research</td>
+              <td>2026-05-02</td>
+              <td>JY</td>
+              <td>ko</td>
+            </tr>
+            <tr>
+              <td>meeting/pilot-plan</td>
+              <td>meeting</td>
+              <td>2026-05-05</td>
+              <td>Lab</td>
+              <td>ko</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 14px;">
+      <div class="card">
+        <h3>Library에서 보는 것</h3>
+        <ul class="list">
+          <li>자료의 고유 이름인 ref</li>
+          <li>column, research, note 같은 자료 종류</li>
+          <li>작성일, 작성자, 언어</li>
+          <li>검색어와 얼마나 가까운지 나타내는 점수</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>왜 중요한가요?</h3>
+        <p style="margin-top: 7px;">Sediment의 답변은 Library에 들어 있는 자료를 바탕으로 합니다. 따라서 중요한 결정을 내리기 전에는 Chat 답변만 보지 말고 Library나 Evidence에서 원문을 열어 확인하는 습관이 필요합니다.</p>
+      </div>
+    </div>
+    <div class="folio">6</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>06 · 안전장치</span>
+      <span>팀별 분리와 권한</span>
+    </div>
+    <div class="kicker">Tenant & Access</div>
+    <h2>내 팀의 자료는 다른 팀과 섞이지 않도록 설계되어 있습니다</h2>
+    <p class="sublead">Sediment는 여러 팀이 함께 쓸 수 있는 형태를 목표로 합니다. 그래서 자료마다 어느 팀의 것인지 표시하고, 요청마다 “이 사용자가 어느 팀에 속했는가”를 확인합니다.</p>
+    <svg viewBox="0 0 980 430" role="img" aria-label="Tenant separation diagram" style="margin-top: 16px;">
+      <defs>
+        <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#58745c"></path>
+        </marker>
+      </defs>
+      <rect x="0" y="0" width="980" height="430" rx="22" fill="#fffaf0" stroke="#d8c9b2"></rect>
+      <g class="svg-label">
+        <rect x="60" y="70" width="360" height="260" rx="18" fill="#eef3ea" stroke="#9dad94" stroke-width="2"></rect>
+        <text x="240" y="115" text-anchor="middle" font-size="24" font-weight="800" fill="#211d17">Team A</text>
+        <rect x="105" y="150" width="270" height="42" rx="10" fill="#fffdf7" stroke="#bda98d"></rect>
+        <text x="240" y="177" text-anchor="middle" font-size="15" fill="#6f6457">A팀 문서와 대화</text>
+        <rect x="105" y="212" width="270" height="42" rx="10" fill="#fffdf7" stroke="#bda98d"></rect>
+        <text x="240" y="239" text-anchor="middle" font-size="15" fill="#6f6457">A팀 멤버와 권한</text>
+
+        <rect x="560" y="70" width="360" height="260" rx="18" fill="#edf2f6" stroke="#9bb0c1" stroke-width="2"></rect>
+        <text x="740" y="115" text-anchor="middle" font-size="24" font-weight="800" fill="#211d17">Team B</text>
+        <rect x="605" y="150" width="270" height="42" rx="10" fill="#fffdf7" stroke="#bda98d"></rect>
+        <text x="740" y="177" text-anchor="middle" font-size="15" fill="#6f6457">B팀 문서와 대화</text>
+        <rect x="605" y="212" width="270" height="42" rx="10" fill="#fffdf7" stroke="#bda98d"></rect>
+        <text x="740" y="239" text-anchor="middle" font-size="15" fill="#6f6457">B팀 멤버와 권한</text>
+
+        <path d="M480 90 L480 340" stroke="#8f2e24" stroke-width="5" stroke-dasharray="10 10"></path>
+        <text x="480" y="380" text-anchor="middle" font-size="16" font-weight="800" fill="#8f2e24">분리선: 다른 팀 자료는 보이지 않음</text>
+      </g>
+    </svg>
+    <div class="grid-3" style="margin-top: 14px;">
+      <div class="plain-card">
+        <h3>Members</h3>
+        <p style="margin-top: 6px;">팀원 목록과 역할을 보여줍니다. 누가 어떤 권한을 갖는지 이해하는 출발점입니다.</p>
+      </div>
+      <div class="plain-card">
+        <h3>Admin</h3>
+        <p style="margin-top: 6px;">관리자 전용 화면입니다. 팀 상태, 멤버 수, 자료 수, 요금제 같은 운영 정보를 봅니다.</p>
+      </div>
+      <div class="plain-card">
+        <h3>RLS</h3>
+        <p style="margin-top: 6px;">데이터베이스 수준에서 팀별 자료 접근을 제한하는 안전장치입니다.</p>
+      </div>
+    </div>
+    <div class="folio">7</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>07 · 신뢰 방법</span>
+      <span>답변을 어떻게 믿어야 하나</span>
+    </div>
+    <div class="kicker">Trust Model</div>
+    <h2>좋은 사용법은 “답변보다 근거를 먼저 보는 것”입니다</h2>
+    <div class="grid-2" style="margin-top: 16px;">
+      <div class="card">
+        <h3>믿어도 되는 신호</h3>
+        <ul class="list">
+          <li>답변 옆에 여러 출처가 붙어 있음</li>
+          <li>출처를 열었을 때 날짜와 작성자가 질문과 맞음</li>
+          <li>회의록, 결정 기록, 원문 문서가 같은 결론을 지지함</li>
+          <li>최근 자료가 필요한 질문에서 freshness 정보가 양호함</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>조심해야 하는 신호</h3>
+        <ul class="list">
+          <li>“근거를 찾지 못했습니다”라는 답변이 나옴</li>
+          <li>출처가 질문한 기간이나 사람과 다름</li>
+          <li>정책, 가격, 외부 서비스 상태처럼 최신성이 중요한 내용임</li>
+          <li>중요한 결정을 내리는데 원문을 확인하지 않았음</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mock-window" style="margin-top: 16px;">
+      <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="mock-body">
+        <div class="bubble assistant" style="max-width: 92%;">
+          현재 vault에서 이 질문을 뒷받침할 근거를 찾지 못했습니다. Library에서 다른 검색어로 찾아보거나, 자료를 먼저 ingest해야 합니다.
+        </div>
+        <p style="margin-top: 8px;">이런 답은 실패가 아니라 안전장치입니다. Sediment는 모르는 내용을 아는 척하기보다 “자료가 없다”고 말하는 편이 더 낫습니다.</p>
+      </div>
+    </div>
+    <div class="plain-card" style="margin-top: 14px;">
+      <h3>한 줄 원칙</h3>
+      <p style="margin-top: 7px;">Sediment의 답변은 출발점입니다. 보고서, 고객 응대, 제품 결정에 쓰기 전에는 반드시 출처를 열어 원문을 확인하세요.</p>
+    </div>
+    <div class="folio">8</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>08 · 자주 쓰는 절차</span>
+      <span>처음 사용하는 사람을 위한 순서</span>
+    </div>
+    <div class="kicker">Workflow</div>
+    <h2>처음에는 이 순서대로 쓰면 됩니다</h2>
+    <div class="workflow">
+      <div class="step-card">
+        <h3><span class="number">1</span>로그인</h3>
+        <p>GitHub 계정으로 들어갑니다. 접근 권한은 팀 멤버 설정과 연결됩니다.</p>
+      </div>
+      <div class="step-card">
+        <h3><span class="number">2</span>질문 작성</h3>
+        <p>사람, 날짜, 자료 종류를 넣어 구체적으로 물어봅니다.</p>
+      </div>
+      <div class="step-card">
+        <h3><span class="number">3</span>답변 읽기</h3>
+        <p>요약을 먼저 보되, 숫자와 결론은 근거 카드와 함께 확인합니다.</p>
+      </div>
+      <div class="step-card">
+        <h3><span class="number">4</span>출처 열기</h3>
+        <p>Evidence 카드에서 원문을 열어 답변이 실제 자료와 맞는지 봅니다.</p>
+      </div>
+      <div class="step-card">
+        <h3><span class="number">5</span>복사 또는 공유</h3>
+        <p>인용과 함께 작업 문서, 이슈, 대화 스레드로 옮깁니다.</p>
+      </div>
+      <div class="step-card">
+        <h3><span class="number">6</span>피드백</h3>
+        <p>좋은 답은 남기고, 나쁜 답은 표시해서 검색 품질 개선에 보탭니다.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top: 16px;">
+      <h3>질문을 잘 쓰는 요령</h3>
+      <ul class="list">
+        <li>“이거 알려줘”보다 “2026년 5월 파일럿 관련 결정과 액션 알려줘”가 좋습니다.</li>
+        <li>사람 이름, 프로젝트명, 날짜, 자료 종류를 함께 넣으면 검색 범위가 좁아집니다.</li>
+        <li>답이 이상하면 Chat에서 다시 묻기보다 Library에서 원자료를 먼저 검색해 보세요.</li>
+      </ul>
+    </div>
+    <div class="folio">9</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>09 · 내부 구성</span>
+      <span>개발자가 설명할 때 쓰는 단어들</span>
+    </div>
+    <div class="kicker">Architecture Map</div>
+    <h2>기술 구조는 여러 작은 서비스가 협업하는 형태입니다</h2>
+    <svg viewBox="0 0 980 500" role="img" aria-label="Sediment service architecture diagram" style="margin-top: 14px;">
+      <defs>
+        <marker id="arrow3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#8f2e24"></path>
+        </marker>
+      </defs>
+      <rect x="0" y="0" width="980" height="500" rx="22" fill="#fffaf0" stroke="#d8c9b2"></rect>
+      <g class="svg-label" font-size="16" fill="#211d17">
+        <rect x="380" y="35" width="220" height="70" rx="14" fill="#edf2f6" stroke="#9bb0c1"></rect>
+        <text x="490" y="65" text-anchor="middle" font-weight="800">Frontend</text>
+        <text x="490" y="88" text-anchor="middle" font-size="12" fill="#6f6457">Next.js 화면</text>
+
+        <rect x="95" y="175" width="190" height="82" rx="14" fill="#f7efe2" stroke="#bda98d"></rect>
+        <text x="190" y="207" text-anchor="middle" font-weight="800">Platform API</text>
+        <text x="190" y="231" text-anchor="middle" font-size="12" fill="#6f6457">로그인 · Library · Members</text>
+
+        <rect x="395" y="175" width="190" height="82" rx="14" fill="#f7efe2" stroke="#bda98d"></rect>
+        <text x="490" y="207" text-anchor="middle" font-weight="800">LangGraph</text>
+        <text x="490" y="231" text-anchor="middle" font-size="12" fill="#6f6457">검색하고 답변 생성</text>
+
+        <rect x="695" y="175" width="190" height="82" rx="14" fill="#f7efe2" stroke="#bda98d"></rect>
+        <text x="790" y="207" text-anchor="middle" font-weight="800">Ingester</text>
+        <text x="790" y="231" text-anchor="middle" font-size="12" fill="#6f6457">자료를 읽어 vault에 넣음</text>
+
+        <rect x="210" y="350" width="250" height="82" rx="14" fill="#eef3ea" stroke="#9dad94"></rect>
+        <text x="335" y="382" text-anchor="middle" font-weight="800">Postgres + pgvector</text>
+        <text x="335" y="406" text-anchor="middle" font-size="12" fill="#6f6457">자료, 조각, 권한 저장</text>
+
+        <rect x="520" y="350" width="250" height="82" rx="14" fill="#eef3ea" stroke="#9dad94"></rect>
+        <text x="645" y="382" text-anchor="middle" font-weight="800">Scheduler · Metadata</text>
+        <text x="645" y="406" text-anchor="middle" font-size="12" fill="#6f6457">주기 작업과 상태 확인</text>
+      </g>
+      <g stroke="#8f2e24" stroke-width="3" fill="none" marker-end="url(#arrow3)">
+        <path d="M445 105 C360 130 235 145 200 172"></path>
+        <path d="M490 105 L490 166"></path>
+        <path d="M535 105 C620 130 745 145 780 172"></path>
+        <path d="M190 257 C210 315 270 324 315 348"></path>
+        <path d="M490 257 C455 314 390 326 355 348"></path>
+        <path d="M790 257 C750 317 693 326 665 348"></path>
+      </g>
+    </svg>
+    <div class="glossary">
+      <div class="term"><strong>Vault</strong><span>Sediment가 참고하는 팀 자료 보관소입니다.</span></div>
+      <div class="term"><strong>Artifact</strong><span>문서, 회의록, 칼럼처럼 하나의 원자료입니다.</span></div>
+      <div class="term"><strong>Chunk</strong><span>긴 문서를 검색하기 좋게 나눈 작은 조각입니다.</span></div>
+      <div class="term"><strong>Citation</strong><span>답변이 어디에서 왔는지 보여주는 출처 표시입니다.</span></div>
+      <div class="term"><strong>Tenant</strong><span>서로 분리된 팀 또는 조직 단위입니다.</span></div>
+      <div class="term"><strong>Ingest</strong><span>외부 자료를 읽어서 vault에 넣는 과정입니다.</span></div>
+      <div class="term"><strong>LLM</strong><span>찾은 근거를 사람이 읽기 쉬운 문장으로 정리하는 AI 모델입니다.</span></div>
+      <div class="term"><strong>SSE</strong><span>답변이 완성될 때까지 조금씩 화면에 흘려보내는 방식입니다.</span></div>
+    </div>
+    <div class="folio">10</div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span>10 · 마무리</span>
+      <span>기억해야 할 세 가지</span>
+    </div>
+    <div class="kicker">Takeaways</div>
+    <h2>Sediment를 이해하는 가장 짧은 요약</h2>
+    <div style="margin-top: 18px;" class="grid-3">
+      <div class="card">
+        <span class="number">1</span>
+        <h3 style="margin-top: 7px;">팀 기록을 찾는다</h3>
+        <p style="margin-top: 7px;">인터넷 전체가 아니라 팀이 쌓아둔 자료를 우선 검색합니다.</p>
+      </div>
+      <div class="card">
+        <span class="number">2</span>
+        <h3 style="margin-top: 7px;">출처와 함께 답한다</h3>
+        <p style="margin-top: 7px;">답변 옆의 Evidence를 열어 원문과 비교할 수 있습니다.</p>
+      </div>
+      <div class="card">
+        <span class="number">3</span>
+        <h3 style="margin-top: 7px;">팀별로 분리한다</h3>
+        <p style="margin-top: 7px;">멤버, 권한, 자료는 tenant 단위로 분리하는 구조입니다.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top: 20px; padding: 18px;">
+      <h3>비전문가가 Sediment를 볼 때의 기준</h3>
+      <p style="margin-top: 8px; font-size: 15px; color: var(--ink);">“이 답이 그럴듯한가?”보다 “이 답을 뒷받침하는 자료가 보이는가?”를 먼저 보세요. Sediment의 핵심 가치는 빠른 답변 자체가 아니라, 팀의 실제 기록과 연결된 답변입니다.</p>
+    </div>
+    <div class="plain-card" style="margin-top: 18px;">
+      <h3>생성 정보</h3>
+      <p style="margin-top: 7px;">이 PDF는 저장소의 문서와 프론트엔드 화면을 바탕으로 생성했습니다. 실제 운영 값, 비밀 키, 개인 데이터는 포함하지 않았습니다.</p>
+    </div>
+    <div class="folio">11</div>
+  </section>
+</body>
+</html>
