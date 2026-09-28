@@ -1,0 +1,13 @@
+{
+  "_comment": "Ratchet for lint-design-tokens.py. Per-file tolerated violation counts. These may only go DOWN \u2014 the gate fails if a file exceeds its number. After fixing drift run `make lint-design-update` and commit the lowered baseline.",
+  "files": {
+    "sediment/AuthBridge.tsx": 4,
+    "sediment/admin/page.tsx": 1,
+    "sediment/c/[id]/page.tsx": 2,
+    "sediment/device/page.tsx": 1,
+    "sediment/library/page.tsx": 6,
+    "sediment/onboard/page.tsx": 11,
+    "sediment/pricing/page.tsx": 5
+  },
+  "total": 30
+}
