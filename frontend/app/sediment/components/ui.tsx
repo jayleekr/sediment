@@ -1,4 +1,4 @@
-import type { ElementType, FormEventHandler, ReactNode } from "react";
+import type { CSSProperties, ElementType, FormEventHandler, ReactNode } from "react";
 
 // ── Editorial-Archive shared primitives ──────────────────────────────────
 // Surfaces read like sheets of stock on a desk: warm card, hairline rule,
@@ -9,6 +9,7 @@ export function Surface({
   className = "",
   as = "section",
   onSubmit,
+  style,
 }: {
   children: ReactNode;
   className?: string;
@@ -20,12 +21,18 @@ export function Surface({
   // 이벤트 핸들러 타입이 달라 유니온에서 충돌하기 때문이고, 그 편이 프리미티브를
   // 작게 유지하기도 한다.
   onSubmit?: FormEventHandler<HTMLFormElement>;
+  // 사실상 모션용 통로다. `.enter-item` 같은 클래스는 stagger 지연을 `--i`
+  // 커스텀 프로퍼티로 읽는데, 그 값은 렌더 시점에만 알 수 있어서 클래스가
+  // 아니라 인라인 스타일로 넘길 수밖에 없다. 색·간격을 여기로 우회시키라는
+  // 뜻은 아니다 — 그건 className 과 토큰의 몫이다.
+  style?: CSSProperties;
 }) {
   const Component = as as ElementType;
   return (
     <Component
       className={`rounded-md border border-rule bg-card shadow-[0_1px_2px_rgba(34,30,22,0.04),0_8px_24px_-16px_rgba(34,30,22,0.25)] ${className}`}
       onSubmit={onSubmit}
+      style={style}
     >
       {children}
     </Component>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, type LibraryItem } from "../lib/api";
 import { EmptyState, SectionHeader, Surface } from "../components/ui";
@@ -109,7 +109,11 @@ function LibraryPageInner() {
           </h3>
           <ul className="space-y-3 text-sm">
             {search.map((s, i) => (
-              <li key={i} className="border-b border-rule pb-3 last:border-0 last:pb-0">
+              <li
+                key={i}
+                className="enter-item border-b border-rule pb-3 last:border-0 last:pb-0"
+                style={{ "--i": Math.min(i, 6) } as CSSProperties}
+              >
                 <div className="font-mono text-[13px] font-medium text-ink">{s.ref}</div>
                 <div className="mt-1 line-clamp-3 font-body text-[13px] italic leading-6 text-ink-2">
                   {s.content}
@@ -146,18 +150,34 @@ function LibraryPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => (
-                  <tr
-                    key={it.id}
-                    className="border-t border-rule transition-colors hover:bg-paper-2/50"
-                  >
-                    <td className="py-2 font-mono text-xs text-ink">{it.ref}</td>
-                    <td className="text-ink-2">{it.type}</td>
-                    <td className="font-mono text-xs text-ink-2">{it.date}</td>
-                    <td className="text-ink-2">{it.author_name}</td>
-                    <td className="font-mono text-xs text-ink-3">{it.lang}</td>
-                  </tr>
-                ))}
+                {/* Only the very first load gets placeholder rows. Re-filtering
+                    keeps the current rows on screen until the new set lands —
+                    swapping a populated table for skeletons on every filter
+                    click is more flicker than it saves, and <thead> must stay
+                    mounted throughout (e2e_spec.yaml E2E-06 waits on it). */}
+                {loading && items.length === 0
+                  ? Array.from({ length: 6 }, (_, i) => (
+                      <tr key={`skeleton-${i}`} className="border-t border-rule">
+                        {Array.from({ length: 5 }, (_, col) => (
+                          <td key={col} className="py-2 pr-4">
+                            <span className="skeleton block h-3 rounded-sm" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  : items.map((it, i) => (
+                      <tr
+                        key={it.id}
+                        className="enter-item border-t border-rule transition-colors hover:bg-paper-2/50"
+                        style={{ "--i": Math.min(i, 10) } as CSSProperties}
+                      >
+                        <td className="py-2 font-mono text-xs text-ink">{it.ref}</td>
+                        <td className="text-ink-2">{it.type}</td>
+                        <td className="font-mono text-xs text-ink-2">{it.date}</td>
+                        <td className="text-ink-2">{it.author_name}</td>
+                        <td className="font-mono text-xs text-ink-3">{it.lang}</td>
+                      </tr>
+                    ))}
               </tbody>
             </table>
           </div>
