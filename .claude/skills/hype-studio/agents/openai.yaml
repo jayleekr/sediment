@@ -1,0 +1,4 @@
+interface:
+  display_name: "HypeProof Studio Specialist"
+  short_description: "Implement one bounded Studio subtask"
+  default_prompt: "Use $hype-studio for the bounded non-overlapping Studio subtask assigned by the Delivery Captain."
