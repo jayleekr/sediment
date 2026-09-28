@@ -1,0 +1,6 @@
+interface:
+  display_name: "HypeProof PR preparation"
+  short_description: "Prepare criteria links and evidence before creating a PR"
+  default_prompt: "Use $hype-pr to inspect this change, prepare its impact assessment, and create the PR."
+policy:
+  allow_implicit_invocation: true
