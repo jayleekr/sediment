@@ -6,7 +6,8 @@
         validate-loop validate-lint-e2e e2e-install \
         permissions ralph ralph-resume ralph-reset \
         monitor monitor-tail monitor-dashboard \
-        bounce-services lint-sql p3-cron-install p3-cron-status p3-cron-uninstall \
+        bounce-services lint-sql lint-design lint-design-update \
+        p3-cron-install p3-cron-status p3-cron-uninstall \
         push prod-run \
         preflight smoke-tests deploy-check verify-deploy doctor \
         check-secrets check-secrets-history install-hooks uninstall-hooks
@@ -274,6 +275,17 @@ bounce-services:
 # Wired into ai-commit.sh gate, but you can run standalone for a sanity check.
 lint-sql:
 	bash harness/scripts/lint-sql-cast.sh
+
+# Guard the "Editorial Archive" design system against token drift in frontend/.
+# Ratcheting: harness/design/baseline.json records per-file tolerated counts,
+# so pre-existing drift does not block work but new drift fails the gate.
+# Wired into ai-commit.sh gate alongside lint-sql.
+lint-design:
+	python3 harness/scripts/lint-design-tokens.py
+
+# Ratchet the baseline DOWN after fixing drift. Commit the result.
+lint-design-update:
+	python3 harness/scripts/lint-design-tokens.py --update-baseline
 
 # Install / inspect / remove the daily P3 validator launchd job.
 # After install, P3 validator runs at 09:15 daily and posts to Discord on regression.

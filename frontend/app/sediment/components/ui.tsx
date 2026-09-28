@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ElementType, FormEventHandler, ReactNode } from "react";
 
 // ── Editorial-Archive shared primitives ──────────────────────────────────
 // Surfaces read like sheets of stock on a desk: warm card, hairline rule,
@@ -8,15 +8,24 @@ export function Surface({
   children,
   className = "",
   as = "section",
+  onSubmit,
 }: {
   children: ReactNode;
   className?: string;
-  as?: "section" | "aside" | "div";
+  // "form" 은 채팅 작성란 때문에 열어뒀다. 그 폼은 Surface 레시피를 손으로
+  // 다시 조립하고 있었는데, 태그가 다르다는 이유만으로 프리미티브를 못 쓰는
+  // 것은 프리미티브 쪽 결함이지 호출부 잘못이 아니다.
+  as?: "section" | "aside" | "div" | "form";
+  // form 으로 쓸 때만 의미가 있다. 전체 props 를 퍼뜨리지 않는 이유는 태그마다
+  // 이벤트 핸들러 타입이 달라 유니온에서 충돌하기 때문이고, 그 편이 프리미티브를
+  // 작게 유지하기도 한다.
+  onSubmit?: FormEventHandler<HTMLFormElement>;
 }) {
-  const Component = as;
+  const Component = as as ElementType;
   return (
     <Component
       className={`rounded-md border border-rule bg-card shadow-[0_1px_2px_rgba(34,30,22,0.04),0_8px_24px_-16px_rgba(34,30,22,0.25)] ${className}`}
+      onSubmit={onSubmit}
     >
       {children}
     </Component>

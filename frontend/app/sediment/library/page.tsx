@@ -68,13 +68,16 @@ function LibraryPageInner() {
           title="Library"
           description="Browse and search the vault behind Sediment answers."
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="mt-5 flex flex-wrap items-center gap-2">
           {["", "column", "research", "novel", "note", "meeting"].map((t) => (
             <button
               key={t || "all"}
               onClick={() => setType(t)}
-              className={`rounded px-3 py-1 text-sm ${
-                type === t ? "bg-ink text-paper" : "bg-paper-2"
+              aria-pressed={type === t}
+              className={`min-h-8 rounded-md border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                type === t
+                  ? "border-ink bg-ink text-paper"
+                  : "border-rule text-ink-2 hover:border-rule-2 hover:bg-paper-2"
               }`}
             >
               {t || "all"}
@@ -82,14 +85,17 @@ function LibraryPageInner() {
           ))}
           <div className="ml-auto flex gap-2">
             <input
-              className="rounded border px-3 py-1 text-sm"
+              className="min-h-9 w-52 rounded-md border border-rule bg-paper-2/30 px-3 py-1.5 text-sm outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card"
               placeholder="search…"
               aria-label="Search the vault by ref, type, author, or content"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && doSearch()}
             />
-            <button onClick={() => doSearch()} className="rounded bg-accent px-3 py-1 text-sm text-paper">
+            <button
+              onClick={() => doSearch()}
+              className="min-h-9 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-paper transition-colors hover:bg-accent-ink"
+            >
               Search
             </button>
           </div>
@@ -97,22 +103,28 @@ function LibraryPageInner() {
       </Surface>
 
       {search.length > 0 && (
-        <Surface className="p-4">
-          <h3 className="mb-2 text-sm font-semibold">Search results</h3>
+        <Surface className="p-5">
+          <h3 className="mb-3 border-b border-rule pb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+            Search results
+          </h3>
           <ul className="space-y-3 text-sm">
             {search.map((s, i) => (
-              <li key={i} className="border-b pb-2 last:border-0">
-                <div className="font-medium">{s.ref}</div>
-                <div className="line-clamp-3 text-xs text-ink-2">{s.content}</div>
-                <div className="text-xs text-ink-3">score {Number(s.score).toFixed(3)}</div>
+              <li key={i} className="border-b border-rule pb-3 last:border-0 last:pb-0">
+                <div className="font-mono text-[13px] font-medium text-ink">{s.ref}</div>
+                <div className="mt-1 line-clamp-3 font-body text-[13px] italic leading-6 text-ink-2">
+                  {s.content}
+                </div>
+                <div className="mt-1 font-mono text-[11px] uppercase tracking-wide text-ink-3">
+                  score {Number(s.score).toFixed(3)}
+                </div>
               </li>
             ))}
           </ul>
         </Surface>
       )}
 
-      <Surface className="p-4">
-        <h3 className="mb-2 text-sm font-semibold">
+      <Surface className="p-5">
+        <h3 className="mb-3 border-b border-rule pb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
           Vault ({loading ? "…" : items.length})
         </h3>
         {items.length === 0 && !loading ? (
@@ -124,23 +136,26 @@ function LibraryPageInner() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <caption className="sr-only">Vault artifacts</caption>
-              <thead className="text-left text-xs text-ink-3">
+              <thead className="border-b border-rule-2 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
                 <tr>
-                  <th scope="col" className="py-1">ref</th>
-                  <th scope="col">type</th>
-                  <th scope="col">date</th>
-                  <th scope="col">author</th>
-                  <th scope="col">lang</th>
+                  <th scope="col" className="py-2 font-medium">ref</th>
+                  <th scope="col" className="font-medium">type</th>
+                  <th scope="col" className="font-medium">date</th>
+                  <th scope="col" className="font-medium">author</th>
+                  <th scope="col" className="font-medium">lang</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((it) => (
-                  <tr key={it.id} className="border-t">
-                    <td className="py-1 font-mono text-xs">{it.ref}</td>
-                    <td>{it.type}</td>
-                    <td>{it.date}</td>
-                    <td>{it.author_name}</td>
-                    <td>{it.lang}</td>
+                  <tr
+                    key={it.id}
+                    className="border-t border-rule transition-colors hover:bg-paper-2/50"
+                  >
+                    <td className="py-2 font-mono text-xs text-ink">{it.ref}</td>
+                    <td className="text-ink-2">{it.type}</td>
+                    <td className="font-mono text-xs text-ink-2">{it.date}</td>
+                    <td className="text-ink-2">{it.author_name}</td>
+                    <td className="font-mono text-xs text-ink-3">{it.lang}</td>
                   </tr>
                 ))}
               </tbody>

@@ -72,6 +72,16 @@ case "$cmd" in
       exit 2
     fi
 
+    # Design-token gate — block NEW "Editorial Archive" drift in frontend/.
+    # Ratcheting against harness/design/baseline.json, so pre-existing drift is
+    # tolerated and only regressions fail. Same hard-fail contract as lint-sql.
+    if ! python3 "$REPO_ROOT/harness/scripts/lint-design-tokens.py" \
+        > "$STATE_DIR/$CHECK_ID.lint-design.log" 2>&1; then
+      echo "LINT FAIL: design-token drift above baseline — see $STATE_DIR/$CHECK_ID.lint-design.log"
+      log_learn "lint_design_token_violation" "check=$CHECK_ID — gate blocked by design lint"
+      exit 2
+    fi
+
     # Bounce any long-lived uvicorn services whose source files were modified
     # since `begin`. Without this, the validator hits live processes still
     # loaded with old code and we under-measure the delta (LEARNINGS 2026-05-08

@@ -232,12 +232,13 @@ export default function ConversationPage() {
           </div>
         </Surface>
 
-        <form
+        <Surface
+          as="form"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
-          className="mt-4 flex flex-col gap-2 rounded-md border border-rule bg-card p-3 shadow-sm sm:flex-row"
+          className="mt-4 flex flex-col gap-2 p-3 sm:flex-row"
         >
           <input
             className="min-h-11 flex-1 rounded-md border border-rule bg-paper-2/30 px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card"
@@ -252,10 +253,10 @@ export default function ConversationPage() {
           >
             Send
           </button>
-        </form>
+        </Surface>
         <label className="mt-2.5 flex items-start gap-2 text-[13px] leading-6 text-ink-2">
           <input
-            className="mt-1 accent-[#8b3a2c]"
+            className="mt-1 accent-accent"
             type="checkbox"
             checked={ownedMode}
             onChange={(e) => {
@@ -332,7 +333,7 @@ const MD_COMPONENTS = {
     ),
   pre: (p: any) => (
     <pre
-      className="my-3.5 overflow-x-auto rounded-md bg-ink p-4 font-mono text-xs leading-relaxed text-[#e9e0cb] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+      className="my-3.5 overflow-x-auto rounded-md bg-ink p-4 font-mono text-xs leading-relaxed text-ink-inverse shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
       {...p}
     />
   ),
@@ -492,7 +493,7 @@ function CitationCard({ index, citation }: { index: number; citation: Citation }
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a160f]/55 p-4 backdrop-blur-[1px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/55 p-4 backdrop-blur-[1px]"
           onClick={() => setOpen(false)}
         >
           <div
