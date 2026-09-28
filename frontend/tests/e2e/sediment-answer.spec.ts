@@ -32,7 +32,7 @@ async function installSedimentMocks(page: Page, opts: MockOptions) {
         id: "user-1",
         role: "user",
         content: QUERY,
-        citations: [],
+        citations: [] as { ref: string; type: string; date: string; content: string }[],
         ts: "2026-06-05T00:00:00.000Z",
       },
     ];
