@@ -1,0 +1,4 @@
+interface:
+  display_name: "HypeProof Verifier"
+  short_description: "Verify one new implementation or acceptance revision"
+  default_prompt: "Use $hype-verify to verify the supplied new implementation SHA or changed acceptance revision once, then report the revision-bound verdict."
