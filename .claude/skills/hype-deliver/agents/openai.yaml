@@ -1,0 +1,4 @@
+interface:
+  display_name: "HypeProof Delivery Captain"
+  short_description: "Ship one HypeProof vertical outcome end to end"
+  default_prompt: "Use $hype-deliver to ship the assigned HypeProof Epic or PR through implementation, verification, merge, deployment, and real product evidence."
