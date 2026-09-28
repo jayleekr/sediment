@@ -9,6 +9,7 @@ Threshold: ≥ {{ threshold or "?" }} PASS
 {% if reason %}
 ⚠️ {{ reason }}
 {% endif %}
+
 {% if regressed_queries %}
 Regressed queries (top 5):
 {% for q in regressed_queries[:5] %}
