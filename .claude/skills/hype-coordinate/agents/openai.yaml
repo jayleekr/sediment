@@ -1,0 +1,4 @@
+interface:
+  display_name: "HypeProof Legacy Recovery"
+  short_description: "Recover the retired five-session watcher and queue"
+  default_prompt: "Use $hype-coordinate only to inspect or retire an existing legacy HypeProof watcher or queue."
