@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { TrustBadge } from "../components/ui";
+import { Surface, TrustBadge } from "../components/ui";
+
+// 이 폼 전체가 쓰는 입력 레시피. Surface 처럼 한곳에 두어야 다음 필드가
+// 추가될 때 또 손으로 재조립되지 않는다.
+const FIELD =
+  "w-full rounded-md border border-rule bg-paper-2/30 px-3 py-2 text-sm outline-none " +
+  "transition-colors placeholder:text-ink-3 focus:border-accent focus:bg-card";
 
 type Step = "workspace" | "invite" | "sources" | "ingest" | "done";
 
@@ -33,14 +39,14 @@ export default function OnboardPage() {
       </div>
       <Stepper current={step} />
 
-      <div className="rounded-md border bg-card p-6 shadow-sm">
+      <Surface className="p-6">
         {step === "workspace" && (
           <>
             <h2 className="mb-3 font-display text-lg font-semibold text-ink">1. Create your workspace</h2>
             <label className="mb-3 block text-sm">
               Display name
               <input
-                className="mt-1 w-full rounded border px-3 py-2"
+                className={`mt-1 ${FIELD}`}
                 placeholder="Acme Editorial"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -50,12 +56,12 @@ export default function OnboardPage() {
               URL slug
               <div className="mt-1 flex">
                 <input
-                  className="flex-1 rounded-l border px-3 py-2"
+                  className={`${FIELD} flex-1 rounded-r-none`}
                   placeholder="acme-editorial"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value.replace(/[^a-z0-9-]/g, ""))}
                 />
-                <span className="rounded-r border border-l-0 bg-paper-2 px-3 py-2 text-sm text-ink-2">
+                <span className="whitespace-nowrap rounded-r-md border border-l-0 border-rule bg-paper-2 px-3 py-2 font-mono text-[13px] text-ink-2">
                   .curator.hypeproof-ai.xyz
                 </span>
               </div>
@@ -71,7 +77,7 @@ export default function OnboardPage() {
             </p>
             <textarea
               rows={6}
-              className="w-full rounded border px-3 py-2 font-mono text-sm"
+              className={`${FIELD} font-mono`}
               placeholder="alice@acme.com&#10;bob@acme.com"
               value={emails}
               onChange={(e) => setEmails(e.target.value)}
@@ -112,7 +118,7 @@ export default function OnboardPage() {
               We&apos;ll embed your sources in the background (~30s per 100 docs). You&apos;ll
               get an email when it&apos;s done.
             </p>
-            <div className="mb-3 rounded bg-paper-2/50 p-3 text-sm">
+            <div className="mb-3 space-y-1 rounded-md border border-rule bg-paper-2/50 p-3.5 text-sm text-ink-2">
               <div>Workspace: <strong>{name || "(unnamed)"}</strong></div>
               <div>Slug: <code>{slug || "(empty)"}</code></div>
               <div>Invitees: {emails.split("\n").filter(Boolean).length}</div>
@@ -127,7 +133,10 @@ export default function OnboardPage() {
             <p className="mb-3 text-sm text-ink-2">
               Your workspace is being prepared. You&apos;ll receive an email when ingest completes.
             </p>
-            <a href="/sediment" className="rounded bg-ink px-4 py-2 text-sm text-paper">
+            <a
+              href="/sediment"
+              className="inline-flex min-h-9 items-center rounded-md bg-ink px-4 py-2 text-sm text-paper transition-colors hover:bg-accent-ink"
+            >
               Go to chat →
             </a>
           </>
@@ -138,13 +147,13 @@ export default function OnboardPage() {
             <button
               onClick={next}
               disabled={(step === "workspace" && !slug) || (step === "invite" && !emails)}
-              className="rounded bg-accent px-4 py-2 text-paper disabled:opacity-50"
+              className="min-h-10 rounded-md bg-accent px-5 py-2 text-[15px] font-medium text-paper transition-colors hover:bg-accent-ink disabled:opacity-50"
             >
               {step === "ingest" ? "Start ingest" : "Next"}
             </button>
           </div>
         )}
-      </div>
+      </Surface>
 
       <p className="text-center text-xs text-ink-3">
         Phase 6 stub — backend wiring lands when first external customer signs up.
