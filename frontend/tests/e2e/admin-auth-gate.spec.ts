@@ -48,10 +48,12 @@ test("non-admin member (403) sees the Admin only card", async ({ page }) => {
 test("backend failure (500) shows neutral error card with Retry, never raw error text", async ({
   page,
 }) => {
-  let calls = 0;
+  // Keyed to the user's Retry click, not to a request count: in dev, React
+  // StrictMode mounts the page twice, so the initial load can fire the
+  // request more than once before the reader ever sees the error card.
+  let retried = false;
   await page.route("**/api/v1/admin/tenants", (route) => {
-    calls += 1;
-    if (calls === 1) {
+    if (!retried) {
       return route.fulfill({
         status: 500,
         contentType: "text/plain",
@@ -87,6 +89,7 @@ test("backend failure (500) shows neutral error card with Retry, never raw error
   await expect(page.locator("body")).not.toContainText(RAW_BACKEND_ERROR);
   await expect(page.getByText("Admin only")).toHaveCount(0);
 
+  retried = true;
   await page.getByRole("button", { name: "Retry" }).click();
 
   await expect(page.getByText("Tenants")).toBeVisible();

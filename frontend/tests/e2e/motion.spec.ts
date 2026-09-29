@@ -47,7 +47,11 @@ async function installStreamMocks(page: Page, shape: StreamShape = "bursty") {
               answer.slice((answer.length / 6) * i, (answer.length / 6) * (i + 1)),
             );
 
-      let convGets = 0;
+      // Whether the stream has delivered [DONE]. Keyed to stream state rather
+      // than to how many times the conversation was fetched: in dev, React
+      // StrictMode mounts the page twice, and a count-based mock would hand
+      // the second mount's load the saved answer before anything was asked.
+      let answered = false;
       const sse = (event: string, data: unknown) =>
         `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
       const json = (body: unknown) =>
@@ -77,6 +81,7 @@ async function installStreamMocks(page: Page, shape: StreamShape = "bursty") {
                 (t += 140),
               );
               setTimeout(() => {
+                answered = true;
                 push("data: [DONE]\n\n");
                 c.close();
               }, (t += 60));
@@ -100,7 +105,6 @@ async function installStreamMocks(page: Page, shape: StreamShape = "bursty") {
           return json({ body: "# mirror-loop\n\n본문 전체가 여기에 들어옵니다." });
         }
         if (url.includes(`/api/v1/conversations/${convId}`) && !url.includes("/messages")) {
-          convGets++;
           const messages: unknown[] = [
             {
               id: "m-1",
@@ -110,8 +114,8 @@ async function installStreamMocks(page: Page, shape: StreamShape = "bursty") {
               ts: new Date().toISOString(),
             },
           ];
-          // Only the reload that follows [DONE] carries the persisted answer.
-          if (convGets > 1) {
+          // Only a reload that follows [DONE] carries the persisted answer.
+          if (answered) {
             messages.push({
               id: "m-2",
               role: "assistant",
