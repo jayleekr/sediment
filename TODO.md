@@ -1,7 +1,10 @@
 # Sediment — TODO (actionable backlog)
 
 > **Generated 2026-06-04** on `worktree-todolist`. Companion to `NEXT.md`:
-> NEXT.md is the narrative roadmap; this is the executable checklist. Each item
+> NEXT.md is the narrative roadmap; this is the executable checklist.
+> ⚠️ `NEXT.md` was removed from the tree in `320f881` (2026-06-04, public/OSS
+> transition). The `NEXT.md §…` citations below refer to that snapshot —
+> read it with `git show 320f881^:NEXT.md`. Each item
 > is sized to be picked up cold and lists {근거 path / 완료조건 / 4-tier class}.
 > 4-tier policy = `services/sediment/validator/recipes.yaml` (also CLAUDE.md).
 > Hand this file to `/goal` via `GOAL_PROMPT.md` for autonomous execution.

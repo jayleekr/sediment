@@ -274,20 +274,14 @@ Then sign in as different members from different tenants in the web UI and confi
 
 ---
 
-## Cron Jobs (macOS launchd)
+## Scheduled jobs (in-VM APScheduler)
 
-Install:
-```bash
-cp infra/launchd/com.hypeproof.sediment.*.plist ~/Library/LaunchAgents/
-launchctl load -w ~/Library/LaunchAgents/com.hypeproof.sediment.daily-ingest.plist
-launchctl load -w ~/Library/LaunchAgents/com.hypeproof.sediment.dream.plist
-```
+Scheduled work runs inside the Fly VM, not on a Mac. macOS launchd was retired on
+2026-05-21 (`infra/launchd/README.md`); do not install plists.
 
-| Job | Schedule | What it does |
-|---|---|---|
-| daily_ingest | 06:30 KST | Pull repo, ingest changed markdown |
-| retro | (add plist) 22:00 KST | Per-tenant daily summary |
-| dream | Sun 02:00 KST | Archive old episodic, boost cited chunks, extract decisions/actions, roll usage |
+- Job list and schedules (UTC, with KST comments): `services/sediment/config/cron.yaml` — the single source; this README does not copy it.
+- It covers Discord channel ingest (every 30 min), distill, consolidate, GitHub repo sync, health check, daily digest, reliability report and retention sweep.
+- Nightly recall / faithfulness / prod-answer checks also run as GitHub Actions (`nightly-recall.yml`, `nightly-faithfulness.yml`, `prod-answer-smoke.yml`).
 
 ---
 
