@@ -5,6 +5,8 @@
 > the Deck pipeline + content pipeline). Do NOT duplicate content here that's
 > already in the root file.
 
+Shared HypeProof agent rules: read `docs/AGENT-GUIDE.ko.md` (vendored from hypeproof-harness; do not edit it here).
+
 ## Brand
 
 **Sediment** — "where doing becomes knowing".

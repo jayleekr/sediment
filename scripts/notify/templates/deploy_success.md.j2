@@ -1,11 +1,12 @@
-✅ **Deploy succeeded** · `{{ product or "sediment" }}`
+✅ **배포 완료** · `{{ product or "sediment" }}`
 
-Commit `{{ sha[:7] }}` on `{{ branch or "main" }}`
-{% if commit_message %}
-> {{ commit_message | replace('\n', ' ') | truncate(120) }}
+`{{ branch or "main" }}` 브랜치 · 커밋 `{{ sha[:7] }}`
+{% if commit_message %}> {{ commit_message | replace('\n', ' ') | truncate(120) }}
 {% endif %}
-{% if author %}Author: **{{ author }}**{% endif %}
-{% if changed_files %}Files: {{ changed_files }} changed{% endif %}
-{% if duration_s %}Pipeline: {{ duration_s }}s{% endif %}
-
-{% if url %}[Pipeline run]({{ url }}){% endif %}{% if compare_url %} · [Diff]({{ compare_url }}){% endif %}
+{% if author %}작성: **{{ author }}**
+{% endif %}
+{% if changed_files %}변경 파일: {{ changed_files }}개
+{% endif %}
+{% if duration_s %}소요: {{ duration_s }}s
+{% endif %}
+{% if url %}[파이프라인 실행 보기]({{ url }}){% endif %}{% if compare_url %} · [변경사항]({{ compare_url }}){% endif %}

@@ -991,6 +991,14 @@
     }
 
     // ---- Feedback (saved to server -> feedback.json) ----
+    function feedbackRequestHeaders() {
+      const headers = { "Content-Type": "application/json" };
+      if (EMBEDDED_DATA.csrf_token) {
+        headers["X-Eval-Viewer-CSRF"] = EMBEDDED_DATA.csrf_token;
+      }
+      return headers;
+    }
+
     function saveCurrentFeedback() {
       const run = EMBEDDED_DATA.runs[currentIndex];
       const text = document.getElementById("feedback").value;
@@ -1011,7 +1019,7 @@
 
       fetch("/api/feedback", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: feedbackRequestHeaders(),
         body: JSON.stringify({ reviews, status: "in_progress" }),
       }).then(() => {
         document.getElementById("feedback-status").textContent = "Saved";
@@ -1043,7 +1051,7 @@
       const payload = JSON.stringify({ reviews, status: "complete" }, null, 2);
       fetch("/api/feedback", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: feedbackRequestHeaders(),
         body: payload,
       }).then(() => {
         document.getElementById("done-overlay").classList.add("visible");

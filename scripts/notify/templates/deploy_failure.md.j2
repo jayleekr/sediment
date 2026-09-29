@@ -1,12 +1,13 @@
-🚨 **Deploy FAILED** · `{{ product or "sediment" }}` · **{{ severity | upper }}**
+🚨 **배포 실패** · `{{ product or "sediment" }}` · **{{ severity | upper }}**
 
-Commit `{{ sha[:7] }}` on `{{ branch or "main" }}`
-{% if commit_message %}> {{ commit_message | replace('\n', ' ') | truncate(120) }}{% endif %}
-{% if failed_step %}Failed step: **{{ failed_step }}**{% endif %}
+`{{ branch or "main" }}` 브랜치 · 커밋 `{{ sha[:7] }}`
+{% if commit_message %}> {{ commit_message | replace('\n', ' ') | truncate(120) }}
+{% endif %}
+{% if failed_step %}실패 단계: **{{ failed_step }}**
+{% endif %}
 {% if error_summary %}
 ```
 {{ error_summary | truncate(400) }}
 ```
 {% endif %}
-
-{% if url %}[Pipeline run]({{ url }}){% endif %}{% if logs_url %} · [Logs]({{ logs_url }}){% endif %}
+{% if url %}[파이프라인 실행 보기]({{ url }}){% endif %}{% if logs_url %} · [로그]({{ logs_url }}){% endif %}

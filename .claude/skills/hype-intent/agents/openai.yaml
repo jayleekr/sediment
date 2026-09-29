@@ -1,0 +1,4 @@
+interface:
+  display_name: "HypeProof Intent Specialist"
+  short_description: "Resolve one concrete product-intent ambiguity"
+  default_prompt: "Use $hype-intent to resolve the specific product ambiguity in the supplied HypeProof Epic, then hand it to the Delivery Captain."

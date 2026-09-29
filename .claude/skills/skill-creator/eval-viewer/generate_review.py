@@ -12,20 +12,21 @@ Usage:
 No dependencies beyond the Python stdlib are required.
 """
 
+from __future__ import annotations
+
 import argparse
 import base64
 import json
 import mimetypes
-import os
 import re
-import signal
-import subprocess
+import secrets
 import sys
-import time
 import webbrowser
+from collections.abc import Callable
 from functools import partial
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Files to exclude from output listings
 METADATA_FILES = {"transcript.md", "user_notes.md", "metrics.json"}
@@ -47,6 +48,14 @@ MIME_OVERRIDES = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
+
+MAX_FEEDBACK_BYTES = 1_000_000
+# Upper bound on how long we will wait while discarding the body of a request
+# we have already rejected. A client that declares a Content-Length and then
+# does not send it must not be able to pin the single-threaded server.
+DRAIN_TIMEOUT_SECONDS = 2.0
+CSRF_HEADER = "X-Eval-Viewer-CSRF"
+ALLOWED_FEEDBACK_STATUSES = {"in_progress", "complete"}
 
 
 def get_mime_type(path: Path) -> str:
@@ -252,6 +261,7 @@ def generate_html(
     skill_name: str,
     previous: dict[str, dict] | None = None,
     benchmark: dict | None = None,
+    csrf_token: str | None = None,
 ) -> str:
     """Generate the complete standalone HTML page with embedded data."""
     template_path = Path(__file__).parent / "viewer.html"
@@ -275,6 +285,8 @@ def generate_html(
     }
     if benchmark:
         embedded["benchmark"] = benchmark
+    if csrf_token:
+        embedded["csrf_token"] = csrf_token
 
     data_json = json.dumps(embedded)
 
@@ -285,25 +297,77 @@ def generate_html(
 # HTTP server (stdlib only, zero dependencies)
 # ---------------------------------------------------------------------------
 
-def _kill_port(port: int) -> None:
-    """Kill any process listening on the given port."""
+def _is_json_content_type(content_type: str | None) -> bool:
+    if not content_type:
+        return False
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type == "application/json"
+
+
+def _is_allowed_origin(origin: str | None, port: int) -> bool:
+    if not origin:
+        return True
+    parsed = urlparse(origin)
+    return (
+        parsed.scheme == "http"
+        and parsed.hostname in {"localhost", "127.0.0.1"}
+        and parsed.port == port
+    )
+
+
+def _parse_content_length(value: str | None) -> int | None:
+    if value is None:
+        return None
     try:
-        result = subprocess.run(
-            ["lsof", "-ti", f":{port}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        for pid_str in result.stdout.strip().split("\n"):
-            if pid_str.strip():
-                try:
-                    os.kill(int(pid_str.strip()), signal.SIGTERM)
-                except (ProcessLookupError, ValueError):
-                    pass
-        if result.stdout.strip():
-            time.sleep(0.5)
-    except subprocess.TimeoutExpired:
-        pass
-    except FileNotFoundError:
-        print("Note: lsof not found, cannot check if port is in use", file=sys.stderr)
+        length = int(value)
+    except ValueError:
+        return None
+    return length if length >= 0 else None
+
+
+def _validate_feedback_payload(data: object) -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("Expected JSON object")
+
+    reviews = data.get("reviews")
+    if not isinstance(reviews, list):
+        raise ValueError("Expected 'reviews' list")
+
+    status = data.get("status")
+    if status is not None and status not in ALLOWED_FEEDBACK_STATUSES:
+        raise ValueError("Unexpected feedback status")
+
+    for index, review in enumerate(reviews):
+        if not isinstance(review, dict):
+            raise ValueError(f"Expected review {index} to be an object")
+        if not isinstance(review.get("run_id"), str) or not review["run_id"]:
+            raise ValueError(f"Expected review {index} to include run_id")
+        if not isinstance(review.get("feedback"), str):
+            raise ValueError(f"Expected review {index} to include feedback")
+        timestamp = review.get("timestamp")
+        if timestamp is not None and not isinstance(timestamp, str):
+            raise ValueError(f"Expected review {index} timestamp to be a string")
+
+    return data
+
+
+def _send_json(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
+    resp = json.dumps(payload).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(resp)))
+    handler.end_headers()
+    handler.wfile.write(resp)
+
+
+def _bind_server(port: int, handler: Callable[..., BaseHTTPRequestHandler]) -> tuple[HTTPServer, int, bool]:
+    try:
+        server = HTTPServer(("127.0.0.1", port), handler)
+        return server, server.server_address[1], False
+    except OSError:
+        server = HTTPServer(("127.0.0.1", 0), handler)
+        return server, server.server_address[1], True
+
 
 class ReviewHandler(BaseHTTPRequestHandler):
     """Serves the review HTML and handles feedback saves.
@@ -319,6 +383,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         feedback_path: Path,
         previous: dict[str, dict],
         benchmark_path: Path | None,
+        csrf_token: str,
         *args,
         **kwargs,
     ):
@@ -327,6 +392,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         self.feedback_path = feedback_path
         self.previous = previous
         self.benchmark_path = benchmark_path
+        self.csrf_token = csrf_token
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:
@@ -339,7 +405,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     benchmark = json.loads(self.benchmark_path.read_text())
                 except (json.JSONDecodeError, OSError):
                     pass
-            html = generate_html(runs, self.skill_name, self.previous, benchmark)
+            html = generate_html(runs, self.skill_name, self.previous, benchmark, self.csrf_token)
             content = html.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -358,25 +424,82 @@ class ReviewHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _drain_request_body(self) -> None:
+        """Discard the body of a request we are rejecting, before replying.
+
+        Writing an error response while the request body still sits unread in
+        the kernel receive buffer makes the subsequent close abortive: Windows
+        answers the leftover bytes with an RST, which discards the response the
+        client has not read yet. The client then raises
+        ConnectionAbortedError (WinError 10053) instead of seeing our 403/415.
+        Reading the body first lets the close be graceful.
+
+        Deliberately does nothing when no valid Content-Length was declared (we
+        would not know when to stop) or when the declared length is over the
+        limit — refusing to read an oversized body is the whole point of the
+        413 path, so that one stays abortive by design.
+        """
+        length = _parse_content_length(self.headers.get("Content-Length"))
+        if not length or length > MAX_FEEDBACK_BYTES:
+            return
+        try:
+            previous_timeout = self.connection.gettimeout()
+        except OSError:
+            return
+        try:
+            self.connection.settimeout(DRAIN_TIMEOUT_SECONDS)
+            remaining = length
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 65536))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            # Client vanished or stalled. We are closing the connection either
+            # way; a failed drain must never break the error response.
+            pass
+        finally:
+            try:
+                self.connection.settimeout(previous_timeout)
+            except OSError:
+                pass
+
     def do_POST(self) -> None:
         if self.path == "/api/feedback":
-            length = int(self.headers.get("Content-Length", 0))
+            if not _is_json_content_type(self.headers.get("Content-Type")):
+                self._drain_request_body()
+                _send_json(self, 415, {"error": "Expected application/json"})
+                return
+
+            if not _is_allowed_origin(self.headers.get("Origin"), self.server.server_port):
+                self._drain_request_body()
+                _send_json(self, 403, {"error": "Invalid request origin"})
+                return
+
+            if self.headers.get(CSRF_HEADER) != self.csrf_token:
+                self._drain_request_body()
+                _send_json(self, 403, {"error": "Invalid CSRF token"})
+                return
+
+            length = _parse_content_length(self.headers.get("Content-Length"))
+            if length is None:
+                _send_json(self, 411, {"error": "Content-Length required"})
+                return
+            if length > MAX_FEEDBACK_BYTES:
+                _send_json(self, 413, {"error": "Feedback payload too large"})
+                return
+
             body = self.rfile.read(length)
             try:
-                data = json.loads(body)
-                if not isinstance(data, dict) or "reviews" not in data:
-                    raise ValueError("Expected JSON object with 'reviews' key")
+                data = _validate_feedback_payload(json.loads(body))
                 self.feedback_path.write_text(json.dumps(data, indent=2) + "\n")
-                resp = b'{"ok":true}'
-                self.send_response(200)
-            except (json.JSONDecodeError, OSError, ValueError) as e:
-                resp = json.dumps({"error": str(e)}).encode()
-                self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(resp)))
-            self.end_headers()
-            self.wfile.write(resp)
+                _send_json(self, 200, {"ok": True})
+            except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
+                _send_json(self, 400, {"error": str(e)})
+            except OSError:
+                _send_json(self, 500, {"error": "Failed to save feedback"})
         else:
+            self._drain_request_body()
             self.send_error(404)
 
     def log_message(self, format: str, *args: object) -> None:
@@ -435,16 +558,18 @@ def main() -> None:
         print(f"\n  Static viewer written to: {args.static}\n")
         sys.exit(0)
 
-    # Kill any existing process on the target port
     port = args.port
-    _kill_port(port)
-    handler = partial(ReviewHandler, workspace, skill_name, feedback_path, previous, benchmark_path)
-    try:
-        server = HTTPServer(("127.0.0.1", port), handler)
-    except OSError:
-        # Port still in use after kill attempt — find a free one
-        server = HTTPServer(("127.0.0.1", 0), handler)
-        port = server.server_address[1]
+    csrf_token = secrets.token_urlsafe(32)
+    handler = partial(
+        ReviewHandler,
+        workspace,
+        skill_name,
+        feedback_path,
+        previous,
+        benchmark_path,
+        csrf_token,
+    )
+    server, port, used_fallback_port = _bind_server(port, handler)
 
     url = f"http://localhost:{port}"
     print(f"\n  Eval Viewer")
@@ -456,6 +581,8 @@ def main() -> None:
         print(f"  Previous:  {args.previous_workspace} ({len(previous)} runs)")
     if benchmark_path:
         print(f"  Benchmark: {benchmark_path}")
+    if used_fallback_port:
+        print(f"  Port:      requested {args.port}, using available port {port}")
     print(f"\n  Press Ctrl+C to stop.\n")
 
     webbrowser.open(url)

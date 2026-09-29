@@ -4,6 +4,8 @@ This is the canonical instruction file for coding agents working in this
 repository. Keep it short and operational. Tool-specific files such as
 `CLAUDE.md` may add adapter details, but should not duplicate these rules.
 
+Shared HypeProof agent rules: read `docs/AGENT-GUIDE.ko.md` (vendored from hypeproof-harness; do not edit it here).
+
 ## Close-Out Is Not Done Until There Is a PR
 
 When an agent finishes implementation or production validation, it must create
