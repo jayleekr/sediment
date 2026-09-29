@@ -1,9 +1,9 @@
 # Sediment ownership.
 # All active HypeProof members are code owners — any member's review satisfies the gate.
-* @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr
+* @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr @rabqatab @J3llyBe4n
 
 # Runtime, deployment, and auth surfaces are high-blast-radius.
-/.github/workflows/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr
-/infra/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr
-/services/sediment/applications/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr
-/services/sediment/lab_lib/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr
+/.github/workflows/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr @rabqatab @J3llyBe4n
+/infra/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr @rabqatab @J3llyBe4n
+/services/sediment/applications/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr @rabqatab @J3llyBe4n
+/services/sediment/lab_lib/ @jayleekr @JeHyeong2 @ico1036 @xoqhdgh1002 @JinyongShin @TJ-kr @rabqatab @J3llyBe4n
